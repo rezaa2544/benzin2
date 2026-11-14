@@ -75,10 +75,13 @@ export class AuthService {
       }
     }
 
-    const code = String(randomInt(0, 10 ** config['otp.length'])).padStart(
-      config['otp.length'],
-      '0',
-    );
+    // Development only: a pinned code keeps the app usable before the SMS provider is live.
+    // The desktop shell sets DEV_FIXED_OTP; production never reaches this line (main.ts exits).
+    const pinned = process.env.NODE_ENV === 'production' ? undefined : process.env.DEV_FIXED_OTP;
+    const code =
+      pinned && pinned.trim().length > 0
+        ? pinned.trim()
+        : String(randomInt(0, 10 ** config['otp.length'])).padStart(config['otp.length'], '0');
     const challenge = {
       phone,
       codeHash: this.hash(code, phone),

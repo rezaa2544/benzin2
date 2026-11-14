@@ -1,11 +1,11 @@
 /**
  * Benzin 2 - desktop shell.
  *
- * One window, one origin. The bundled API runs as a child process on loopback and the SPA is
- * served by a tiny static server that proxies /v1 and /healthz to it, so the browser code keeps
- * using relative URLs exactly as it does behind Caddy in production.
+ * Two windows, one API. The bundled API runs as a child process on loopback; each window gets
+ * its own static server that proxies /v1, /healthz and websocket upgrades to it, so both SPAs
+ * keep using relative URLs exactly as they do behind Caddy in production.
  */
-const { app, BrowserWindow, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -13,18 +13,21 @@ const net = require('node:net');
 const { spawn } = require('node:child_process');
 
 const API_PORT = 41721;
-const WEB_PORT = 41720;
+const APP_PORT = 41720;
+const ADMIN_PORT = 41722;
 const API_HOST = '127.0.0.1';
 
 const runtimeDir = app.isPackaged
   ? path.join(process.resourcesPath, 'runtime')
   : path.join(__dirname, 'runtime');
 const webDir = path.join(runtimeDir, 'web');
+const adminDir = path.join(runtimeDir, 'admin');
 const apiEntry = path.join(runtimeDir, 'api.mjs');
 
 let apiProcess = null;
-let webServer = null;
-let mainWindow = null;
+let appWindow = null;
+let adminWindow = null;
+const servers = [];
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -70,9 +73,7 @@ function waitForPort(port, timeoutMs = 45000) {
 }
 
 function startApi() {
-  if (!fs.existsSync(apiEntry)) {
-    throw new Error(`API bundle missing: ${apiEntry}`);
-  }
+  if (!fs.existsSync(apiEntry)) throw new Error(`API bundle missing: ${apiEntry}`);
   apiProcess = spawn(process.execPath, [apiEntry], {
     cwd: runtimeDir,
     env: {
@@ -82,9 +83,17 @@ function startApi() {
       API_PORT: String(API_PORT),
       API_HOST,
       LOG_LEVEL: 'warn',
-      CORS_ORIGINS: `http://${API_HOST}:${WEB_PORT},http://localhost:${WEB_PORT}`,
+      // Browsers on both windows talk to the same loopback API.
+      CORS_ORIGINS: [
+        `http://${API_HOST}:${APP_PORT}`,
+        `http://localhost:${APP_PORT}`,
+        `http://${API_HOST}:${ADMIN_PORT}`,
+        `http://localhost:${ADMIN_PORT}`,
+      ].join(','),
       SMS_PROVIDERS: 'console',
       PAYMENT_GATEWAY: 'sandbox',
+      // No SMS account yet: every OTP becomes this code (development only, see README).
+      DEV_FIXED_OTP: process.env.BENZIN_DEV_OTP || '12345',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -117,16 +126,17 @@ function proxyTo(targetPort) {
   };
 }
 
-function serveStatic(req, res) {
+function serveStatic(root, req, res) {
   const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
-  const candidate = path.join(webDir, path.normalize(urlPath).replace(/^([/\\])+/, ''));
-  const insideWeb = candidate.startsWith(webDir);
-  let filePath = insideWeb && fs.existsSync(candidate) && fs.statSync(candidate).isFile()
-    ? candidate
-    : path.join(webDir, 'index.html');
+  const candidate = path.join(root, path.normalize(urlPath).replace(/^([/\\])+/, ''));
+  const inside = candidate.startsWith(root);
+  const filePath =
+    inside && fs.existsSync(candidate) && fs.statSync(candidate).isFile()
+      ? candidate
+      : path.join(root, 'index.html');
   if (!fs.existsSync(filePath)) {
     res.writeHead(500, { 'content-type': 'text/html; charset=utf-8' });
-    res.end('<h1>web bundle missing</h1>');
+    res.end('<h1>bundle missing</h1>');
     return;
   }
   const ext = path.extname(filePath).toLowerCase();
@@ -137,15 +147,15 @@ function serveStatic(req, res) {
   fs.createReadStream(filePath).pipe(res);
 }
 
-function startWebServer() {
+function startStaticServer(root, port) {
   const proxyV1 = proxyTo(API_PORT);
-  webServer = http.createServer((req, res) => {
+  const server = http.createServer((req, res) => {
     const p = (req.url || '/').split('?')[0];
     if (p.startsWith('/v1/') || p === '/healthz' || p === '/health') return proxyV1(req, res);
-    return serveStatic(req, res);
+    return serveStatic(root, req, res);
   });
 
-  webServer.on('upgrade', (req, socket, head) => {
+  server.on('upgrade', (req, socket, head) => {
     const upstream = net.connect(API_PORT, API_HOST, () => {
       const headers = Object.entries(req.headers)
         .map(([k, v]) => `${k}: ${v}`)
@@ -159,47 +169,88 @@ function startWebServer() {
     socket.on('error', () => upstream.destroy());
   });
 
-  return new Promise((resolve) => webServer.listen(WEB_PORT, API_HOST, resolve));
+  servers.push(server);
+  return new Promise((resolve) => server.listen(port, API_HOST, resolve));
 }
 
-function createWindow() {
-  mainWindow = new BrowserWindow({
+function openApp() {
+  if (appWindow) {
+    appWindow.focus();
+    return;
+  }
+  appWindow = new BrowserWindow({
     width: 430,
     height: 900,
     minWidth: 380,
     minHeight: 640,
     backgroundColor: '#0f172a',
     title: 'بنزین ۲',
-    autoHideMenuBar: true,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      spellcheck: false,
-    },
+    autoHideMenuBar: false,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  appWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
-  mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
-    log(`load failed ${code} ${desc}`);
-    setTimeout(() => mainWindow && mainWindow.loadURL(`http://${API_HOST}:${WEB_PORT}/`), 800);
-  });
-  mainWindow.loadURL(`http://${API_HOST}:${WEB_PORT}/`);
-  mainWindow.on('closed', () => {
-    mainWindow = null;
+  appWindow.loadURL(`http://${API_HOST}:${APP_PORT}/`);
+  appWindow.on('closed', () => {
+    appWindow = null;
   });
 }
 
-app.disableHardwareAcceleration && process.env.BENZIN_SAFE_GPU === '1' && app.disableHardwareAcceleration();
+function openAdmin() {
+  if (adminWindow) {
+    adminWindow.focus();
+    return;
+  }
+  adminWindow = new BrowserWindow({
+    width: 1180,
+    height: 820,
+    minWidth: 900,
+    minHeight: 600,
+    backgroundColor: '#0b1220',
+    title: 'بنزین ۲ — پنل مدیریت',
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  adminWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  adminWindow.loadURL(`http://${API_HOST}:${ADMIN_PORT}/`);
+  adminWindow.on('closed', () => {
+    adminWindow = null;
+  });
+}
+
+function buildMenu() {
+  const template = [
+    {
+      label: 'نمایش',
+      submenu: [
+        { label: 'اپ مشتری', accelerator: 'CmdOrCtrl+1', click: () => openApp() },
+        { label: 'پنل مدیریت', accelerator: 'CmdOrCtrl+2', click: () => openAdmin() },
+        { type: 'separator' },
+        { role: 'reload', label: 'بارگذاری مجدد' },
+        { role: 'toggleDevTools', label: 'ابزار توسعه' },
+        { role: 'resetZoom', label: 'اندازهٔ پیش‌فرض' },
+        { role: 'zoomIn', label: 'بزرگ‌تر' },
+        { role: 'zoomOut', label: 'کوچک‌تر' },
+        { type: 'separator' },
+        { role: 'quit', label: 'خروج' },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
 
 app.whenReady().then(async () => {
   try {
     startApi();
     await waitForPort(API_PORT);
-    await startWebServer();
-    createWindow();
+    await startStaticServer(webDir, APP_PORT);
+    await startStaticServer(adminDir, ADMIN_PORT);
+    buildMenu();
+    openApp();
   } catch (error) {
     dialog.showErrorBox('بنزین ۲ اجرا نشد', String(error && error.message ? error.message : error));
     app.quit();
@@ -209,9 +260,9 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => app.quit());
 
 app.on('before-quit', () => {
-  if (webServer) {
+  for (const server of servers) {
     try {
-      webServer.close();
+      server.close();
     } catch {
       /* ignore */
     }

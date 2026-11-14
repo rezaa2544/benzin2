@@ -24,6 +24,25 @@ const repos = createMemoryRepositories();
 const sms = createSmsSender(config);
 // Development/tests only: make the app usable immediately (Baneh zone, plans, settings).
 await applySeed(repos);
+
+// Local/desktop builds: known accounts so the whole flow can be walked without an SMS provider.
+// 09187888993 owns the admin panel; 09373210545 is an ordinary customer.
+for (const demo of [
+  { phone: '09187888993', role: 'OWNER' as const, displayName: 'Benzin Admin' },
+  { phone: '09373210545', role: 'USER' as const, displayName: 'Test Buyer' },
+]) {
+  const existing = await repos.users.findByPhone(demo.phone);
+  if (existing) {
+    existing.role = demo.role;
+    existing.displayName = demo.displayName;
+    await repos.users.save(existing);
+    continue;
+  }
+  const created = await repos.users.create({ phone: demo.phone, role: demo.role });
+  created.displayName = demo.displayName;
+  await repos.users.save(created);
+}
+
 const { app } = await buildApp({
   config,
   repos,
