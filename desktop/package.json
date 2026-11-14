@@ -6,7 +6,7 @@
   "author": "Reza",
   "main": "main.cjs",
   "scripts": {
-    "bundle:api": "esbuild ../apps/api/src/main.ts --bundle --platform=node --format=esm --target=node20 --outfile=runtime/api.mjs --log-level=warning",
+    "bundle:api": "node scripts/bundle-api.cjs",
     "bundle:web": "node scripts/copy-web.cjs",
     "prepack:app": "npm run bundle:api && npm run bundle:web",
     "dist": "npm run prepack:app && electron-builder --win nsis --x64",
