@@ -1,0 +1,58 @@
+{
+  "name": "benzin2-desktop",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Benzin 2 desktop shell (Electron) - runs the local API and the SPA in one window",
+  "author": "Reza",
+  "main": "main.cjs",
+  "scripts": {
+    "bundle:api": "esbuild ../apps/api/src/main.ts --bundle --platform=node --format=esm --target=node20 --outfile=runtime/api.mjs --log-level=warning",
+    "bundle:web": "node scripts/copy-web.cjs",
+    "prepack:app": "npm run bundle:api && npm run bundle:web",
+    "dist": "npm run prepack:app && electron-builder --win nsis --x64",
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8",
+    "esbuild": "0.24.0"
+  },
+  "build": {
+    "appId": "ir.benzin2.desktop",
+    "productName": "Benzin2",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime",
+        "to": "runtime"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Benzin2-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Benzin 2"
+    }
+  }
+}
