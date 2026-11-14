@@ -1,0 +1,103 @@
+/** Domain vocabulary shared by API, clients, and admin. Keep values stable: they are persisted. */
+
+export const TIERS = ['T1500', 'T3000', 'T10000'] as const;
+export type Tier = (typeof TIERS)[number];
+export const TIER_RATE_TOMAN: Record<Tier, number> = { T1500: 1500, T3000: 3000, T10000: 10000 };
+
+export const ORDER_SIDES = ['SELL', 'BUY'] as const;
+export type OrderSide = (typeof ORDER_SIDES)[number];
+
+export const ORDER_STATUSES = [
+  'OPEN',
+  'RESERVED',
+  'CONFIRMED',
+  'COMPLETED',
+  'EXPIRED',
+  'CANCELLED',
+  'AWAITING_OWNER_DECISION',
+  'DISPUTED',
+] as const;
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+/**
+ * Persian copy for every order state (task E9-01). Kept next to the enum so the customer
+ * app, the admin panel and the notification templates can never drift apart.
+ */
+export const ORDER_STATUS_FA: Record<OrderStatus, string> = {
+  OPEN: 'باز',
+  RESERVED: 'رزرو شده',
+  CONFIRMED: 'تأیید شده',
+  COMPLETED: 'تکمیل شده',
+  EXPIRED: 'منقضی',
+  CANCELLED: 'لغو شده',
+  AWAITING_OWNER_DECISION: 'در انتظار تصمیم صاحب سفارش',
+  DISPUTED: 'در اختلاف',
+};
+
+/** Persian copy for order sides, used by every card and filter in the customer app. */
+export const ORDER_SIDE_FA: Record<OrderSide, string> = {
+  SELL: 'فروش سهمیه',
+  BUY: 'خرید سهمیه',
+};
+
+export const RESERVATION_STATUSES = [
+  'PENDING_OWNER',
+  'CONFIRMED',
+  'COMPLETED',
+  'AUTO_COMPLETED',
+  'DISPUTED',
+  'EXPIRED',
+  'CANCELLED_BY_TAKER',
+  'CANCELLED_BY_OWNER',
+  'REJECTED',
+] as const;
+export type ReservationStatus = (typeof RESERVATION_STATUSES)[number];
+
+/** Persian copy for reservation states, shared by the app, the admin panel and notices. */
+export const RESERVATION_STATUS_FA: Record<ReservationStatus, string> = {
+  PENDING_OWNER: 'در انتظار تأیید صاحب سفارش',
+  CONFIRMED: 'تأیید شده',
+  COMPLETED: 'تکمیل شده',
+  AUTO_COMPLETED: 'تکمیل خودکار',
+  DISPUTED: 'در اختلاف',
+  EXPIRED: 'منقضی',
+  CANCELLED_BY_TAKER: 'لغو شده توسط خریدار',
+  CANCELLED_BY_OWNER: 'لغو شده توسط صاحب سفارش',
+  REJECTED: 'رد شده',
+};
+
+export const ACTIVE_RESERVATION_STATUSES: readonly ReservationStatus[] = [
+  'PENDING_OWNER',
+  'CONFIRMED',
+];
+
+export const CANCEL_REASONS = ['OWNER_UNRESPONSIVE', 'CHANGED_MIND', 'NO_SHOW', 'OTHER'] as const;
+export type CancelReason = (typeof CANCEL_REASONS)[number];
+
+export const DELIVERY_METHODS = ['FUEL_CARD'] as const;
+export type DeliveryMethod = (typeof DELIVERY_METHODS)[number];
+
+export const USER_ROLES = ['USER', 'SUPPORT', 'ADMIN', 'OWNER'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+export const USER_STATUSES = ['ACTIVE', 'SUSPENDED', 'BANNED'] as const;
+export type UserStatus = (typeof USER_STATUSES)[number];
+
+/** Chat messages: free text, a deliberate contact card, or a system line. */
+export const MESSAGE_KINDS = ['TEXT', 'CONTACT', 'SYSTEM'] as const;
+export type MessageKind = (typeof MESSAGE_KINDS)[number];
+
+export const NOTIFICATION_CHANNELS = ['IN_APP', 'SMS', 'PUSH'] as const;
+export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
+
+export const SUBSCRIPTION_STATUSES = ['PENDING', 'ACTIVE', 'EXPIRED', 'CANCELLED'] as const;
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
+
+export const PAYMENT_METHODS = ['CARD_TO_CARD', 'GATEWAY'] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export const PAYMENT_PROVIDERS = ['CARD_TO_CARD', 'GATEWAY'] as const;
+export type PaymentProvider = (typeof PAYMENT_PROVIDERS)[number];
+
+export const PAYMENT_STATUSES = ['PENDING', 'PAID', 'FAILED', 'EXPIRED', 'NEEDS_REVIEW'] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];

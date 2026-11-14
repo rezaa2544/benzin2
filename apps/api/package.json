@@ -1,0 +1,40 @@
+{
+  "name": "@benzin/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "load:smoke": "tsx scripts/load-smoke.ts",
+    "lint": "eslint .",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/infra/db/cli.ts migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx src/infra/db/cli.ts seed",
+    "db:reset": "tsx src/infra/db/cli.ts reset",
+    "db:status": "tsx src/infra/db/cli.ts status",
+    "owner:create": "tsx src/cli/create-owner.ts"
+  },
+  "dependencies": {
+    "@benzin/shared": "workspace:*",
+    "@fastify/cors": "^10.0.1",
+    "@fastify/helmet": "^12.0.1",
+    "drizzle-orm": "^0.38.3",
+    "fastify": "^5.2.0",
+    "pg": "^8.13.1",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
