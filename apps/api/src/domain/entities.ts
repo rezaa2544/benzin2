@@ -34,6 +34,9 @@ export interface Order {
   readonly litres: number;
   readonly rateToman: number;
   readonly zoneId: string;
+  /** Province (استان) and county (شهرستان) the listing sits in; null on legacy rows. */
+  readonly province: string | null;
+  readonly county: string | null;
   readonly stationName: string | null;
   readonly note: string | null;
   readonly lat: number | null;

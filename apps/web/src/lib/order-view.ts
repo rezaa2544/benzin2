@@ -28,8 +28,8 @@ export interface OrderCardView {
   total: string;
   zoneName: string | null;
   ownerName: string | null;
-  /** SELL offers green, BUY requests amber — used for the card's start border. */
-  tone: 'brand' | 'accent';
+  /** BUY requests are green and SELL offers red — used for the card's start border. */
+  tone: 'brand' | 'danger';
 }
 
 /**
@@ -47,7 +47,7 @@ export function orderCardView(order: OrderCardInput): OrderCardView {
     total: formatToman(total),
     zoneName: order.zoneName ?? null,
     ownerName: order.ownerName ?? null,
-    tone: order.side === 'SELL' ? 'brand' : 'accent',
+    tone: order.side === 'BUY' ? 'brand' : 'danger',
   };
 }
 

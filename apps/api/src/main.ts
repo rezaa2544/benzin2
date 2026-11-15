@@ -4,6 +4,7 @@ import { createMemoryRepositories } from './infra/memory/index.js';
 import { createSmsSender } from './infra/sms/index.js';
 import { systemClock } from './domain/entities.js';
 import { applySeed } from './infra/db/seed.js';
+import { applyDemoOrders } from './infra/db/demo-orders.js';
 
 const config = loadConfig();
 
@@ -41,6 +42,12 @@ for (const demo of [
   const created = await repos.users.create({ phone: demo.phone, role: demo.role });
   created.displayName = demo.displayName;
   await repos.users.save(created);
+}
+
+// Local/desktop builds also get a handful of demo listings so the market screen, the
+// place statistics and the green/red split are visible on a fresh launch.
+if (process.env.SEED_DEMO_ORDERS !== '0') {
+  await applyDemoOrders(repos, systemClock);
 }
 
 const { app } = await buildApp({

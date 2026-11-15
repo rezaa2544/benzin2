@@ -2,17 +2,24 @@ import type { OrderSide, Tier } from '@benzin/shared';
 
 export type SortKey = 'distance' | 'price' | 'newest';
 
+/**
+ * Market filters are the home page's own state: a place picked from the province/county
+ * cascade, one side, one sort order. There is no tier filter — the pump fee is the seller's
+ * input and a buyer simply reads it off each listing.
+ */
 export interface MarketFilters {
-  zoneId: string;
+  /** Province name; empty means «همهٔ ایران». */
+  province: string;
+  /** County name of that province; empty means every county of it. */
+  county: string;
   side: OrderSide;
-  tier: Tier;
   sort: SortKey;
 }
 
 export const DEFAULT_FILTERS: MarketFilters = {
-  zoneId: '',
+  province: '',
+  county: '',
   side: 'BUY',
-  tier: 'T3000',
   sort: 'newest',
 };
 
@@ -24,19 +31,22 @@ export function filtersFromQuery(
   fallback: MarketFilters = DEFAULT_FILTERS,
 ): MarketFilters {
   const side = query['side'] === 'SELL' || query['side'] === 'BUY' ? query['side'] : fallback.side;
-  const tier = ['T1500', 'T3000', 'T10000'].includes(query['tier'] ?? '')
-    ? (query['tier'] as Tier)
-    : fallback.tier;
   const sort = SORTS.includes(query['sort'] as SortKey)
     ? (query['sort'] as SortKey)
     : fallback.sort;
-  return { zoneId: query['zoneId'] ?? fallback.zoneId, side, tier, sort };
+  return {
+    province: query['province'] ?? fallback.province,
+    county: query['county'] ?? fallback.county,
+    side,
+    sort,
+  };
 }
 
+/** Pump fee labels the seller picks from; the numbers come from TIER_RATE_TOMAN. */
 export const TIER_LABEL_FA: Record<Tier, string> = {
-  T1500: 'آزاد ۱۵۰۰',
-  T3000: 'آزاد ۳۰۰۰',
-  T10000: 'آزاد ۱۰۰۰۰',
+  T1500: 'پمپ ۱٬۵۰۰',
+  T3000: 'پمپ ۳٬۰۰۰',
+  T10000: 'پمپ ۱۰٬۰۰۰',
 };
 
 /** `distance` needs a point; without one the API rejects the request, so we fall back. */
@@ -44,16 +54,16 @@ export function effectiveSort(filters: MarketFilters, hasOrigin: boolean): SortK
   return filters.sort === 'distance' && !hasOrigin ? 'newest' : filters.sort;
 }
 
-/** Market search is a getter for the API query, ignoring the fields it does not accept. */
+/** Market search is a getter for the API query: empty place fields are simply omitted. */
 export function toSearchQuery(
   filters: MarketFilters,
   options: { cursor?: string; origin?: { lat: number; lng: number } | null; limit?: number } = {},
 ): Record<string, unknown> {
   const sort = effectiveSort(filters, Boolean(options.origin));
   return {
-    zoneId: filters.zoneId,
+    province: filters.province || undefined,
+    county: filters.county || undefined,
     side: filters.side,
-    tier: filters.tier,
     sort,
     limit: options.limit ?? 20,
     cursor: options.cursor,

@@ -1,7 +1,7 @@
 import { t } from '../lib/i18n.js';
 import { Icon, type IconName } from './icons.js';
 
-export type NavKey = 'market' | 'search' | 'create' | 'orders' | 'profile' | 'styleGuide';
+export type NavKey = 'market' | 'create' | 'orders' | 'profile' | 'styleGuide';
 
 export interface NavItem {
   key: NavKey;
@@ -15,7 +15,6 @@ export interface NavItem {
 /** One source of truth for the bottom bar; the shell and the style guide both read it. */
 export const NAV_ITEMS: readonly NavItem[] = [
   { key: 'market', labelKey: 'nav.market', icon: 'market', href: '/market' },
-  { key: 'search', labelKey: 'nav.search', icon: 'search', href: '/search' },
   { key: 'create', labelKey: 'nav.create', icon: 'plus', href: '/new', primary: true },
   { key: 'orders', labelKey: 'nav.orders', icon: 'orders', href: '/orders' },
   { key: 'profile', labelKey: 'nav.profile', icon: 'profile', href: '/profile' },
@@ -26,7 +25,7 @@ export interface BottomNavProps {
   onNavigate?: (key: NavKey, href: string) => void;
 }
 
-/** Five destinations, 44px minimum targets, safe-area padding for iPhone home bars. */
+/** Four destinations, 44px minimum targets, safe-area padding for iPhone home bars. */
 export function BottomNav({ active, onNavigate }: BottomNavProps): JSX.Element {
   return (
     <nav

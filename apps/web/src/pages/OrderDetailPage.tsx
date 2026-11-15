@@ -107,23 +107,21 @@ export function OrderDetailPage({ api, user, orderId }: OrderDetailPageProps): J
         <div className="divider" />
         <dl className="grid grid-cols-2 gap-2 text-sm">
           <dt className="text-muted">{t('order.rate')}</dt>
-          <dd className="tnum text-end font-medium">
-            {formatToman(order.rateToman)} {t('common.toman')}
-          </dd>
-          <dt className="text-muted">{t('orderDetail.total')}</dt>
-          <dd className="tnum text-end font-bold">
-            {formatToman(order.totalToman)} {t('common.toman')}
-          </dd>
-          <dt className="text-muted">{t('orderDetail.officialRate')}</dt>
-          <dd className="tnum text-end">{formatToman(official)}</dd>
-          {order.buyerSavingToman > 0 ? (
+          <dd className="tnum text-end font-medium">{formatToman(order.rateToman)}</dd>
+          {order.pumpFeeToman > 0 ? (
             <>
-              <dt className="text-muted">{t('orderDetail.saving')}</dt>
-              <dd className="tnum text-end text-success">
-                {formatToman(order.buyerSavingToman)} {t('common.toman')}
-              </dd>
+              <dt className="text-muted">{t('order.pumpFeeLabel')}</dt>
+              <dd className="tnum text-end font-medium">{formatToman(order.pumpFeeToman)}</dd>
+              <dt className="text-muted">{t('order.buyerRate')}</dt>
+              <dd className="tnum text-end font-bold">{formatToman(order.buyerRateToman)}</dd>
+              <dt className="text-muted">{t('order.buyerTotal')}</dt>
+              <dd className="tnum text-end font-bold">{formatToman(order.buyerTotalToman)}</dd>
             </>
           ) : null}
+          <dt className="text-muted">{t('orderDetail.total')}</dt>
+          <dd className="tnum text-end font-bold">{formatToman(order.totalToman)}</dd>
+          <dt className="text-muted">{t('orderDetail.pumpTier')}</dt>
+          <dd className="tnum text-end">{formatToman(official)}</dd>
           <dt className="text-muted">{t('orderDetail.delivery')}</dt>
           <dd className="text-end">{t('orderDetail.deliveryFuelCard')}</dd>
           <dt className="text-muted">{t('orderDetail.expiresAt')}</dt>

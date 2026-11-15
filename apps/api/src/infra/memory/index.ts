@@ -246,6 +246,8 @@ export class MemoryOrderRepository implements OrderRepository {
       litres: input.litres,
       rateToman: input.rateToman,
       zoneId: input.zoneId,
+      province: input.province,
+      county: input.county,
       stationName: input.stationName,
       note: input.note,
       lat: input.lat,
@@ -269,9 +271,11 @@ export class MemoryOrderRepository implements OrderRepository {
     const matches = [...this.byId.values()].filter(
       (order) =>
         order.status === 'OPEN' &&
-        order.zoneId === query.zoneId &&
+        (query.zoneId === null || order.zoneId === query.zoneId) &&
+        (query.province === null || order.province === query.province) &&
+        (query.county === null || order.county === query.county) &&
         order.side === query.side &&
-        order.tier === query.tier &&
+        (query.tier === null || order.tier === query.tier) &&
         order.expiresAt.getTime() > query.now.getTime(),
     );
 
@@ -390,6 +394,21 @@ export class MemoryOrderRepository implements OrderRepository {
       .filter((order) => order.zoneId === zoneId && order.createdAt.getTime() >= since.getTime())
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit)
+      .map(clone);
+  }
+
+  async listByPlace(query: {
+    province: string | null;
+    county: string | null;
+    since: Date;
+    limit: number;
+  }): Promise<Order[]> {
+    return [...this.byId.values()]
+      .filter((order) => order.createdAt.getTime() >= query.since.getTime())
+      .filter((order) => (query.province === null ? true : order.province === query.province))
+      .filter((order) => (query.county === null ? true : order.county === query.county))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, query.limit)
       .map(clone);
   }
 }

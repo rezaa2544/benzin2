@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  IRAN_PROVINCES,
   ORDER_SIDE_FA,
+  countiesOf,
+  formatLitres,
+  formatRate,
   formatToman,
+  placeLabelFa,
   toPersianDigits,
   type OrderSide,
-  type Tier,
 } from '@benzin/shared';
 import type { ApiClient } from '../lib/api.js';
 import { errorMessage } from '../lib/api.js';
@@ -34,24 +38,29 @@ const errorMap = {
 };
 
 const SIDES: readonly OrderSide[] = ['BUY', 'SELL'];
-const TIERS: readonly Tier[] = ['T1500', 'T3000', 'T10000'];
 const SORTS: ReadonlyArray<{ key: SortKey; label: string }> = [
   { key: 'newest', label: t('market.sortNewest') },
   { key: 'price', label: t('market.sortPrice') },
   { key: 'distance', label: t('market.sortDistance') },
 ];
 
+/** Green for a buy request, red for a sell offer — the palette the owner asked for. */
+const SIDE_CLASS: Record<OrderSide, { on: string; off: string }> = {
+  BUY: { on: 'bg-brand text-brandInk', off: 'bg-surface text-brand' },
+  SELL: { on: 'bg-danger text-white', off: 'bg-surface text-danger' },
+};
+
+// formatToman/formatLitres already carry their unit, so these stay unit-free wrappers.
+const toman = (value: number | null): string => (value === null ? '—' : formatToman(value));
+
+const litres = (value: number): string => formatLitres(value);
+
 /**
- * Market list (E9-05/E9-06): filters live in the URL, a market-stat strip gives the price
- * context, and paging is cursor-based because the API never exposes offsets.
+ * Market list (E9-05/E9-06). The place is chosen with a province → county cascade, the
+ * filters live in the URL, and a stat block answers the two questions a user actually has:
+ * «سهمیه در این شهر چند است؟» and «در کل کشور چطور؟».
  */
-export function MarketPage({
-  api,
-  config,
-  zones,
-  filters,
-  onFilters,
-}: MarketPageProps): JSX.Element {
+export function MarketPage({ api, config, filters, onFilters }: MarketPageProps): JSX.Element {
   const [items, setItems] = useState<OrderView[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,30 +68,21 @@ export function MarketPage({
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<MarketStats | null>(null);
 
-  const activeZone = filters.zoneId || zones[0]?.id || '';
-  const effective: MarketFilters = { ...filters, zoneId: activeZone };
-  const zoneName = zones.find((zone) => zone.id === activeZone)?.nameFa ?? '';
+  const counties = countiesOf(filters.province);
+  const placeName = placeLabelFa(filters) || t('market.allIran');
 
   useEffect(() => {
-    if (!filters.zoneId && zones[0]) onFilters({ ...filters, zoneId: zones[0].id });
-  }, [zones.length]);
-
-  useEffect(() => {
-    if (!activeZone) {
-      setLoading(false);
-      return;
-    }
     let cancelled = false;
     setLoading(true);
     setError(null);
-    const query = toSearchQuery(effective);
+    const query = toSearchQuery(filters);
     Promise.all([
       api.get<OrderList>('/v1/orders', query),
       api
         .get<MarketStats>('/v1/stats/market', {
-          zoneId: activeZone,
-          side: effective.side,
-          tier: effective.tier,
+          province: filters.province || undefined,
+          county: filters.county || undefined,
+          side: filters.side,
         })
         .catch(() => null),
     ])
@@ -101,19 +101,22 @@ export function MarketPage({
     return () => {
       cancelled = true;
     };
-  }, [activeZone, effective.side, effective.tier, effective.sort]);
+  }, [filters.province, filters.county, filters.side, filters.sort]);
 
   const apply = (patch: Partial<MarketFilters>): void => {
-    const next = { ...effective, ...patch };
+    const next = { ...filters, ...patch };
     onFilters(next);
-    navigate(`/market${buildQuery({ ...next, zoneId: next.zoneId })}`, { replace: true });
+    navigate(`/market${buildQuery({ ...next })}`, { replace: true });
   };
+
+  /** Switching province resets the county, otherwise the pair could never match. */
+  const applyProvince = (province: string): void => apply({ province, county: '' });
 
   const loadMore = async (): Promise<void> => {
     if (!cursor) return;
     setLoadingMore(true);
     try {
-      const list = await api.get<OrderList>('/v1/orders', toSearchQuery(effective, { cursor }));
+      const list = await api.get<OrderList>('/v1/orders', toSearchQuery(filters, { cursor }));
       setItems((current) => [...current, ...list.items]);
       setCursor(list.nextCursor);
     } catch (cause) {
@@ -123,36 +126,66 @@ export function MarketPage({
     }
   };
 
-  const median = useMemo(
-    () => (stats?.medianRateToman ? formatToman(stats.medianRateToman) : null),
-    [stats],
-  );
+  const nationalDelta =
+    stats?.averageTotalRateToman != null && stats.nationalAverageTotalRateToman != null
+      ? stats.averageTotalRateToman - stats.nationalAverageTotalRateToman
+      : null;
 
   return (
     <div>
       <PageTitle title={t('market.title')} lead={t('market.lead')} />
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        <select
-          aria-label={t('market.zone')}
-          className="input max-w-[9rem] text-sm"
-          value={activeZone}
-          onChange={(event) => apply({ zoneId: event.target.value })}
-        >
-          {zones.map((zone) => (
-            <option key={zone.id} value={zone.id}>
-              {zone.nameFa}
-            </option>
-          ))}
-        </select>
-        <div className="flex overflow-hidden rounded-sm border border-line">
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <div>
+          <label className="label" htmlFor="market-province">
+            {t('market.province')}
+          </label>
+          <select
+            id="market-province"
+            className="input text-sm"
+            value={filters.province}
+            onChange={(event) => applyProvince(event.target.value)}
+          >
+            <option value="">{t('market.allIran')}</option>
+            {IRAN_PROVINCES.map((province) => (
+              <option key={province.id} value={province.nameFa}>
+                {province.nameFa}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="market-county">
+            {t('market.county')}
+          </label>
+          <select
+            id="market-county"
+            className="input text-sm disabled:opacity-60"
+            value={filters.county}
+            disabled={counties.length === 0}
+            onChange={(event) => apply({ county: event.target.value })}
+          >
+            <option value="">{t('market.allCounties')}</option>
+            {counties.map((county) => (
+              <option key={county} value={county}>
+                {county}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="flex flex-1 overflow-hidden rounded-sm border border-line">
           {SIDES.map((side) => (
             <button
               key={side}
               type="button"
-              aria-pressed={effective.side === side}
+              aria-pressed={filters.side === side}
               onClick={() => apply({ side })}
-              className={`min-h-tap px-3 text-sm ${effective.side === side ? 'bg-brand text-brandInk' : 'bg-surface text-muted'}`}
+              className={`min-h-tap flex-1 px-3 text-sm font-medium ${
+                filters.side === side ? SIDE_CLASS[side].on : SIDE_CLASS[side].off
+              }`}
             >
               {ORDER_SIDE_FA[side]}
             </button>
@@ -161,7 +194,7 @@ export function MarketPage({
         <select
           aria-label={t('market.sort')}
           className="input max-w-[8rem] text-sm"
-          value={effective.sort}
+          value={filters.sort}
           onChange={(event) => apply({ sort: event.target.value as SortKey })}
         >
           {SORTS.map((sort) => (
@@ -172,30 +205,85 @@ export function MarketPage({
         </select>
       </div>
 
-      <div className="mb-3 flex flex-wrap gap-2">
-        {TIERS.map((tier) => (
-          <button
-            key={tier}
-            type="button"
-            onClick={() => apply({ tier })}
-            aria-pressed={effective.tier === tier}
-            className={`chip min-h-tap ${effective.tier === tier ? 'bg-brandSoft text-brand' : ''}`}
-          >
-            {TIER_LABEL_FA[tier]}
-          </button>
-        ))}
-      </div>
+      {stats ? (
+        <div className="card mb-3 p-3">
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <span className="text-sm font-bold">{placeName}</span>
+            <span className="text-[11px] text-muted tnum">
+              {tf('market.sample', {
+                count: toPersianDigits(stats.sampleSize),
+                days: toPersianDigits(stats.windowDays),
+              })}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-sm bg-surface2 p-2">
+              <div className="text-[11px] text-muted">{t('market.statAvg')}</div>
+              <div className="money text-sm tnum">{toman(stats.averageTotalRateToman)}</div>
+            </div>
+            <div className="rounded-sm bg-surface2 p-2">
+              <div className="text-[11px] text-muted">{t('market.statMax')}</div>
+              <div className="money text-sm tnum">{toman(stats.maxTotalRateToman)}</div>
+            </div>
+            <div className="rounded-sm bg-surface2 p-2">
+              <div className="text-[11px] text-muted">{t('market.statMin')}</div>
+              <div className="money text-sm tnum">{toman(stats.minTotalRateToman)}</div>
+            </div>
+          </div>
+          {stats.side === 'SELL' && stats.byTier.some((row) => row.sampleSize > 0) ? (
+            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted tnum">
+              <span>{t('market.byTier')}</span>
+              {stats.byTier
+                .filter((row) => row.sampleSize > 0)
+                .map((row) => (
+                  <span key={row.tier} className="chip">
+                    {`${TIER_LABEL_FA[row.tier]}: ${
+                      row.averageTotalRateToman === null
+                        ? '—'
+                        : formatToman(row.averageTotalRateToman)
+                    }`}
+                  </span>
+                ))}
+            </p>
+          ) : null}
+          {stats.side === 'SELL' ? (
+            <p className="mt-2 text-[11px] text-muted">{t('market.perLitreNote')}</p>
+          ) : null}
+          <p className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-muted tnum">
+            <span>
+              {tf('market.buyLitres', {
+                litres: litres(stats.buyLitres),
+                count: toPersianDigits(stats.buyCount),
+              })}
+              <span aria-hidden="true"> · </span>
+              {tf('market.sellLitres', {
+                litres: litres(stats.sellLitres),
+                count: toPersianDigits(stats.sellCount),
+              })}
+            </span>
+          </p>
+        </div>
+      ) : null}
 
-      {stats && stats.sampleSize > 0 ? (
-        <div className="card mb-4 flex items-center justify-between gap-3 py-3">
-          <span className="text-xs text-muted">{t('market.median')}</span>
-          <span className="money text-base">{median ? `${median} ${t('common.toman')}` : '—'}</span>
-          <span className="text-xs text-muted tnum">
-            {tf('market.sample', {
-              count: toPersianDigits(stats.sampleSize),
-              days: toPersianDigits(stats.windowDays),
+      {stats && stats.nationalAverageTotalRateToman !== null ? (
+        <div className="card mb-4 flex items-center justify-between gap-2 py-2">
+          <span className="text-xs text-muted">
+            {tf('market.national', {
+              rate: toman(stats.nationalAverageTotalRateToman),
+              counties: toPersianDigits(stats.nationalCountyCount),
             })}
           </span>
+          {nationalDelta !== null ? (
+            <span
+              className={`text-xs font-medium tnum ${
+                nationalDelta < 0 ? 'text-brand' : 'text-danger'
+              }`}
+            >
+              {tf(nationalDelta < 0 ? 'market.cheaperThanNational' : 'market.pricierThanNational', {
+                amount: formatRate(Math.abs(nationalDelta)),
+              })}
+            </span>
+          ) : null}
         </div>
       ) : null}
 
@@ -214,7 +302,9 @@ export function MarketPage({
             status={order.status}
             litres={order.litres}
             rateToman={order.rateToman}
-            zoneName={order.stationName ?? zoneName}
+            pumpFeeToman={order.pumpFeeToman}
+            buyerTotalToman={order.buyerTotalToman}
+            placeName={placeLabelFa(order) || order.stationName || placeName}
             distanceKm={order.distance?.distanceKm}
             expiresAt={order.expiresAt}
             onOpen={() => navigate(`/market/${order.id}`)}

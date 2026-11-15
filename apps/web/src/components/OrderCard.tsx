@@ -11,6 +11,10 @@ export interface OrderCardProps {
   status: OrderStatus;
   litres: number;
   rateToman: number;
+  /** Per-litre pump fee of a sell listing; ignored for buy requests. */
+  pumpFeeToman?: number;
+  buyerTotalToman?: number;
+  placeName?: string;
   zoneName?: string;
   ownerName?: string;
   distanceKm?: number;
@@ -28,6 +32,9 @@ export function OrderCard({
   status,
   litres,
   rateToman,
+  pumpFeeToman,
+  buyerTotalToman,
+  placeName,
   zoneName,
   ownerName,
   score,
@@ -36,7 +43,9 @@ export function OrderCard({
   onOpen,
 }: OrderCardProps): JSX.Element {
   const view = orderCardView({ side, status, litres, rateToman, zoneName, ownerName, score });
-  const accent = view.tone === 'brand' ? 'border-s-brand' : 'border-s-accent';
+  const accent = view.tone === 'brand' ? 'border-s-brand' : 'border-s-danger';
+  const badge = view.tone === 'brand' ? 'bg-brandSoft text-brand' : 'bg-dangerSoft text-danger';
+  const showPump = (pumpFeeToman ?? 0) > 0;
 
   return (
     <button
@@ -48,24 +57,19 @@ export function OrderCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span
-              className={`rounded-sm px-2 py-0.5 text-xs font-medium ${
-                view.tone === 'brand' ? 'bg-brandSoft text-brand' : 'bg-accentSoft text-accent'
-              }`}
-            >
+            <span className={`rounded-sm px-2 py-0.5 text-xs font-medium ${badge}`}>
               {view.side}
             </span>
             <span className="chip">{view.status}</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <span className="font-bold tnum">{view.litres}</span>
-            <span className="text-muted">{t('common.litre')}</span>
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-            {view.zoneName ? (
+            {placeName || view.zoneName ? (
               <span className="inline-flex items-center gap-1">
                 <Icon name="market" size={14} />
-                {view.zoneName}
+                {placeName ?? view.zoneName}
               </span>
             ) : null}
             {distanceKm !== undefined ? (
@@ -85,7 +89,12 @@ export function OrderCard({
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <PriceTag rateToman={rateToman} litres={litres} />
+          <PriceTag
+            rateToman={rateToman}
+            litres={litres}
+            totalToman={buyerTotalToman}
+            pumpFeeToman={showPump ? pumpFeeToman : undefined}
+          />
           <Icon name="chevron" size={16} className="text-muted" />
         </div>
       </div>

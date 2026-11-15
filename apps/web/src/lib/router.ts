@@ -6,7 +6,8 @@ export interface RouteMatch {
 
 export const ROUTES = [
   { name: 'market', pattern: /^\/market$/ },
-  // `/search` is the bottom-nav entry for the same list; the filters are the search.
+  // The old جستجو tab is gone: the market page *is* the search. Keep the alias so links
+  // that were shared before the tab was removed still land on the list.
   { name: 'market', pattern: /^\/search$/ },
   { name: 'order', pattern: /^\/market\/([^/]+)$/, param: 'id' },
   { name: 'create', pattern: /^\/new$/ },

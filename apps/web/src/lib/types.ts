@@ -40,6 +40,14 @@ export interface OrderView {
   totalToman: number;
   buyerSavingToman: number;
   status: OrderStatus;
+  /** Province (استان) and county (شهرستان) of the listing; null on legacy rows. */
+  province: string | null;
+  county: string | null;
+  /** Per-litre pump fee the seller declared; 0 for buy requests. */
+  pumpFeeToman: number;
+  /** rateToman + pumpFeeToman — the all-in price of one litre. */
+  buyerRateToman: number;
+  buyerTotalToman: number;
   stationName: string | null;
   note: string | null;
   location: { lat: number; lng: number } | null;
@@ -67,17 +75,43 @@ export interface ReservationView {
 }
 
 export interface MarketStats {
-  zoneId: string;
+  province: string | null;
+  county: string | null;
   side: OrderSide;
-  tier: Tier;
+  tier: Tier | null;
   windowDays: number;
   sampleSize: number;
   excludedSuspicious: number;
+  /** Quoted rate only — what the seller asks for the quota. */
+  averageRateToman: number | null;
   medianRateToman: number | null;
   p25RateToman: number | null;
   p75RateToman: number | null;
   minRateToman: number | null;
   maxRateToman: number | null;
+  /** Quoted rate + pump fee: what a buyer really pays per litre. */
+  averageTotalRateToman: number | null;
+  minTotalRateToman: number | null;
+  maxTotalRateToman: number | null;
+  averageLitres: number | null;
+  /** The place average split by pump fee. */
+  byTier: Array<{
+    tier: Tier;
+    sampleSize: number;
+    averageTotalRateToman: number | null;
+    minTotalRateToman: number | null;
+    maxTotalRateToman: number | null;
+  }>;
+  buyLitres: number;
+  sellLitres: number;
+  buyCount: number;
+  sellCount: number;
+  nationalAverageTotalRateToman: number | null;
+  nationalSampleSize: number;
+  nationalCountyCount: number;
+  overallAverageRateToman: number | null;
+  overallSampleSize: number;
+  generatedAt: string;
 }
 
 export interface MetaConfig {

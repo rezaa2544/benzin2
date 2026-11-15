@@ -10,13 +10,13 @@ import {
 describe('market filters (E9-05)', () => {
   it('falls back to the defaults for missing or invalid query values', () => {
     expect(filtersFromQuery({})).toEqual(DEFAULT_FILTERS);
-    expect(filtersFromQuery({ side: 'NOPE', tier: 'T9', sort: 'random' })).toEqual(DEFAULT_FILTERS);
+    expect(filtersFromQuery({ side: 'NOPE', sort: 'random' })).toEqual(DEFAULT_FILTERS);
   });
 
   it('reads a full filter set from the URL', () => {
-    expect(filtersFromQuery({ zoneId: 'z1', side: 'SELL', tier: 'T10000', sort: 'price' })).toEqual(
-      { zoneId: 'z1', side: 'SELL', tier: 'T10000', sort: 'price' },
-    );
+    expect(
+      filtersFromQuery({ province: 'کردستان', county: 'بانه', side: 'SELL', sort: 'price' }),
+    ).toEqual({ province: 'کردستان', county: 'بانه', side: 'SELL', sort: 'price' });
   });
 
   it('only uses distance when there is an origin point', () => {
@@ -26,8 +26,9 @@ describe('market filters (E9-05)', () => {
   });
 
   it('omits the origin from the API query when there is none', () => {
-    const query = toSearchQuery({ ...DEFAULT_FILTERS, zoneId: 'z1' });
-    expect(query['zoneId']).toBe('z1');
+    const query = toSearchQuery({ ...DEFAULT_FILTERS, province: 'کردستان', county: 'بانه' });
+    expect(query['province']).toBe('کردستان');
+    expect(query['county']).toBe('بانه');
     expect(query['limit']).toBe(20);
     expect(query['lat']).toBeUndefined();
     expect(query['sort']).toBe('newest');

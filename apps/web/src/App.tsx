@@ -209,12 +209,11 @@ export function App(): JSX.Element {
   const filters: MarketFilters = filtersFromQuery(route.query);
   // Filters are URL state: writing them goes through the router, so back/forward work.
   const onFilters = (next: MarketFilters): void => {
-    const path = window.location.pathname === '/search' ? '/search' : '/market';
     navigate(
-      `${path}${buildQuery({
-        zoneId: next.zoneId,
+      `/market${buildQuery({
+        province: next.province,
+        county: next.county,
         side: next.side,
-        tier: next.tier,
         sort: next.sort,
       })}`,
       { replace: true },

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isValidPlace } from './geo.js';
 import {
   CANCEL_REASONS,
   DELIVERY_METHODS,
@@ -63,6 +64,9 @@ export const createOrderSchema = z
     litres: litresSchema,
     rateToman: z.number().int().positive(),
     zoneId: z.string().uuid(),
+    /** Where the listing sits: a real province/county pair from IRAN_PROVINCES. */
+    province: z.string().trim().min(1).max(60).optional(),
+    county: z.string().trim().min(1).max(60).optional(),
     stationName: z.string().trim().min(2).max(80).optional(),
     note: z.string().trim().max(240).optional(),
     location: z
@@ -71,7 +75,14 @@ export const createOrderSchema = z
       .optional(),
     deliveryMethod: z.enum(DELIVERY_METHODS).default('FUEL_CARD'),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) =>
+      value.province === undefined && value.county === undefined
+        ? true
+        : Boolean(value.province && value.county && isValidPlace(value.province, value.county)),
+    { message: 'province and county must be a real pair', path: ['county'] },
+  );
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 
@@ -90,11 +101,18 @@ export const updateOrderSchema = z
 
 export type UpdateOrderInput = z.infer<typeof updateOrderSchema>;
 
+/**
+ * Price context for one place. Every filter is optional: no province means «همهٔ ایران», and
+ * no tier means «همهٔ پایه‌ها», because the pump fee is the seller's input, not a buyer filter.
+ */
 export const marketStatsSchema = z
   .object({
-    zoneId: z.string().uuid(),
+    province: z.string().trim().min(1).max(60).optional(),
+    county: z.string().trim().min(1).max(60).optional(),
     side: z.enum(ORDER_SIDES),
-    tier: z.enum(TIERS),
+    tier: z.enum(TIERS).optional(),
+    /** Legacy zone scope, still accepted so older clients keep working. */
+    zoneId: z.string().uuid().optional(),
   })
   .strict();
 
@@ -102,9 +120,11 @@ export type MarketStatsInput = z.infer<typeof marketStatsSchema>;
 
 export const orderSearchSchema = z
   .object({
-    zoneId: z.string().uuid(),
+    province: z.string().trim().min(1).max(60).optional(),
+    county: z.string().trim().min(1).max(60).optional(),
+    zoneId: z.string().uuid().optional(),
     side: z.enum(ORDER_SIDES),
-    tier: z.enum(TIERS),
+    tier: z.enum(TIERS).optional(),
     lat: z.coerce.number().min(-90).max(90).optional(),
     lng: z.coerce.number().min(-180).max(180).optional(),
     radiusKm: z.coerce.number().min(0.5).max(200).optional(),

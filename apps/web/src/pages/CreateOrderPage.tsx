@@ -1,8 +1,13 @@
 import { useState } from 'react';
 import {
+  DEFAULT_PLACE,
+  IRAN_PROVINCES,
   ORDER_SIDE_FA,
   TIER_RATE_TOMAN,
+  countiesOf,
+  formatRate,
   formatToman,
+  toPersianDigits,
   type OrderSide,
   type Tier,
 } from '@benzin/shared';
@@ -12,7 +17,7 @@ import type { MetaConfig, OrderView, ZoneView } from '../lib/types.js';
 import { TIER_LABEL_FA } from '../lib/market.js';
 import {
   EMPTY_ORDER_FORM,
-  buyerSaving,
+  parseNumber,
   validateOrderForm,
   type OrderFormValues,
 } from '../lib/order-form.js';
@@ -31,6 +36,12 @@ export interface CreateOrderPageProps {
 const SIDES: readonly OrderSide[] = ['SELL', 'BUY'];
 const TIERS: readonly Tier[] = ['T1500', 'T3000', 'T10000'];
 
+/** Buy is green and sell is red here as well, so the picker reads like the market badges. */
+const SIDE_CLASS: Record<OrderSide, { on: string; off: string }> = {
+  BUY: { on: 'bg-brand text-brandInk border-brand', off: 'border-line text-brand' },
+  SELL: { on: 'bg-danger text-white border-danger', off: 'border-line text-danger' },
+};
+
 const errorMap = {
   NETWORK: t('errors.NETWORK'),
   UNKNOWN: t('errors.UNKNOWN'),
@@ -41,7 +52,12 @@ const errorMap = {
   VALIDATION_ERROR: t('errors.VALIDATION_ERROR'),
 };
 
-/** New listing form (E9-07) with the same bounds and official-rate cap the API enforces. */
+/**
+ * New listing form (E9-07). The place is a province → county cascade, and the pump fee is
+ * asked for on sell listings only: it is the seller's own input and the buyer simply pays it
+ * on top of the quoted litre price. A live summary shows that final per-litre figure so the
+ * seller sees exactly what the buyer will read.
+ */
 export function CreateOrderPage({
   api,
   config,
@@ -52,14 +68,17 @@ export function CreateOrderPage({
   const [errors, setErrors] = useState<Partial<Record<keyof OrderFormValues, string>>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [zoneId, setZoneId] = useState(zones[0]?.id ?? '');
+  const [zoneId] = useState(zones[0]?.id ?? '');
+  const [province, setProvince] = useState<string>(DEFAULT_PLACE.province);
+  const [county, setCounty] = useState<string>(DEFAULT_PLACE.county);
+
+  const counties = countiesOf(province);
+  const isSell = values.side === 'SELL';
 
   const bounds = {
     minLitres: config?.minLitres ?? 10,
     maxLitres: config?.maxLitres ?? 200,
   };
-  const saving = buyerSaving(values.litres, values.rateToman, values.tier);
-
   const update = (patch: Partial<OrderFormValues>): void =>
     setValues((current) => ({ ...current, ...patch }));
 
@@ -73,13 +92,18 @@ export function CreateOrderPage({
     });
     setErrors(result.errors);
     if (!result.payload) return;
-    if (!zoneId) {
-      setError(t('errors.ZONE_NOT_SUPPORTED'));
+    if (!province || !county) {
+      setError(t('create.placeRequired'));
       return;
     }
     setBusy(true);
     try {
-      const created = await api.post<OrderView>('/v1/orders', { ...result.payload, zoneId });
+      const created = await api.post<OrderView>('/v1/orders', {
+        ...result.payload,
+        zoneId,
+        province,
+        county,
+      });
       onCreated?.(created);
       navigate('/orders');
     } catch (cause) {
@@ -88,6 +112,12 @@ export function CreateOrderPage({
       setBusy(false);
     }
   };
+
+  const rateValue = parseNumber(values.rateToman);
+  const litresValue = parseNumber(values.litres);
+  const pumpFee = isSell ? TIER_RATE_TOMAN[values.tier] : 0;
+  const perLitre = rateValue === null ? null : rateValue + pumpFee;
+  const grandTotal = perLitre === null || litresValue === null ? null : perLitre * litresValue;
 
   return (
     <div>
@@ -104,7 +134,9 @@ export function CreateOrderPage({
                 type="button"
                 aria-pressed={values.side === side}
                 onClick={() => update({ side })}
-                className={`btn flex-1 ${values.side === side ? 'btn-primary' : ''}`}
+                className={`btn flex-1 border ${SIDE_CLASS[side].off} ${
+                  values.side === side ? SIDE_CLASS[side].on : ''
+                }`}
               >
                 {ORDER_SIDE_FA[side]}
               </button>
@@ -112,51 +144,78 @@ export function CreateOrderPage({
           </div>
         </div>
 
-        <div className="mb-4">
-          <span className="label">{t('create.tier')}</span>
-          <div className="flex flex-wrap gap-2">
-            {TIERS.map((tier) => (
-              <button
-                key={tier}
-                type="button"
-                aria-pressed={values.tier === tier}
-                onClick={() => update({ tier })}
-                className={`chip min-h-tap ${values.tier === tier ? 'bg-brandSoft text-brand' : ''}`}
-              >
-                {TIER_LABEL_FA[tier]}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1 text-xs text-muted tnum">
-            {t('create.officialHint').replace('{rate}', formatToman(TIER_RATE_TOMAN[values.tier]))}
-          </p>
-        </div>
-
-        {zones.length > 1 ? (
-          <div className="mb-4">
-            <label className="label" htmlFor="create-zone">
-              {t('market.zone')}
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          <div>
+            <label className="label" htmlFor="create-province">
+              {t('market.province')}
             </label>
             <select
-              id="create-zone"
-              className="input"
-              value={zoneId}
-              onChange={(event) => setZoneId(event.target.value)}
+              id="create-province"
+              className="input text-sm"
+              value={province}
+              onChange={(event) => {
+                const next = event.target.value;
+                setProvince(next);
+                setCounty(countiesOf(next)[0] ?? '');
+              }}
             >
-              {zones.map((zone) => (
-                <option key={zone.id} value={zone.id}>
-                  {zone.nameFa}
+              {IRAN_PROVINCES.map((item) => (
+                <option key={item.id} value={item.nameFa}>
+                  {item.nameFa}
                 </option>
               ))}
             </select>
           </div>
-        ) : null}
+          <div>
+            <label className="label" htmlFor="create-county">
+              {t('market.county')}
+            </label>
+            <select
+              id="create-county"
+              className="input text-sm"
+              value={county}
+              onChange={(event) => setCounty(event.target.value)}
+            >
+              {counties.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {isSell ? (
+          <div className="mb-4">
+            <span className="label">{t('create.tier')}</span>
+            <div className="flex flex-wrap gap-2">
+              {TIERS.map((tier) => (
+                <button
+                  key={tier}
+                  type="button"
+                  aria-pressed={values.tier === tier}
+                  onClick={() => update({ tier })}
+                  className={`chip min-h-tap ${
+                    values.tier === tier ? 'bg-dangerSoft text-danger' : ''
+                  }`}
+                >
+                  {TIER_LABEL_FA[tier]}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-muted">
+              {t('create.pumpFeeHint').replace('{rate}', formatRate(TIER_RATE_TOMAN[values.tier]))}
+            </p>
+          </div>
+        ) : (
+          <p className="mb-4 text-xs text-muted">{t('create.pumpFeeBuyerOnly')}</p>
+        )}
 
         <FormField
           label={t('create.litres')}
           hint={t('create.litresHint')
-            .replace('{min}', String(bounds.minLitres))
-            .replace('{max}', String(bounds.maxLitres))}
+            .replace('{min}', toPersianDigits(bounds.minLitres))
+            .replace('{max}', toPersianDigits(bounds.maxLitres))}
           error={errors.litres}
           required
         >
@@ -183,10 +242,26 @@ export function CreateOrderPage({
           )}
         </FormField>
 
-        {saving !== null ? (
-          <p className="mb-2 text-xs text-success tnum">
-            {t('create.saving').replace('{amount}', `${formatToman(Math.round(saving))} تومان`)}
-          </p>
+        {perLitre !== null ? (
+          <div className="mb-4 rounded-sm bg-surface2 p-2 text-xs tnum">
+            <div className="flex items-center justify-between">
+              <span className="text-muted">{t('create.summaryPerLitre')}</span>
+              <span className="font-bold">{`${formatToman(perLitre)} ${t('common.toman')}`}</span>
+            </div>
+            {grandTotal !== null ? (
+              <div className="mt-1 flex items-center justify-between">
+                <span className="text-muted">{t('create.summaryTotal')}</span>
+                <span className="font-bold">{`${formatToman(Math.round(grandTotal))} ${t('common.toman')}`}</span>
+              </div>
+            ) : null}
+            {isSell ? (
+              <p className="mt-1 text-[11px] text-muted">
+                {t('create.summaryBreakdown')
+                  .replace('{rate}', formatRate(rateValue ?? 0))
+                  .replace('{fee}', formatRate(pumpFee))}
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
         <FormField label={t('create.station')} error={errors.stationName}>

@@ -27,6 +27,14 @@ export interface OrderView {
   totalToman: number;
   buyerSavingToman: number;
   status: OrderStatus;
+  province: string | null;
+  county: string | null;
+  /** Per-litre pump fee the seller declared. Buyers pay it on top of `rateToman`. */
+  pumpFeeToman: number;
+  /** rateToman + pumpFeeToman — what one litre really costs the buyer. */
+  buyerRateToman: number;
+  /** litres × buyerRateToman. */
+  buyerTotalToman: number;
   stationName: string | null;
   note: string | null;
   /** Never the exact point: snapped to the privacy grid (task E2-02). */
@@ -39,6 +47,8 @@ export interface OrderView {
 }
 
 export function toOrderView(order: Order): OrderView {
+  // The pump fee belongs to a sell listing: a buyer asking for litres never pays it.
+  const pumpFeeToman = order.side === 'SELL' ? TIER_RATE_TOMAN[order.tier] : 0;
   return {
     id: order.id,
     ownerId: order.ownerId,
@@ -50,6 +60,11 @@ export function toOrderView(order: Order): OrderView {
     totalToman: orderTotalToman(order.litres, order.rateToman),
     buyerSavingToman: buyerSavingToman(order.tier, order.litres, order.rateToman),
     status: order.status,
+    province: order.province,
+    county: order.county,
+    pumpFeeToman,
+    buyerRateToman: order.rateToman + pumpFeeToman,
+    buyerTotalToman: orderTotalToman(order.litres, order.rateToman + pumpFeeToman),
     stationName: order.stationName,
     note: order.note,
     location: publicLocation(
@@ -147,6 +162,8 @@ export class OrderService {
         litres: input.litres,
         rateToman: input.rateToman,
         zoneId,
+        province: input.province ?? null,
+        county: input.county ?? null,
         stationName: input.stationName ?? null,
         note: input.note ?? null,
         lat: input.location?.lat ?? null,
@@ -165,6 +182,8 @@ export class OrderService {
           tier: order.tier,
           litres: order.litres,
           rateToman: order.rateToman,
+          province: order.province,
+          county: order.county,
         },
       });
       return toOrderView(order);
@@ -176,9 +195,11 @@ export class OrderService {
   ): Promise<{ items: OrderView[]; nextCursor: string | null }> {
     const offset = decodeCursor(query.cursor);
     const { items, total } = await this.repos.orders.search({
-      zoneId: query.zoneId,
+      province: query.province ?? null,
+      county: query.county ?? null,
+      zoneId: query.zoneId ?? null,
       side: query.side,
-      tier: query.tier,
+      tier: query.tier ?? null,
       now: this.clock.now(),
       limit: query.limit,
       offset,

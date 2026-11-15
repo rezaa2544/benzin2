@@ -113,6 +113,8 @@ export interface NewOrder {
   litres: number;
   rateToman: number;
   zoneId: string;
+  province: string | null;
+  county: string | null;
   stationName: string | null;
   note: string | null;
   lat: number | null;
@@ -122,9 +124,12 @@ export interface NewOrder {
 }
 
 export interface OrderSearchQuery {
-  zoneId: string;
+  province: string | null;
+  county: string | null;
+  zoneId: string | null;
   side: OrderSide;
-  tier: Tier;
+  /** null means «every pump-fee tier». */
+  tier: Tier | null;
   now: Date;
   limit: number;
   offset: number;
@@ -155,6 +160,16 @@ export interface OrderRepository {
   ): Promise<Order | null>;
   /** All orders of a zone created since `since`, newest first — input for market stats. */
   listSince(zoneId: string, since: Date, limit: number): Promise<Order[]>;
+  /**
+   * Orders created since `since` inside a place. `null` province means nationwide, and a
+   * county without a province is ignored, so the stats service can reuse one query.
+   */
+  listByPlace(query: {
+    province: string | null;
+    county: string | null;
+    since: Date;
+    limit: number;
+  }): Promise<Order[]>;
   /** Admin listing across zones (task E8-03). */
   listAll(query: {
     status: OrderStatus | null;

@@ -17,15 +17,16 @@ describe('order card model (E9-02)', () => {
     expect(view.rate).toContain('۹٬۸۰۰');
     expect(view.side).toBe('فروش سهمیه');
     expect(view.status).toBe('باز');
-    expect(view.tone).toBe('brand');
+    // A sell offer is red now; buy requests are green.
+    expect(view.tone).toBe('danger');
     expect(view.ownerName).toBeNull();
   });
 
-  it('colours buy requests with the accent token', () => {
+  it('colours buy requests green', () => {
     expect(
       orderCardView({ side: 'BUY', status: 'OPEN', litres: 10, rateToman: 12000, zoneName: 'بانه' })
         .tone,
-    ).toBe('accent');
+    ).toBe('brand');
   });
 
   it('has Persian copy for every order status and side the API can return', () => {

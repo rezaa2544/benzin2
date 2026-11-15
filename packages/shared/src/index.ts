@@ -2,6 +2,7 @@ export * from './chat.js';
 export * from './enums.js';
 export * from './errors.js';
 export * from './format.js';
+export * from './geo.js';
 export * from './notifications.js';
 export * from './reputation.js';
 export * from './settings.js';
