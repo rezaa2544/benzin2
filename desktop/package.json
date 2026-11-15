@@ -1,6 +1,6 @@
 {
   "name": "benzin2-desktop",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "description": "Benzin 2 desktop shell (Electron) - runs the local API and the SPA in one window",
   "author": "Reza",

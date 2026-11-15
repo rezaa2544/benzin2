@@ -20,6 +20,11 @@ const ADMIN_PORT = 41722;
 const API_HOST = '127.0.0.1';
 // Stable URL: re-uploaded (clobbered) on every content build, so it always points at the newest.
 const CONTENT_BASE = 'https://github.com/rezaa2544/benzin2/releases/download/content-latest';
+// Installer channel: content updates cannot change the shell itself (main.cjs ships inside the
+// installer), so a second channel carries the newest setup exe. The shell downloads and runs it
+// silently, and the installed app comes back by itself.
+const APP_BASE = 'https://github.com/rezaa2544/benzin2/releases/download/app-latest';
+const SHELL_VERSION = app.getVersion();
 
 // Automatic update cadence: check shortly after launch and then every few minutes. The shell
 // installs a new content build as soon as the release channel publishes one and restarts itself,
@@ -31,6 +36,7 @@ const bundledRuntime = app.isPackaged
   ? path.join(process.resourcesPath, 'runtime')
   : path.join(__dirname, 'runtime');
 const contentRoot = path.join(app.getPath('userData'), 'content');
+const updateRoot = path.join(app.getPath('userData'), 'updates');
 
 let runtimeDir = bundledRuntime;
 let runtimeSource = 'bundled';
@@ -149,6 +155,7 @@ async function downloadBuffer(url) {
 function updatePayload() {
   return {
     version: installedVersion,
+    shellVersion: SHELL_VERSION,
     source: runtimeSource,
     status: updateState.status,
     latest: updateState.latest,
@@ -179,11 +186,61 @@ function restartSoon(delayMs = 1500) {
  * Runs unattended after launch and on a timer: no dialogs, no "download an installer again".
  * `manual` only decides whether the outcome is also reported in a message box.
  */
+/** Numeric dotted-version comparison: `0.4.1` > `0.4.0`, `1.0` == `1.0.0`. */
+function compareVersions(a, b) {
+  const left = String(a || '0').split('.').map((part) => Number.parseInt(part, 10) || 0);
+  const right = String(b || '0').split('.').map((part) => Number.parseInt(part, 10) || 0);
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+    const diff = (left[i] || 0) - (right[i] || 0);
+    if (diff !== 0) return diff > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+/**
+ * Downloads the newest setup exe and starts it in silent mode. The installer replaces the shell in
+ * place, kills the processes it finds and relaunches the app, so the window the owner is looking at
+ * simply comes back newer — no prompts, no downloads in the browser.
+ */
+async function installShellUpdate(remote) {
+  fs.mkdirSync(updateRoot, { recursive: true });
+  const file = remote.file || `Benzin2-Setup-${remote.version}.exe`;
+  const target = path.join(updateRoot, file);
+  setUpdateState({ status: 'downloading' });
+  log(`shell ${remote.version} found (installed ${SHELL_VERSION}) — downloading installer`);
+  const buffer = await downloadBuffer(`${APP_BASE}/${file}`);
+  const digest = crypto.createHash('sha256').update(buffer).digest('hex');
+  if (remote.sha256 && digest !== remote.sha256) throw new Error('installer checksum mismatch');
+  fs.writeFileSync(target, buffer);
+  setUpdateState({ status: 'installing' });
+  log(`installer saved to ${target} (${buffer.length} bytes) — launching silently`);
+  const child = spawn(target, ['/S', '--force-run'], { detached: true, stdio: 'ignore' });
+  child.unref();
+  setUpdateState({ status: 'restarting' });
+  setTimeout(() => {
+    log('exiting so the installer can replace the shell');
+    app.exit(0);
+  }, 2500);
+}
+
 async function checkForUpdates({ manual = false, restart = true } = {}) {
   if (updateInFlight) return updatePayload();
   updateInFlight = true;
   setUpdateState({ status: 'checking', error: null });
   try {
+    // Shell first: if a newer installer exists, taking it is always the right move.
+    try {
+      const remoteApp = await fetchJson(`${APP_BASE}/app.json`);
+      if (remoteApp && remoteApp.version && compareVersions(remoteApp.version, SHELL_VERSION) > 0) {
+        setUpdateState({ checkedAt: new Date().toISOString(), latest: remoteApp.version });
+        await installShellUpdate(remoteApp);
+        return updatePayload();
+      }
+    } catch (error) {
+      // A missing/blocked installer channel must not block content updates.
+      log(`app channel unavailable: ${error && error.message ? error.message : error}`);
+    }
+
     let remote;
     try {
       remote = await fetchJson(`${CONTENT_BASE}/content.json`);
