@@ -1,28 +1,34 @@
 /**
- * Benzin 2 - desktop shell.
+ * Benzin 2 - desktop shell with content updates.
  *
- * Two windows, one API. The bundled API runs as a child process on loopback; each window gets
- * its own static server that proxies /v1, /healthz and websocket upgrades to it, so both SPAs
- * keep using relative URLs exactly as they do behind Caddy in production.
+ * The shell (Electron) changes rarely; the API bundle, the customer SPA and the admin SPA live in
+ * a "content" package. On launch the shell asks GitHub for the newest content version and, if it
+ * differs from the installed one, downloads a ~3 MB tar.gz instead of the ~82 MB installer.
  */
 const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const http = require('node:http');
 const net = require('node:net');
+const zlib = require('node:zlib');
+const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 
 const API_PORT = 41721;
 const APP_PORT = 41720;
 const ADMIN_PORT = 41722;
 const API_HOST = '127.0.0.1';
+// Stable URL: re-uploaded (clobbered) on every content build, so it always points at the newest.
+const CONTENT_BASE = 'https://github.com/rezaa2544/benzin2/releases/download/content-latest';
 
-const runtimeDir = app.isPackaged
+const bundledRuntime = app.isPackaged
   ? path.join(process.resourcesPath, 'runtime')
   : path.join(__dirname, 'runtime');
-const webDir = path.join(runtimeDir, 'web');
-const adminDir = path.join(runtimeDir, 'admin');
-const apiEntry = path.join(runtimeDir, 'api.mjs');
+const contentRoot = path.join(app.getPath('userData'), 'content');
+
+let runtimeDir = bundledRuntime;
+let runtimeSource = 'bundled';
+let installedVersion = '0.0.0';
 
 let apiProcess = null;
 let appWindow = null;
@@ -46,9 +52,160 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
-function log(...args) {
-  process.stdout.write(`[shell] ${args.join(' ')}\n`);
+const log = (...args) => process.stdout.write(`[shell] ${args.join(' ')}\n`);
+
+/* ------------------------------------------------------------------ content resolution */
+
+function readVersion(dir) {
+  try {
+    return fs.readFileSync(path.join(dir, 'version.txt'), 'utf8').trim();
+  } catch {
+    return null;
+  }
 }
+
+function resolveRuntime() {
+  try {
+    const pointer = JSON.parse(fs.readFileSync(path.join(contentRoot, 'current.json'), 'utf8'));
+    const dir = path.join(contentRoot, pointer.version);
+    if (fs.existsSync(path.join(dir, 'api.mjs')) && fs.existsSync(path.join(dir, 'web', 'index.html'))) {
+      runtimeDir = dir;
+      installedVersion = readVersion(dir) || pointer.version;
+      runtimeSource = 'downloaded';
+      log(`content runtime ${installedVersion}`);
+      return;
+    }
+  } catch {
+    /* no downloaded content yet */
+  }
+  runtimeDir = bundledRuntime;
+  installedVersion = readVersion(bundledRuntime) || 'bundled';
+  runtimeSource = 'bundled';
+  log(`bundled runtime ${installedVersion}`);
+}
+
+/* ------------------------------------------------------------------ tar.gz helpers */
+
+function untar(buffer, targetDir) {
+  let offset = 0;
+  const written = [];
+  while (offset + 512 <= buffer.length) {
+    const header = buffer.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) break;
+    const rawName = header.subarray(0, 100).toString('utf8').replace(/\0.*$/, '');
+    const sizeField = header.subarray(124, 136).toString('utf8').replace(/\0.*$/, '').trim();
+    const size = parseInt(sizeField, 8) || 0;
+    const prefix = header.subarray(345, 500).toString('utf8').replace(/\0.*$/, '');
+    const name = prefix ? `${prefix}/${rawName}` : rawName;
+    const type = String.fromCharCode(header[156]);
+    offset += 512;
+    if (name) {
+      const safe = path.normalize(name).replace(/^([/\\])+/, '');
+      const destination = path.join(targetDir, safe);
+      if (!destination.startsWith(targetDir)) throw new Error(`unsafe tar entry: ${name}`);
+      if (type === '5') {
+        fs.mkdirSync(destination, { recursive: true });
+      } else {
+        fs.mkdirSync(path.dirname(destination), { recursive: true });
+        fs.writeFileSync(destination, buffer.subarray(offset, offset + size));
+        written.push(safe);
+      }
+    }
+    offset += Math.ceil(size / 512) * 512;
+  }
+  return written.length;
+}
+
+/* ------------------------------------------------------------------ update check */
+
+async function fetchJson(url) {
+  const response = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(20000) });
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
+  return response.json();
+}
+
+async function downloadBuffer(url) {
+  const response = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(180000) });
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function checkForUpdates({ manual = false } = {}) {
+  let remote;
+  try {
+    remote = await fetchJson(`${CONTENT_BASE}/content.json`);
+  } catch (error) {
+    if (manual) dialog.showMessageBox({ message: 'بررسی به‌روزرسانی ناموفق بود', detail: String(error.message) });
+    return { status: 'offline' };
+  }
+  if (!remote || !remote.version) return { status: 'offline' };
+  if (remote.version === installedVersion) {
+    if (manual) {
+      dialog.showMessageBox({
+        message: 'برنامه به‌روز است',
+        detail: `نسخهٔ محتوا: ${installedVersion}`,
+      });
+    }
+    return { status: 'current', version: remote.version };
+  }
+
+  // BENZIN_AUTO_UPDATE=1 installs without prompting (used for smoke tests).
+  const auto = process.env.BENZIN_AUTO_UPDATE === '1';
+  if (!auto) {
+    const answer = await dialog.showMessageBox({
+      type: 'question',
+      buttons: ['دریافت و ری‌استارت', 'بعداً'],
+      defaultId: 0,
+      cancelId: 1,
+      message: 'به‌روزرسانی آماده است',
+      detail: `نسخهٔ نصب‌شده: ${installedVersion}\nنسخهٔ جدید: ${remote.version}\nحجم دانلود: ${(
+        remote.size / 1024 / 1024
+      ).toFixed(1)} مگابایت (فقط بخش‌های تغییریافته)`,
+    });
+    if (answer.response !== 0) return { status: 'declined' };
+  }
+
+  const staging = path.join(contentRoot, `.staging-${Date.now()}`);
+  try {
+    fs.mkdirSync(staging, { recursive: true });
+    const archive = await downloadBuffer(`${CONTENT_BASE}/${remote.file || 'content.tar.gz'}`);
+    const digest = crypto.createHash('sha256').update(archive).digest('hex');
+    if (remote.sha256 && digest !== remote.sha256) throw new Error('checksum mismatch');
+    const count = untar(zlib.gunzipSync(archive), staging);
+    const target = path.join(contentRoot, remote.version);
+    fs.rmSync(target, { recursive: true, force: true });
+    fs.renameSync(staging, target);
+    fs.writeFileSync(
+      path.join(contentRoot, 'current.json'),
+      JSON.stringify({ version: remote.version, files: count, installedAt: new Date().toISOString() }, null, 2),
+    );
+    log(`content ${remote.version} installed (${count} files)`);
+  } catch (error) {
+    fs.rmSync(staging, { recursive: true, force: true });
+    dialog.showMessageBox({ message: 'نصب به‌روزرسانی ناموفق بود', detail: String(error.message) });
+    return { status: 'failed' };
+  }
+
+  if (auto) {
+    log(`update installed: ${remote.version} (auto mode, no restart)`);
+    return { status: 'installed', version: remote.version };
+  }
+
+  const restart = await dialog.showMessageBox({
+    type: 'info',
+    buttons: ['ری‌استارت', 'دستی'],
+    defaultId: 0,
+    message: 'به‌روزرسانی نصب شد',
+    detail: 'برای اعمال، برنامه دوباره اجرا می‌شود.',
+  });
+  if (restart.response === 0) {
+    app.relaunch();
+    app.exit(0);
+  }
+  return { status: 'installed', version: remote.version };
+}
+
+/* ------------------------------------------------------------------ api + static servers */
 
 function waitForPort(port, timeoutMs = 45000) {
   const deadline = Date.now() + timeoutMs;
@@ -72,10 +229,11 @@ function waitForPort(port, timeoutMs = 45000) {
   });
 }
 
-function startApi() {
-  if (!fs.existsSync(apiEntry)) throw new Error(`API bundle missing: ${apiEntry}`);
-  apiProcess = spawn(process.execPath, [apiEntry], {
-    cwd: runtimeDir,
+function startApi(dir) {
+  const entry = path.join(dir, 'api.mjs');
+  if (!fs.existsSync(entry)) throw new Error(`API bundle missing: ${entry}`);
+  apiProcess = spawn(process.execPath, [entry], {
+    cwd: dir,
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
@@ -83,7 +241,6 @@ function startApi() {
       API_PORT: String(API_PORT),
       API_HOST,
       LOG_LEVEL: 'warn',
-      // Browsers on both windows talk to the same loopback API.
       CORS_ORIGINS: [
         `http://${API_HOST}:${APP_PORT}`,
         `http://localhost:${APP_PORT}`,
@@ -92,7 +249,6 @@ function startApi() {
       ].join(','),
       SMS_PROVIDERS: 'console',
       PAYMENT_GATEWAY: 'sandbox',
-      // No SMS account yet: every OTP becomes this code (development only, see README).
       DEV_FIXED_OTP: process.env.BENZIN_DEV_OTP || '12345',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -101,6 +257,16 @@ function startApi() {
   apiProcess.stdout.on('data', (chunk) => process.stdout.write(`[api] ${chunk}`));
   apiProcess.stderr.on('data', (chunk) => process.stderr.write(`[api] ${chunk}`));
   apiProcess.on('exit', (code) => log(`api exited with ${code}`));
+}
+
+function stopApi() {
+  if (apiProcess && !apiProcess.killed) {
+    try {
+      apiProcess.kill();
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 function proxyTo(targetPort) {
@@ -173,6 +339,8 @@ function startStaticServer(root, port) {
   return new Promise((resolve) => server.listen(port, API_HOST, resolve));
 }
 
+/* ------------------------------------------------------------------ windows + menu */
+
 function openApp() {
   if (appWindow) {
     appWindow.focus();
@@ -185,7 +353,6 @@ function openApp() {
     minHeight: 640,
     backgroundColor: '#0f172a',
     title: 'بنزین ۲',
-    autoHideMenuBar: false,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   appWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -223,38 +390,69 @@ function openAdmin() {
 }
 
 function buildMenu() {
-  const template = [
-    {
-      label: 'نمایش',
-      submenu: [
-        { label: 'اپ مشتری', accelerator: 'CmdOrCtrl+1', click: () => openApp() },
-        { label: 'پنل مدیریت', accelerator: 'CmdOrCtrl+2', click: () => openAdmin() },
-        { type: 'separator' },
-        { role: 'reload', label: 'بارگذاری مجدد' },
-        { role: 'toggleDevTools', label: 'ابزار توسعه' },
-        { role: 'resetZoom', label: 'اندازهٔ پیش‌فرض' },
-        { role: 'zoomIn', label: 'بزرگ‌تر' },
-        { role: 'zoomOut', label: 'کوچک‌تر' },
-        { type: 'separator' },
-        { role: 'quit', label: 'خروج' },
-      ],
-    },
-  ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: 'نمایش',
+        submenu: [
+          { label: 'اپ مشتری', accelerator: 'CmdOrCtrl+1', click: () => openApp() },
+          { label: 'پنل مدیریت', accelerator: 'CmdOrCtrl+2', click: () => openAdmin() },
+          { type: 'separator' },
+          {
+            label: 'بررسی به‌روزرسانی',
+            click: () => {
+              void checkForUpdates({ manual: true });
+            },
+          },
+          {
+            label: `نسخهٔ محتوا: ${installedVersion}`,
+            enabled: false,
+          },
+          { type: 'separator' },
+          { role: 'reload', label: 'بارگذاری مجدد' },
+          { role: 'toggleDevTools', label: 'ابزار توسعه' },
+          { role: 'resetZoom', label: 'اندازهٔ پیش‌فرض' },
+          { role: 'zoomIn', label: 'بزرگ‌تر' },
+          { role: 'zoomOut', label: 'کوچک‌تر' },
+          { type: 'separator' },
+          { role: 'quit', label: 'خروج' },
+        ],
+      },
+    ]),
+  );
 }
 
+/* ------------------------------------------------------------------ boot */
+
 app.whenReady().then(async () => {
+  resolveRuntime();
   try {
-    startApi();
+    startApi(runtimeDir);
     await waitForPort(API_PORT);
-    await startStaticServer(webDir, APP_PORT);
-    await startStaticServer(adminDir, ADMIN_PORT);
-    buildMenu();
-    openApp();
   } catch (error) {
-    dialog.showErrorBox('بنزین ۲ اجرا نشد', String(error && error.message ? error.message : error));
-    app.quit();
+    // A broken content download must never brick the app: fall back to what shipped in the installer.
+    if (runtimeDir !== bundledRuntime) {
+      log(`content runtime failed (${error.message}); falling back to bundled`);
+      stopApi();
+      fs.rmSync(path.join(contentRoot, 'current.json'), { force: true });
+      runtimeDir = bundledRuntime;
+      installedVersion = readVersion(bundledRuntime) || 'bundled';
+      startApi(runtimeDir);
+      await waitForPort(API_PORT);
+    } else {
+      dialog.showErrorBox('بنزین ۲ اجرا نشد', String(error && error.message ? error.message : error));
+      app.quit();
+      return;
+    }
   }
+
+  await startStaticServer(path.join(runtimeDir, 'web'), APP_PORT);
+  await startStaticServer(path.join(runtimeDir, 'admin'), ADMIN_PORT);
+  buildMenu();
+  openApp();
+  setTimeout(() => {
+    void checkForUpdates();
+  }, 3000);
 });
 
 app.on('window-all-closed', () => app.quit());
@@ -267,11 +465,5 @@ app.on('before-quit', () => {
       /* ignore */
     }
   }
-  if (apiProcess && !apiProcess.killed) {
-    try {
-      apiProcess.kill();
-    } catch {
-      /* ignore */
-    }
-  }
+  stopApi();
 });

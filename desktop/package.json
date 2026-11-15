@@ -1,6 +1,6 @@
 {
   "name": "benzin2-desktop",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "description": "Benzin 2 desktop shell (Electron) - runs the local API and the SPA in one window",
   "author": "Reza",
@@ -10,7 +10,8 @@
     "bundle:web": "node scripts/copy-web.cjs",
     "prepack:app": "npm run bundle:api && npm run bundle:web",
     "dist": "npm run prepack:app && electron-builder --win nsis --x64",
-    "start": "electron ."
+    "start": "electron .",
+    "content": "node scripts/pack-content.cjs"
   },
   "devDependencies": {
     "electron": "33.2.1",
