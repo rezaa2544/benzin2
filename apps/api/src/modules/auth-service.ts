@@ -98,7 +98,7 @@ export class AuthService {
     } catch (error) {
       // Nothing reached the user, so the code must not sit there burning the resend cooldown:
       // marking it consumed retires it and lets the next request issue a fresh one immediately.
-      await this.repos.otps.save({ ...challenge, consumedAt: now });
+      if (challenge) await this.repos.otps.save({ ...challenge, consumedAt: now });
       throw error;
     }
     return {
@@ -118,23 +118,34 @@ export class AuthService {
     const now = this.clock.now();
     const challenge = await this.repos.otps.findLatest(phone);
 
-    if (!challenge || challenge.consumedAt !== null) {
-      throw new AppError('OTP_EXPIRED', 410, 'No active code for this phone');
+    // Development convenience: the pinned code has to survive an expired challenge, otherwise a
+    // build without an SMS provider locks itself out two minutes after the first request.
+    // Production never sets DEV_FIXED_OTP and keeps the strict path below.
+    const pinned =
+      process.env.NODE_ENV === 'production' ? undefined : process.env.DEV_FIXED_OTP?.trim();
+    const pinnedMatch = Boolean(pinned) && code === pinned;
+
+    if (!pinnedMatch) {
+      if (!challenge || challenge.consumedAt !== null) {
+        throw new AppError('OTP_EXPIRED', 410, 'No active code for this phone');
+      }
+      if (challenge.expiresAt.getTime() <= now.getTime()) {
+        throw new AppError('OTP_EXPIRED', 410, 'Code expired');
+      }
+      if (challenge.attempts >= config['otp.max_attempts']) {
+        throw new AppError('OTP_ATTEMPTS_EXCEEDED', 429, 'Too many attempts');
+      }
     }
-    if (challenge.expiresAt.getTime() <= now.getTime()) {
-      throw new AppError('OTP_EXPIRED', 410, 'Code expired');
-    }
-    if (challenge.attempts >= config['otp.max_attempts']) {
-      throw new AppError('OTP_ATTEMPTS_EXCEEDED', 429, 'Too many attempts');
-    }
-    if (!safeEqualHex(this.hash(code, phone), challenge.codeHash)) {
-      await this.repos.otps.save({ ...challenge, attempts: challenge.attempts + 1 });
+    if (!pinnedMatch && (!challenge || !safeEqualHex(this.hash(code, phone), challenge.codeHash))) {
+      if (challenge) {
+        await this.repos.otps.save({ ...challenge, attempts: challenge.attempts + 1 });
+      }
       throw new AppError('OTP_INVALID', 401, 'Wrong code', {
-        remainingAttempts: Math.max(0, config['otp.max_attempts'] - challenge.attempts - 1),
+        remainingAttempts: Math.max(0, config['otp.max_attempts'] - (challenge?.attempts ?? 0) - 1),
       });
     }
 
-    await this.repos.otps.save({ ...challenge, consumedAt: now });
+    if (challenge) await this.repos.otps.save({ ...challenge, consumedAt: now });
 
     let user = await this.repos.users.findByPhone(phone);
     const isNewUser = user === null;
