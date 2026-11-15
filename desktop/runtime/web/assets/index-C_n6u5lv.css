@@ -725,6 +725,9 @@ body {
 .ms-1 {
   margin-inline-start: 0.25rem;
 }
+.mt-0\.5 {
+  margin-top: 0.125rem;
+}
 .mt-1 {
   margin-top: 0.25rem;
 }
@@ -830,9 +833,6 @@ body {
 .max-w-\[90\%\] {
   max-width: 90%;
 }
-.max-w-\[9rem\] {
-  max-width: 9rem;
-}
 .flex-1 {
   flex: 1 1 0%;
 }
@@ -912,6 +912,10 @@ body {
 .gap-4 {
   gap: 1rem;
 }
+.gap-x-2 {
+  -moz-column-gap: 0.5rem;
+  column-gap: 0.5rem;
+}
 .gap-x-3 {
   -moz-column-gap: 0.75rem;
   column-gap: 0.75rem;
@@ -970,6 +974,10 @@ body {
 .border-t {
   border-top-width: 1px;
 }
+.border-brand {
+  --tw-border-opacity: 1;
+  border-color: rgb(var(--brand) / var(--tw-border-opacity, 1));
+}
 .border-brand\/30 {
   border-color: rgb(var(--brand) / 0.3);
 }
@@ -992,10 +1000,6 @@ body {
 }
 .border-warning\/30 {
   border-color: rgb(var(--warning) / 0.3);
-}
-.border-s-accent {
-  --tw-border-opacity: 1;
-  border-inline-start-color: rgb(var(--accent) / var(--tw-border-opacity, 1));
 }
 .border-s-brand {
   --tw-border-opacity: 1;
@@ -1206,6 +1210,9 @@ body {
 .text-\[0\.6875rem\] {
   font-size: 0.6875rem;
 }
+.text-\[11px\] {
+  font-size: 11px;
+}
 .text-base {
   font-size: 1rem;
   line-height: 1.5rem;
@@ -1282,6 +1289,10 @@ body {
   --tw-text-opacity: 1;
   color: rgb(var(--warning) / var(--tw-text-opacity, 1));
 }
+.text-white {
+  --tw-text-opacity: 1;
+  color: rgb(255 255 255 / var(--tw-text-opacity, 1));
+}
 .opacity-60 {
   opacity: 0.6;
 }
@@ -1349,4 +1360,7 @@ body {
 .hover\:text-ink:hover {
   --tw-text-opacity: 1;
   color: rgb(var(--ink) / var(--tw-text-opacity, 1));
+}
+.disabled\:opacity-60:disabled {
+  opacity: 0.6;
 }

@@ -48877,6 +48877,687 @@ var AppError = class _AppError extends Error {
 };
 var isAppError = (error) => error instanceof AppError;
 
+// ../packages/shared/dist/geo.js
+var IRAN_PROVINCES = [
+  {
+    id: 100,
+    nameFa: "\u0645\u0631\u06A9\u0632\u06CC",
+    counties: [
+      "\u0627\u0631\u0627\u06A9",
+      "\u0622\u0634\u062A\u06CC\u0627\u0646",
+      "\u062A\u0641\u0631\u0634",
+      "\u062E\u0645\u06CC\u0646",
+      "\u062F\u0644\u06CC\u062C\u0627\u0646",
+      "\u0633\u0627\u0648\u0647",
+      "\u0634\u0627\u0632\u0646\u062F",
+      "\u0645\u062D\u0644\u0627\u062A",
+      "\u0632\u0631\u0646\u062F\u06CC\u0647",
+      "\u06A9\u0645\u06CC\u062C\u0627\u0646",
+      "\u062E\u0646\u062F\u0627\u0628",
+      "\u0641\u0631\u0627\u0647\u0627\u0646"
+    ]
+  },
+  {
+    id: 101,
+    nameFa: "\u06AF\u06CC\u0644\u0627\u0646",
+    counties: [
+      "\u0622\u0633\u062A\u0627\u0631\u0627",
+      "\u0622\u0633\u062A\u0627\u0646\u0647 \u0627\u0634\u0631\u0641\u06CC\u0647",
+      "\u0628\u0646\u062F\u0631\u0627\u0646\u0632\u0644\u06CC",
+      "\u0637\u0648\u0627\u0644\u0634",
+      "\u0631\u0634\u062A",
+      "\u0631\u0648\u062F\u0628\u0627\u0631",
+      "\u0631\u0648\u062F\u0633\u0631",
+      "\u0635\u0648\u0645\u0639\u0647 \u0633\u0631\u0627",
+      "\u0641\u0648\u0645\u0646",
+      "\u0644\u0646\u06AF\u0631\u0648\u062F",
+      "\u0644\u0627\u0647\u06CC\u062C\u0627\u0646",
+      "\u0634\u0641\u062A",
+      "\u0627\u0645\u0644\u0634",
+      "\u0631\u0636\u0648\u0627\u0646\u0634\u0647\u0631",
+      "\u0633\u06CC\u0627\u0647\u06A9\u0644",
+      "\u0645\u0627\u0633\u0627\u0644",
+      "\u062E\u0645\u0627\u0645"
+    ]
+  },
+  {
+    id: 102,
+    nameFa: "\u0645\u0627\u0632\u0646\u062F\u0631\u0627\u0646",
+    counties: [
+      "\u0622\u0645\u0644",
+      "\u0628\u0627\u0628\u0644",
+      "\u0628\u0647\u0634\u0647\u0631",
+      "\u062A\u0646\u06A9\u0627\u0628\u0646",
+      "\u0631\u0627\u0645\u0633\u0631",
+      "\u0633\u0627\u0631\u06CC",
+      "\u0633\u0648\u0627\u062F\u06A9\u0648\u0647",
+      "\u0642\u0627\u06CC\u0645 \u0634\u0647\u0631",
+      "\u0646\u0648\u0631",
+      "\u0646\u0648\u0634\u0647\u0631",
+      "\u0628\u0627\u0628\u0644\u0633\u0631",
+      "\u0645\u062D\u0645\u0648\u062F\u0622\u0628\u0627\u062F",
+      "\u0646\u06A9\u0627",
+      "\u0686\u0627\u0644\u0648\u0633",
+      "\u062C\u0648\u06CC\u0628\u0627\u0631",
+      "\u06AF\u0644\u0648\u06AF\u0627\u0647",
+      "\u0641\u0631\u06CC\u062F\u0648\u0646\u06A9\u0646\u0627\u0631",
+      "\u0639\u0628\u0627\u0633 \u0622\u0628\u0627\u062F",
+      "\u0645\u06CC\u0627\u0646\u062F\u0648\u0631\u0648\u062F",
+      "\u0633\u06CC\u0645\u0631\u063A",
+      "\u0633\u0648\u0627\u062F\u06A9\u0648\u0647 \u0634\u0645\u0627\u0644\u06CC",
+      "\u06A9\u0644\u0627\u0631\u062F\u0634\u062A"
+    ]
+  },
+  {
+    id: 103,
+    nameFa: "\u0622\u0630\u0631\u0628\u0627\u06CC\u062C\u0627\u0646 \u0634\u0631\u0642\u06CC",
+    counties: [
+      "\u0627\u0647\u0631",
+      "\u062A\u0628\u0631\u06CC\u0632",
+      "\u0633\u0631\u0627\u0628",
+      "\u0645\u0631\u0627\u063A\u0647",
+      "\u0645\u0631\u0646\u062F",
+      "\u0645\u06CC\u0627\u0646\u0647",
+      "\u0647\u0634\u062A\u0631\u0648\u062F",
+      "\u0628\u0646\u0627\u0628",
+      "\u0628\u0633\u062A\u0627\u0646 \u0622\u0628\u0627\u062F",
+      "\u0634\u0628\u0633\u062A\u0631",
+      "\u06A9\u0644\u06CC\u0628\u0631",
+      "\u0647\u0631\u06CC\u0633",
+      "\u062C\u0644\u0641\u0627",
+      "\u0645\u0644\u06A9\u0627\u0646",
+      "\u0622\u0630\u0631\u0634\u0647\u0631",
+      "\u0627\u0633\u06A9\u0648",
+      "\u0686\u0627\u0631\u0627\u0648\u06CC\u0645\u0627\u0642",
+      "\u0648\u0631\u0632\u0642\u0627\u0646",
+      "\u0639\u062C\u0628 \u0634\u06CC\u0631",
+      "\u062E\u062F\u0627 \u0622\u0641\u0631\u06CC\u0646",
+      "\u0647\u0648\u0631\u0627\u0646\u062F",
+      "\u0644\u06CC\u0644\u0627\u0646",
+      "\u062A\u0631\u06A9\u0645\u0627\u0646\u0686\u0627\u06CC"
+    ]
+  },
+  {
+    id: 104,
+    nameFa: "\u0622\u0630\u0631\u0628\u0627\u06CC\u062C\u0627\u0646 \u063A\u0631\u0628\u06CC",
+    counties: [
+      "\u0627\u0631\u0648\u0645\u06CC\u0647",
+      "\u067E\u06CC\u0631\u0627\u0646\u0634\u0647\u0631",
+      "\u062E\u0648\u06CC",
+      "\u0633\u0631\u062F\u0634\u062A",
+      "\u0633\u0644\u0645\u0627\u0633",
+      "\u0645\u0627\u06A9\u0648",
+      "\u0645\u0647\u0627\u0628\u0627\u062F",
+      "\u0645\u06CC\u0627\u0646\u062F\u0648\u0622\u0628",
+      "\u0646\u0642\u062F\u0647",
+      "\u0628\u0648\u06A9\u0627\u0646",
+      "\u0634\u0627\u0647\u06CC\u0646 \u062F\u0698",
+      "\u062A\u06A9\u0627\u0628",
+      "\u0627\u0634\u0646\u0648\u06CC\u0647",
+      "\u0686\u0627\u0644\u062F\u0631\u0627\u0646",
+      "\u067E\u0644\u062F\u0634\u062A",
+      "\u0686\u0627\u06CC\u067E\u0627\u0631\u0647",
+      "\u0634\u0648\u0637",
+      "\u0686\u0647\u0627\u0631\u0628\u0631\u062C",
+      "\u0628\u0627\u0631\u0648\u0642",
+      "\u0645\u06CC\u0631\u0622\u0628\u0627\u062F"
+    ]
+  },
+  {
+    id: 105,
+    nameFa: "\u06A9\u0631\u0645\u0627\u0646\u0634\u0627\u0647",
+    counties: [
+      "\u0627\u0633\u0644\u0627\u0645 \u0622\u0628\u0627\u062F\u063A\u0631\u0628",
+      "\u06A9\u0631\u0645\u0627\u0646\u0634\u0627\u0647",
+      "\u067E\u0627\u0648\u0647",
+      "\u0633\u0631\u067E\u0644 \u0630\u0647\u0627\u0628",
+      "\u0633\u0646\u0642\u0631",
+      "\u0642\u0635\u0631\u0634\u06CC\u0631\u06CC\u0646",
+      "\u06A9\u0646\u06AF\u0627\u0648\u0631",
+      "\u06AF\u06CC\u0644\u0627\u0646\u063A\u0631\u0628",
+      "\u062C\u0648\u0627\u0646\u0631\u0648\u062F",
+      "\u0635\u062D\u0646\u0647",
+      "\u0647\u0631\u0633\u06CC\u0646",
+      "\u062B\u0644\u0627\u062B \u0628\u0627\u0628\u0627\u062C\u0627\u0646\u06CC",
+      "\u062F\u0627\u0644\u0627\u0647\u0648",
+      "\u0631\u0648\u0627\u0646\u0633\u0631"
+    ]
+  },
+  {
+    id: 106,
+    nameFa: "\u062E\u0648\u0632\u0633\u062A\u0627\u0646",
+    counties: [
+      "\u0622\u0628\u0627\u062F\u0627\u0646",
+      "\u0627\u0646\u062F\u06CC\u0645\u0634\u06A9",
+      "\u0627\u0647\u0648\u0627\u0632",
+      "\u0627\u06CC\u0630\u0647",
+      "\u0628\u0646\u062F\u0631 \u0645\u0627\u0647\u0634\u0647\u0631",
+      "\u0628\u0647\u0628\u0647\u0627\u0646",
+      "\u062E\u0631\u0645\u0634\u0647\u0631",
+      "\u062F\u0632\u0641\u0648\u0644",
+      "\u062F\u0634\u062A \u0622\u0632\u0627\u062F\u06AF\u0627\u0646",
+      "\u0631\u0627\u0645\u0647\u0631\u0645\u0632",
+      "\u0634\u0627\u062F\u06AF\u0627\u0646",
+      "\u0634\u0648\u0634\u062A\u0631",
+      "\u0645\u0633\u062C\u062F\u0633\u0644\u06CC\u0645\u0627\u0646",
+      "\u0634\u0648\u0634",
+      "\u0628\u0627\u063A \u0645\u0644\u06A9",
+      "\u0627\u0645\u06CC\u062F\u06CC\u0647",
+      "\u0644\u0627\u0644\u06CC",
+      "\u0647\u0646\u062F\u06CC\u062C\u0627\u0646",
+      "\u0631\u0627\u0645\u0634\u06CC\u0631",
+      "\u06AF\u062A\u0648\u0646\u062F",
+      "\u0627\u0646\u062F\u06CC\u06A9\u0627",
+      "\u0647\u0641\u062A\u06A9\u0644",
+      "\u0647\u0648\u06CC\u0632\u0647",
+      "\u0628\u0627\u0648\u06CC",
+      "\u062D\u0645\u06CC\u062F\u06CC\u0647",
+      "\u0622\u063A\u0627\u062C\u0627\u0631\u06CC",
+      "\u06A9\u0627\u0631\u0648\u0646",
+      "\u06A9\u0631\u062E\u0647",
+      "\u062F\u0632\u067E\u0627\u0631\u062A",
+      "\u0635\u06CC\u062F\u0648\u0646"
+    ]
+  },
+  {
+    id: 107,
+    nameFa: "\u0641\u0627\u0631\u0633",
+    counties: [
+      "\u0622\u0628\u0627\u062F\u0647",
+      "\u0627\u0633\u062A\u0647\u0628\u0627\u0646",
+      "\u0627\u0642\u0644\u06CC\u062F",
+      "\u062C\u0647\u0631\u0645",
+      "\u062F\u0627\u0631\u0627\u0628",
+      "\u0633\u067E\u06CC\u062F\u0627\u0646",
+      "\u0634\u06CC\u0631\u0627\u0632",
+      "\u0641\u0633\u0627",
+      "\u0641\u06CC\u0631\u0648\u0632\u0622\u0628\u0627\u062F",
+      "\u06A9\u0627\u0632\u0631\u0648\u0646",
+      "\u0644\u0627\u0631\u0633\u062A\u0627\u0646",
+      "\u0645\u0631\u0648\u062F\u0634\u062A",
+      "\u0645\u0645\u0633\u0646\u06CC",
+      "\u0646\u06CC \u0631\u06CC\u0632",
+      "\u0644\u0627\u0645\u0631\u062F",
+      "\u0628\u0648\u0627\u0646\u0627\u062A",
+      "\u0627\u0631\u0633\u0646\u062C\u0627\u0646",
+      "\u062E\u0631\u0645 \u0628\u06CC\u062F",
+      "\u0632\u0631\u06CC\u0646 \u062F\u0634\u062A",
+      "\u0642\u06CC\u0631\u0648 \u06A9\u0627\u0631\u0632\u06CC\u0646",
+      "\u0645\u0647\u0631",
+      "\u0641\u0631\u0627\u0634\u0628\u0646\u062F",
+      "\u067E\u0627\u0633\u0627\u0631\u06AF\u0627\u062F",
+      "\u062E\u0646\u062C",
+      "\u0633\u0631\u0648\u0633\u062A\u0627\u0646",
+      "\u0631\u0633\u062A\u0645",
+      "\u06AF\u0631\u0627\u0634",
+      "\u06A9\u0648\u0627\u0631",
+      "\u062E\u0631\u0627\u0645\u0647",
+      "\u0632\u0631\u0642\u0627\u0646",
+      "\u0628\u06CC\u0636\u0627\u0621",
+      "\u0633\u0631\u0686\u0647\u0627\u0646",
+      "\u06A9\u0648\u0647 \u0686\u0646\u0627\u0631",
+      "\u062E\u0641\u0631",
+      "\u0628\u062E\u062A\u06AF\u0627\u0646",
+      "\u0627\u0648\u0632",
+      "\u062C\u0648\u06CC\u0645"
+    ]
+  },
+  {
+    id: 108,
+    nameFa: "\u06A9\u0631\u0645\u0627\u0646",
+    counties: [
+      "\u0628\u0627\u0641\u062A",
+      "\u0628\u0645",
+      "\u062C\u06CC\u0631\u0641\u062A",
+      "\u0631\u0641\u0633\u0646\u062C\u0627\u0646",
+      "\u0632\u0631\u0646\u062F",
+      "\u0633\u06CC\u0631\u062C\u0627\u0646",
+      "\u0634\u0647\u0631\u0628\u0627\u0628\u06A9",
+      "\u06A9\u0631\u0645\u0627\u0646",
+      "\u06A9\u0647\u0646\u0648\u062C",
+      "\u0628\u0631\u062F\u0633\u06CC\u0631",
+      "\u0631\u0627\u0648\u0631",
+      "\u0639\u0646\u0628\u0631\u0622\u0628\u0627\u062F",
+      "\u0645\u0646\u0648\u062C\u0627\u0646",
+      "\u06A9\u0648\u0647\u0628\u0646\u0627\u0646",
+      "\u0631\u0648\u062F\u0628\u0627\u0631\u062C\u0646\u0648\u0628",
+      "\u0642\u0644\u0639\u0647 \u06AF\u0646\u062C",
+      "\u0631\u06CC\u06AF\u0627\u0646",
+      "\u0631\u0627\u0628\u0631",
+      "\u0641\u0647\u0631\u062C",
+      "\u0627\u0646\u0627\u0631",
+      "\u0646\u0631\u0645\u0627\u0634\u06CC\u0631",
+      "\u0641\u0627\u0631\u06CC\u0627\u0628",
+      "\u0627\u0631\u0632\u0648\u06CC\u06CC\u0647",
+      "\u06AF\u0646\u0628\u06A9\u06CC",
+      "\u062C\u0627\u0632\u0645\u0648\u0631\u06CC\u0627\u0646"
+    ]
+  },
+  {
+    id: 109,
+    nameFa: "\u062E\u0631\u0627\u0633\u0627\u0646 \u0631\u0636\u0648\u06CC",
+    counties: [
+      "\u062A\u0627\u06CC\u0628\u0627\u062F",
+      "\u062A\u0631\u0628\u062A \u062D\u06CC\u062F\u0631\u06CC\u0647",
+      "\u062A\u0631\u0628\u062A \u062C\u0627\u0645",
+      "\u062F\u0631\u06AF\u0632",
+      "\u0633\u0628\u0632\u0648\u0627\u0631",
+      "\u0642\u0648\u0686\u0627\u0646",
+      "\u06A9\u0627\u0634\u0645\u0631",
+      "\u06AF\u0646\u0627\u0628\u0627\u062F",
+      "\u0645\u0634\u0647\u062F",
+      "\u0646\u06CC\u0634\u0627\u0628\u0648\u0631",
+      "\u0686\u0646\u0627\u0631\u0627\u0646",
+      "\u062E\u0648\u0627\u0641",
+      "\u0633\u0631\u062E\u0633",
+      "\u0641\u0631\u06CC\u0645\u0627\u0646",
+      "\u0628\u0631\u062F\u0633\u06A9\u0646",
+      "\u0631\u0634\u062A\u062E\u0648\u0627\u0631",
+      "\u06A9\u0644\u0627\u062A",
+      "\u062E\u0644\u06CC\u0644 \u0622\u0628\u0627\u062F",
+      "\u0645\u0647 \u0648\u0644\u0627\u062A",
+      "\u0628\u062C\u0633\u062A\u0627\u0646",
+      "\u0637\u0631\u0642\u0628\u0647 \u0634\u0627\u0646\u062F\u06CC\u0632",
+      "\u0641\u06CC\u0631\u0648\u0632\u0647",
+      "\u062C\u063A\u062A\u0627\u06CC",
+      "\u0632\u0627\u0648\u0647",
+      "\u062C\u0648\u06CC\u0646",
+      "\u0628\u0627\u062E\u0631\u0632",
+      "\u062E\u0648\u0634\u0627\u0628",
+      "\u062F\u0627\u0648\u0631\u0632\u0646",
+      "\u0635\u0627\u0644\u062D \u0622\u0628\u0627\u062F",
+      "\u06A9\u0648\u0647\u0633\u0631\u062E",
+      "\u0632\u0628\u0631\u062E\u0627\u0646",
+      "\u0634\u0634\u062A\u0645\u062F",
+      "\u06AF\u0644\u0628\u0647\u0627\u0631",
+      "\u0645\u06CC\u0627\u0646 \u062C\u0644\u06AF\u0647"
+    ]
+  },
+  {
+    id: 110,
+    nameFa: "\u0627\u0635\u0641\u0647\u0627\u0646",
+    counties: [
+      "\u0627\u0631\u062F\u0633\u062A\u0627\u0646",
+      "\u0627\u0635\u0641\u0647\u0627\u0646",
+      "\u062E\u0645\u06CC\u0646\u06CC \u0634\u0647\u0631",
+      "\u062E\u0648\u0627\u0646\u0633\u0627\u0631",
+      "\u0633\u0645\u06CC\u0631\u0645",
+      "\u0641\u0631\u06CC\u062F\u0646",
+      "\u0641\u0631\u06CC\u062F\u0648\u0646\u0634\u0647\u0631",
+      "\u0641\u0644\u0627\u0648\u0631\u062C\u0627\u0646",
+      "\u0634\u0647\u0631\u0636\u0627",
+      "\u06A9\u0627\u0634\u0627\u0646",
+      "\u06AF\u0644\u067E\u0627\u06CC\u06AF\u0627\u0646",
+      "\u0644\u0646\u062C\u0627\u0646",
+      "\u0646\u0627\u06CC\u06CC\u0646",
+      "\u0646\u062C\u0641 \u0622\u0628\u0627\u062F",
+      "\u0646\u0637\u0646\u0632",
+      "\u0634\u0627\u0647\u06CC\u0646 \u0634\u0647\u0631\u0648 \u0645\u06CC\u0645\u0647",
+      "\u0645\u0628\u0627\u0631\u06A9\u0647",
+      "\u0622\u0631\u0627\u0646 \u0648 \u0628\u06CC\u062F\u06AF\u0644",
+      "\u062A\u06CC\u0631\u0627\u0646 \u0648\u06A9\u0631\u0648\u0646",
+      "\u0686\u0627\u062F\u06AF\u0627\u0646",
+      "\u062F\u0647\u0627\u0642\u0627\u0646",
+      "\u0628\u0631\u062E\u0648\u0627\u0631",
+      "\u062E\u0648\u0631 \u0648 \u0628\u06CC\u0627\u0628\u0627\u0646\u06A9",
+      "\u0628\u0648\u06CC\u06CC\u0646 \u0648 \u0645\u06CC\u0627\u0646\u062F\u0634\u062A",
+      "\u06A9\u0648\u0647\u067E\u0627\u06CC\u0647",
+      "\u062C\u0631\u0642\u0648\u06CC\u0647",
+      "\u0648\u0631\u0632\u0646\u0647",
+      "\u0647\u0631\u0646\u062F"
+    ]
+  },
+  {
+    id: 111,
+    nameFa: "\u0633\u06CC\u0633\u062A\u0627\u0646 \u0648 \u0628\u0644\u0648\u0686\u0633\u062A\u0627\u0646",
+    counties: [
+      "\u0627\u06CC\u0631\u0627\u0646\u0634\u0647\u0631",
+      "\u0686\u0627\u0647 \u0628\u0647\u0627\u0631",
+      "\u062E\u0627\u0634",
+      "\u0632\u0627\u0628\u0644",
+      "\u0632\u0627\u0647\u062F\u0627\u0646",
+      "\u0633\u0631\u0627\u0648\u0627\u0646",
+      "\u0646\u06CC\u06A9 \u0634\u0647\u0631",
+      "\u0631\u0627\u0633\u06A9",
+      "\u06A9\u0646\u0627\u0631\u06A9",
+      "\u0632\u0647\u06A9",
+      "\u0647\u06CC\u0631\u0645\u0646\u062F",
+      "\u062F\u0644\u06AF\u0627\u0646",
+      "\u0645\u0647\u0631\u0633\u062A\u0627\u0646",
+      "\u0633\u06CC\u0628 \u0648 \u0633\u0648\u0631\u0627\u0646",
+      "\u0646\u06CC\u0645\u0631\u0648\u0632",
+      "\u0647\u0627\u0645\u0648\u0646",
+      "\u0645\u06CC\u0631\u062C\u0627\u0648\u0647",
+      "\u0642\u0635\u0631\u0642\u0646\u062F",
+      "\u0641\u0646\u0648\u062C",
+      "\u0628\u0645\u067E\u0648\u0631",
+      "\u062A\u0641\u062A\u0627\u0646",
+      "\u062F\u0634\u062A\u06CC\u0627\u0631\u06CC",
+      "\u0633\u0631\u0628\u0627\u0632",
+      "\u06AF\u0644\u0634\u0646",
+      "\u0644\u0627\u0634\u0627\u0631",
+      "\u0632\u0631\u0622\u0628\u0627\u062F"
+    ]
+  },
+  {
+    id: 112,
+    nameFa: "\u06A9\u0631\u062F\u0633\u062A\u0627\u0646",
+    counties: [
+      "\u0628\u0627\u0646\u0647",
+      "\u0628\u06CC\u062C\u0627\u0631",
+      "\u0633\u0642\u0632",
+      "\u0633\u0646\u0646\u062F\u062C",
+      "\u0642\u0631\u0648\u0647",
+      "\u0645\u0631\u06CC\u0648\u0627\u0646",
+      "\u062F\u06CC\u0648\u0627\u0646\u062F\u0631\u0647",
+      "\u06A9\u0627\u0645\u06CC\u0627\u0631\u0627\u0646",
+      "\u0633\u0631\u0648\u0622\u0628\u0627\u062F",
+      "\u062F\u0647\u06AF\u0644\u0627\u0646"
+    ]
+  },
+  {
+    id: 113,
+    nameFa: "\u0647\u0645\u062F\u0627\u0646",
+    counties: [
+      "\u062A\u0648\u06CC\u0633\u0631\u06A9\u0627\u0646",
+      "\u0645\u0644\u0627\u06CC\u0631",
+      "\u0646\u0647\u0627\u0648\u0646\u062F",
+      "\u0647\u0645\u062F\u0627\u0646",
+      "\u06A9\u0628\u0648\u062F\u0631\u0622\u0647\u0646\u06AF",
+      "\u0627\u0633\u062F\u0622\u0628\u0627\u062F",
+      "\u0628\u0647\u0627\u0631",
+      "\u0631\u0632\u0646",
+      "\u0641\u0627\u0645\u0646\u06CC\u0646",
+      "\u062F\u0631\u06AF\u0632\u06CC\u0646"
+    ]
+  },
+  {
+    id: 114,
+    nameFa: "\u0686\u0647\u0627\u0631\u0645\u062D\u0627\u0644 \u0648 \u0628\u062E\u062A\u06CC\u0627\u0631\u06CC",
+    counties: [
+      "\u0628\u0631\u0648\u062C\u0646",
+      "\u0634\u0647\u0631\u06A9\u0631\u062F",
+      "\u0641\u0627\u0631\u0633\u0627\u0646",
+      "\u0644\u0631\u062F\u06AF\u0627\u0646",
+      "\u0627\u0631\u062F\u0644",
+      "\u06A9\u0648\u0647\u0631\u0646\u06AF",
+      "\u06A9\u06CC\u0627\u0631",
+      "\u0633\u0627\u0645\u0627\u0646",
+      "\u0628\u0646",
+      "\u062E\u0627\u0646\u0645\u06CC\u0631\u0632\u0627",
+      "\u0641\u0644\u0627\u0631\u062F",
+      "\u0641\u0631\u062E \u0634\u0647\u0631"
+    ]
+  },
+  {
+    id: 115,
+    nameFa: "\u0644\u0631\u0633\u062A\u0627\u0646",
+    counties: [
+      "\u0627\u0644\u06CC\u06AF\u0648\u062F\u0631\u0632",
+      "\u0628\u0631\u0648\u062C\u0631\u062F",
+      "\u062E\u0631\u0645 \u0622\u0628\u0627\u062F",
+      "\u062F\u0644\u0641\u0627\u0646",
+      "\u062F\u0648\u0631\u0648\u062F",
+      "\u06A9\u0648\u0647\u062F\u0634\u062A",
+      "\u0627\u0632\u0646\u0627",
+      "\u067E\u0644\u062F\u062E\u062A\u0631",
+      "\u0633\u0644\u0633\u0644\u0647",
+      "\u0686\u06AF\u0646\u06CC",
+      "\u0631\u0648\u0645\u0634\u06A9\u0627\u0646",
+      "\u0645\u0639\u0645\u0648\u0644\u0627\u0646"
+    ]
+  },
+  {
+    id: 116,
+    nameFa: "\u0627\u06CC\u0644\u0627\u0645",
+    counties: [
+      "\u0627\u06CC\u0644\u0627\u0645",
+      "\u062F\u0631\u0647 \u0634\u0647\u0631",
+      "\u062F\u0647\u0644\u0631\u0627\u0646",
+      "\u0686\u0631\u062F\u0627\u0648\u0644",
+      "\u0645\u0647\u0631\u0627\u0646",
+      "\u0622\u0628\u062F\u0627\u0646\u0627\u0646",
+      "\u0627\u06CC\u0648\u0627\u0646",
+      "\u0645\u0644\u06A9\u0634\u0627\u0647\u06CC",
+      "\u0633\u06CC\u0631\u0648\u0627\u0646",
+      "\u0628\u062F\u0631\u0647",
+      "\u0647\u0644\u06CC\u0644\u0627\u0646",
+      "\u0686\u0648\u0627\u0631"
+    ]
+  },
+  {
+    id: 117,
+    nameFa: "\u06A9\u0647\u06AF\u06CC\u0644\u0648\u06CC\u0647 \u0648 \u0628\u0648\u06CC\u0631\u0627\u062D\u0645\u062F",
+    counties: [
+      "\u0628\u0648\u06CC\u0631\u0627\u062D\u0645\u062F",
+      "\u06A9\u0647\u06AF\u06CC\u0644\u0648\u06CC\u0647",
+      "\u06AF\u0686\u0633\u0627\u0631\u0627\u0646",
+      "\u062F\u0646\u0627",
+      "\u0628\u0647\u0645\u06CC\u06CC",
+      "\u0686\u0631\u0627\u0645",
+      "\u0628\u0627\u0634\u062A",
+      "\u0644\u0646\u062F\u0647",
+      "\u0645\u0627\u0631\u06AF\u0648\u0646"
+    ]
+  },
+  {
+    id: 118,
+    nameFa: "\u0628\u0648\u0634\u0647\u0631",
+    counties: [
+      "\u0628\u0648\u0634\u0647\u0631",
+      "\u062A\u0646\u06AF\u0633\u062A\u0627\u0646",
+      "\u062F\u0634\u062A\u0633\u062A\u0627\u0646",
+      "\u062F\u0634\u062A\u06CC",
+      "\u062F\u06CC\u0631",
+      "\u06A9\u0646\u06AF\u0627\u0646",
+      "\u06AF\u0646\u0627\u0648\u0647",
+      "\u062F\u06CC\u0644\u0645",
+      "\u062C\u0645",
+      "\u0639\u0633\u0644\u0648\u06CC\u0647"
+    ]
+  },
+  {
+    id: 119,
+    nameFa: "\u0632\u0646\u062C\u0627\u0646",
+    counties: [
+      "\u0627\u0628\u0647\u0631",
+      "\u062E\u062F\u0627\u0628\u0646\u062F\u0647",
+      "\u0632\u0646\u062C\u0627\u0646",
+      "\u0627\u06CC\u062C\u0631\u0648\u062F",
+      "\u062E\u0631\u0645\u062F\u0631\u0647",
+      "\u0637\u0627\u0631\u0645",
+      "\u0645\u0627\u0647\u0646\u0634\u0627\u0646",
+      "\u0633\u0644\u0637\u0627\u0646\u06CC\u0647"
+    ]
+  },
+  {
+    id: 120,
+    nameFa: "\u0633\u0645\u0646\u0627\u0646",
+    counties: [
+      "\u062F\u0627\u0645\u063A\u0627\u0646",
+      "\u0633\u0645\u0646\u0627\u0646",
+      "\u0634\u0627\u0647\u0631\u0648\u062F",
+      "\u06AF\u0631\u0645\u0633\u0627\u0631",
+      "\u0645\u0647\u062F\u06CC \u0634\u0647\u0631",
+      "\u0622\u0631\u0627\u062F\u0627\u0646",
+      "\u0645\u06CC\u0627\u0645\u06CC",
+      "\u0633\u0631\u062E\u0647"
+    ]
+  },
+  {
+    id: 121,
+    nameFa: "\u06CC\u0632\u062F",
+    counties: [
+      "\u0627\u0631\u062F\u06A9\u0627\u0646",
+      "\u0628\u0627\u0641\u0642",
+      "\u062A\u0641\u062A",
+      "\u0645\u0647\u0631\u06CC\u0632",
+      "\u06CC\u0632\u062F",
+      "\u0645\u06CC\u0628\u062F",
+      "\u0627\u0628\u0631\u06A9\u0648\u0647",
+      "\u0627\u0634\u06A9\u0630\u0631",
+      "\u062E\u0627\u062A\u0645",
+      "\u0628\u0647\u0627\u0628\u0627\u062F",
+      "\u0645\u0631\u0648\u0633\u062A",
+      "\u0632\u0627\u0631\u0686"
+    ]
+  },
+  {
+    id: 122,
+    nameFa: "\u0647\u0631\u0645\u0632\u06AF\u0627\u0646",
+    counties: [
+      "\u0627\u0628\u0648\u0645\u0648\u0633\u06CC",
+      "\u0628\u0646\u062F\u0631 \u0639\u0628\u0627\u0633",
+      "\u0628\u0646\u062F\u0631 \u0644\u0646\u06AF\u0647",
+      "\u0642\u0634\u0645",
+      "\u0645\u06CC\u0646\u0627\u0628",
+      "\u062C\u0627\u0633\u06A9",
+      "\u0631\u0648\u062F\u0627\u0646",
+      "\u062D\u0627\u062C\u06CC \u0622\u0628\u0627\u062F",
+      "\u0628\u0633\u062A\u06A9",
+      "\u062E\u0645\u06CC\u0631",
+      "\u067E\u0627\u0631\u0633\u06CC\u0627\u0646",
+      "\u0633\u06CC\u0631\u06CC\u06A9",
+      "\u0628\u0634\u0627\u06AF\u0631\u062F"
+    ]
+  },
+  {
+    id: 123,
+    nameFa: "\u062A\u0647\u0631\u0627\u0646",
+    counties: [
+      "\u062A\u0647\u0631\u0627\u0646",
+      "\u062F\u0645\u0627\u0648\u0646\u062F",
+      "\u0631\u06CC",
+      "\u0634\u0645\u06CC\u0631\u0627\u0646\u0627\u062A",
+      "\u0648\u0631\u0627\u0645\u06CC\u0646",
+      "\u0634\u0647\u0631\u06CC\u0627\u0631",
+      "\u0627\u0633\u0644\u0627\u0645\u0634\u0647\u0631",
+      "\u0631\u0628\u0627\u0637\u200C\u06A9\u0631\u06CC\u0645",
+      "\u067E\u0627\u06A9\u062F\u0634\u062A",
+      "\u0641\u06CC\u0631\u0648\u0632\u06A9\u0648\u0647",
+      "\u0642\u062F\u0633",
+      "\u0645\u0644\u0627\u0631\u062F",
+      "\u067E\u06CC\u0634\u0648\u0627",
+      "\u0628\u0647\u0627\u0631\u0633\u062A\u0627\u0646",
+      "\u067E\u0631\u062F\u06CC\u0633",
+      "\u0642\u0631\u0686\u06A9"
+    ]
+  },
+  {
+    id: 124,
+    nameFa: "\u0627\u0631\u062F\u0628\u06CC\u0644",
+    counties: [
+      "\u0627\u0631\u062F\u0628\u06CC\u0644",
+      "\u0628\u06CC\u0644\u0647 \u0633\u0648\u0627\u0631",
+      "\u062E\u0644\u062E\u0627\u0644",
+      "\u0645\u0634\u06AF\u06CC\u0646 \u0634\u0647\u0631",
+      "\u06AF\u0631\u0645\u06CC",
+      "\u067E\u0627\u0631\u0633 \u0622\u0628\u0627\u062F",
+      "\u06A9\u0648\u062B\u0631",
+      "\u0646\u0645\u06CC\u0646",
+      "\u0646\u06CC\u0631",
+      "\u0633\u0631\u0639\u06CC\u0646",
+      "\u0627\u0635\u0644\u0627\u0646\u062F\u0648\u0632",
+      "\u0627\u0646\u06AF\u0648\u062A"
+    ]
+  },
+  {
+    id: 125,
+    nameFa: "\u0642\u0645",
+    counties: [
+      "\u0642\u0645",
+      "\u062C\u0639\u0641\u0631\u0622\u0628\u0627\u062F",
+      "\u06A9\u0647\u06A9"
+    ]
+  },
+  {
+    id: 126,
+    nameFa: "\u0642\u0632\u0648\u06CC\u0646",
+    counties: [
+      "\u0628\u0648\u06CC\u06CC\u0646 \u0632\u0647\u0631\u0627",
+      "\u062A\u0627\u06A9\u0633\u062A\u0627\u0646",
+      "\u0642\u0632\u0648\u06CC\u0646",
+      "\u0622\u0628\u06CC\u06A9",
+      "\u0627\u0644\u0628\u0631\u0632",
+      "\u0622\u0648\u062C"
+    ]
+  },
+  {
+    id: 127,
+    nameFa: "\u06AF\u0644\u0633\u062A\u0627\u0646",
+    counties: [
+      "\u0628\u0646\u062F\u0631\u06AF\u0632",
+      "\u062A\u0631\u06A9\u0645\u0646",
+      "\u0639\u0644\u06CC \u0622\u0628\u0627\u062F \u06A9\u062A\u0648\u0644",
+      "\u06A9\u0631\u062F\u06A9\u0648\u06CC",
+      "\u06AF\u0631\u06AF\u0627\u0646",
+      "\u06AF\u0646\u0628\u062F\u06A9\u0627\u0648\u0648\u0633",
+      "\u0645\u06CC\u0646\u0648\u062F\u0634\u062A",
+      "\u0622\u0642 \u0642\u0644\u0627",
+      "\u06A9\u0644\u0627\u0644\u0647",
+      "\u0622\u0632\u0627\u062F\u0634\u0647\u0631",
+      "\u0631\u0627\u0645\u06CC\u0627\u0646",
+      "\u0645\u0631\u0627\u0648\u0647 \u062A\u067E\u0647",
+      "\u06AF\u0645\u06CC\u0634\u0627\u0646",
+      "\u06AF\u0627\u0644\u06CC\u06A9\u0634"
+    ]
+  },
+  {
+    id: 128,
+    nameFa: "\u062E\u0631\u0627\u0633\u0627\u0646 \u0634\u0645\u0627\u0644\u06CC",
+    counties: [
+      "\u0627\u0633\u0641\u0631\u0627\u06CC\u0646",
+      "\u0628\u062C\u0646\u0648\u0631\u062F",
+      "\u062C\u0627\u062C\u0631\u0645",
+      "\u0634\u06CC\u0631\u0648\u0627\u0646",
+      "\u0641\u0627\u0631\u0648\u062C",
+      "\u0633\u0645\u0644\u0642\u0627\u0646",
+      "\u06AF\u0631\u0645\u0647",
+      "\u0631\u0627\u0632 \u0648 \u062C\u0631\u06AF\u0644\u0627\u0646",
+      "\u0628\u0627\u0645 \u0648 \u0635\u0641\u06CC \u0622\u0628\u0627\u062F",
+      "\u0645\u0627\u0646\u0647"
+    ]
+  },
+  {
+    id: 129,
+    nameFa: "\u062E\u0631\u0627\u0633\u0627\u0646 \u062C\u0646\u0648\u0628\u06CC",
+    counties: [
+      "\u0628\u06CC\u0631\u062C\u0646\u062F",
+      "\u062F\u0631\u0645\u06CC\u0627\u0646",
+      "\u0633\u0631\u0628\u06CC\u0634\u0647",
+      "\u0642\u0627\u06CC\u0646\u0627\u062A",
+      "\u0646\u0647\u0628\u0646\u062F\u0627\u0646",
+      "\u0633\u0631\u0627\u06CC\u0627\u0646",
+      "\u0641\u0631\u062F\u0648\u0633",
+      "\u0628\u0634\u0631\u0648\u06CC\u0647",
+      "\u0632\u06CC\u0631\u06A9\u0648\u0647",
+      "\u062E\u0648\u0633\u0641",
+      "\u0637\u0628\u0633",
+      "\u0639\u0634\u0642 \u0622\u0628\u0627\u062F"
+    ]
+  },
+  {
+    id: 130,
+    nameFa: "\u0627\u0644\u0628\u0631\u0632",
+    counties: [
+      "\u06A9\u0631\u062C",
+      "\u0633\u0627\u0648\u062C\u0628\u0644\u0627\u063A",
+      "\u0646\u0638\u0631\u0622\u0628\u0627\u062F",
+      "\u0637\u0627\u0644\u0642\u0627\u0646",
+      "\u0627\u0634\u062A\u0647\u0627\u0631\u062F",
+      "\u0641\u0631\u062F\u06CC\u0633",
+      "\u0686\u0647\u0627\u0631\u0628\u0627\u063A"
+    ]
+  }
+];
+var PROVINCE_NAMES = IRAN_PROVINCES.map((p) => p.nameFa);
+function countiesOf(province) {
+  return IRAN_PROVINCES.find((item) => item.nameFa === province)?.counties ?? [];
+}
+function isValidPlace(province, county) {
+  return countiesOf(province).includes(county);
+}
+
 // ../packages/shared/dist/notifications.js
 var NOTIFICATION_KINDS = [
   "RESERVATION_REQUESTED",
@@ -49157,11 +49838,14 @@ var createOrderSchema = external_exports.object({
   litres: litresSchema,
   rateToman: external_exports.number().int().positive(),
   zoneId: external_exports.string().uuid(),
+  /** Where the listing sits: a real province/county pair from IRAN_PROVINCES. */
+  province: external_exports.string().trim().min(1).max(60).optional(),
+  county: external_exports.string().trim().min(1).max(60).optional(),
   stationName: external_exports.string().trim().min(2).max(80).optional(),
   note: external_exports.string().trim().max(240).optional(),
   location: external_exports.object({ lat: external_exports.number().min(-90).max(90), lng: external_exports.number().min(-180).max(180) }).strict().optional(),
   deliveryMethod: external_exports.enum(DELIVERY_METHODS).default("FUEL_CARD")
-}).strict();
+}).strict().refine((value) => value.province === void 0 && value.county === void 0 ? true : Boolean(value.province && value.county && isValidPlace(value.province, value.county)), { message: "province and county must be a real pair", path: ["county"] });
 var updateOrderSchema = external_exports.object({
   litres: litresSchema.optional(),
   rateToman: external_exports.number().int().positive().optional(),
@@ -49171,14 +49855,19 @@ var updateOrderSchema = external_exports.object({
   message: "At least one field must be provided"
 });
 var marketStatsSchema = external_exports.object({
-  zoneId: external_exports.string().uuid(),
+  province: external_exports.string().trim().min(1).max(60).optional(),
+  county: external_exports.string().trim().min(1).max(60).optional(),
   side: external_exports.enum(ORDER_SIDES),
-  tier: external_exports.enum(TIERS)
+  tier: external_exports.enum(TIERS).optional(),
+  /** Legacy zone scope, still accepted so older clients keep working. */
+  zoneId: external_exports.string().uuid().optional()
 }).strict();
 var orderSearchSchema = external_exports.object({
-  zoneId: external_exports.string().uuid(),
+  province: external_exports.string().trim().min(1).max(60).optional(),
+  county: external_exports.string().trim().min(1).max(60).optional(),
+  zoneId: external_exports.string().uuid().optional(),
   side: external_exports.enum(ORDER_SIDES),
-  tier: external_exports.enum(TIERS),
+  tier: external_exports.enum(TIERS).optional(),
   lat: external_exports.coerce.number().min(-90).max(90).optional(),
   lng: external_exports.coerce.number().min(-180).max(180).optional(),
   radiusKm: external_exports.coerce.number().min(0.5).max(200).optional(),
@@ -50717,6 +51406,7 @@ function isAboveOfficialRate(tier, rateToman) {
 
 // ../apps/api/src/modules/orders-service.ts
 function toOrderView(order) {
+  const pumpFeeToman = order.side === "SELL" ? TIER_RATE_TOMAN[order.tier] : 0;
   return {
     id: order.id,
     ownerId: order.ownerId,
@@ -50728,6 +51418,11 @@ function toOrderView(order) {
     totalToman: orderTotalToman(order.litres, order.rateToman),
     buyerSavingToman: buyerSavingToman(order.tier, order.litres, order.rateToman),
     status: order.status,
+    province: order.province,
+    county: order.county,
+    pumpFeeToman,
+    buyerRateToman: order.rateToman + pumpFeeToman,
+    buyerTotalToman: orderTotalToman(order.litres, order.rateToman + pumpFeeToman),
     stationName: order.stationName,
     note: order.note,
     location: publicLocation(
@@ -50811,6 +51506,8 @@ var OrderService = class {
         litres: input.litres,
         rateToman: input.rateToman,
         zoneId,
+        province: input.province ?? null,
+        county: input.county ?? null,
         stationName: input.stationName ?? null,
         note: input.note ?? null,
         lat: input.location?.lat ?? null,
@@ -50827,7 +51524,9 @@ var OrderService = class {
           side: order.side,
           tier: order.tier,
           litres: order.litres,
-          rateToman: order.rateToman
+          rateToman: order.rateToman,
+          province: order.province,
+          county: order.county
         }
       });
       return toOrderView(order);
@@ -50836,9 +51535,11 @@ var OrderService = class {
   async search(query) {
     const offset = decodeCursor(query.cursor);
     const { items, total } = await this.repos.orders.search({
-      zoneId: query.zoneId,
+      province: query.province ?? null,
+      county: query.county ?? null,
+      zoneId: query.zoneId ?? null,
       side: query.side,
-      tier: query.tier,
+      tier: query.tier ?? null,
       now: this.clock.now(),
       limit: query.limit,
       offset,
@@ -52184,6 +52885,7 @@ function mean(values) {
 
 // ../apps/api/src/modules/stats-service.ts
 var MAX_SAMPLE = 5e3;
+var effectiveRate = (order) => order.rateToman + (order.side === "SELL" ? TIER_RATE_TOMAN[order.tier] : 0);
 var StatsService = class {
   constructor(repos2, settings, clock) {
     this.repos = repos2;
@@ -52193,28 +52895,78 @@ var StatsService = class {
   async market(input) {
     const config2 = await this.settings.get();
     const windowDays = config2["stats.window_days"];
+    const bandPercent = config2["pricing.low_price_warning_percent"];
     const now = this.clock.now();
     const since = new Date(now.getTime() - windowDays * 864e5);
-    const orders = await this.repos.orders.listSince(input.zoneId, since, MAX_SAMPLE);
-    const inTier = orders.filter((order) => order.side === input.side && order.tier === input.tier);
-    const floor = TIER_RATE_TOMAN[input.tier] * (config2["pricing.low_price_warning_percent"] / 100);
-    const usable = inTier.filter((order) => order.rateToman >= floor);
+    const province = input.province ?? null;
+    const county = input.county ?? null;
+    const tier = input.tier ?? null;
+    const place = province === null && county === null && input.zoneId ? await this.repos.orders.listSince(input.zoneId, since, MAX_SAMPLE) : await this.repos.orders.listByPlace({ province, county, since, limit: MAX_SAMPLE });
+    const national = await this.repos.orders.listByPlace({
+      province: null,
+      county: null,
+      since,
+      limit: MAX_SAMPLE
+    });
+    const withoutOutliers = (orders) => {
+      const reference = median(orders.map((order) => order.rateToman));
+      if (reference === null) return orders;
+      const floor = reference * bandPercent / 100;
+      return orders.filter((order) => order.rateToman >= floor);
+    };
+    const ofSide = place.filter(
+      (order) => order.side === input.side && (tier === null || order.tier === tier)
+    );
+    const usable = withoutOutliers(ofSide);
     const rates = usable.map((order) => order.rateToman);
-    const allRates = orders.map((order) => order.rateToman);
+    const totals = usable.map(effectiveRate);
+    const nationalTotals = withoutOutliers(
+      national.filter(
+        (order) => order.side === input.side && (tier === null || order.tier === tier)
+      )
+    ).map(effectiveRate);
+    const sellOrders = place.filter((order) => order.side === "SELL");
+    const buyOrders = place.filter((order) => order.side === "BUY");
+    const sumLitres = (orders) => orders.reduce((total, order) => total + order.litres, 0);
     return {
-      zoneId: input.zoneId,
+      province,
+      county,
       side: input.side,
-      tier: input.tier,
+      tier,
       windowDays,
       sampleSize: rates.length,
-      excludedSuspicious: inTier.length - rates.length,
+      excludedSuspicious: ofSide.length - rates.length,
+      averageRateToman: mean(rates),
       medianRateToman: median(rates),
       p25RateToman: percentile(rates, 25),
       p75RateToman: percentile(rates, 75),
       minRateToman: rates.length > 0 ? Math.min(...rates) : null,
       maxRateToman: rates.length > 0 ? Math.max(...rates) : null,
-      overallAverageRateToman: mean(allRates),
-      overallSampleSize: allRates.length,
+      averageTotalRateToman: mean(totals),
+      minTotalRateToman: totals.length > 0 ? Math.min(...totals) : null,
+      maxTotalRateToman: totals.length > 0 ? Math.max(...totals) : null,
+      averageLitres: mean(usable.map((order) => order.litres)),
+      byTier: ["T1500", "T3000", "T10000"].map((each) => {
+        const ofTier = usable.filter((order) => order.tier === each);
+        const tierTotals = ofTier.map(effectiveRate);
+        return {
+          tier: each,
+          sampleSize: ofTier.length,
+          averageTotalRateToman: mean(tierTotals),
+          minTotalRateToman: tierTotals.length > 0 ? Math.min(...tierTotals) : null,
+          maxTotalRateToman: tierTotals.length > 0 ? Math.max(...tierTotals) : null
+        };
+      }),
+      buyLitres: sumLitres(buyOrders),
+      sellLitres: sumLitres(sellOrders),
+      buyCount: buyOrders.length,
+      sellCount: sellOrders.length,
+      // Without a place the national row would just repeat the block above, so keep it null.
+      nationalAverageTotalRateToman: province === null && county === null ? null : mean(nationalTotals),
+      nationalSampleSize: province === null && county === null ? 0 : nationalTotals.length,
+      nationalCountyCount: province === null && county === null ? 0 : new Set(national.map((order) => `${order.province}/${order.county}`)).size,
+      overallAverageRateToman: mean(place.map((order) => order.rateToman)),
+      overallSampleSize: place.length,
       generatedAt: now.toISOString()
     };
   }
@@ -53564,6 +54316,8 @@ var MemoryOrderRepository = class {
       litres: input.litres,
       rateToman: input.rateToman,
       zoneId: input.zoneId,
+      province: input.province,
+      county: input.county,
       stationName: input.stationName,
       note: input.note,
       lat: input.lat,
@@ -53583,7 +54337,7 @@ var MemoryOrderRepository = class {
   }
   async search(query) {
     const matches = [...this.byId.values()].filter(
-      (order) => order.status === "OPEN" && order.zoneId === query.zoneId && order.side === query.side && order.tier === query.tier && order.expiresAt.getTime() > query.now.getTime()
+      (order) => order.status === "OPEN" && (query.zoneId === null || order.zoneId === query.zoneId) && (query.province === null || order.province === query.province) && (query.county === null || order.county === query.county) && order.side === query.side && (query.tier === null || order.tier === query.tier) && order.expiresAt.getTime() > query.now.getTime()
     );
     const withDistance = matches.map((order) => {
       if (!query.origin || order.lat === null || order.lng === null) return { order, km: Infinity };
@@ -53651,6 +54405,9 @@ var MemoryOrderRepository = class {
   }
   async listSince(zoneId, since, limit) {
     return [...this.byId.values()].filter((order) => order.zoneId === zoneId && order.createdAt.getTime() >= since.getTime()).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit).map(clone6);
+  }
+  async listByPlace(query) {
+    return [...this.byId.values()].filter((order) => order.createdAt.getTime() >= query.since.getTime()).filter((order) => query.province === null ? true : order.province === query.province).filter((order) => query.county === null ? true : order.county === query.county).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, query.limit).map(clone6);
   }
 };
 var MemoryReservationRepository = class {
@@ -54158,6 +54915,171 @@ async function applySeed(repos2) {
   }
 }
 
+// ../apps/api/src/infra/db/demo-orders.ts
+var DEMO_ORDERS = [
+  // کردستان / بانه
+  {
+    side: "SELL",
+    tier: "T3000",
+    litres: 60,
+    rateToman: 450,
+    province: "\u06A9\u0631\u062F\u0633\u062A\u0627\u0646",
+    county: "\u0628\u0627\u0646\u0647",
+    stationName: "\u062C\u0627\u06CC\u06AF\u0627\u0647 \u0634\u0647\u06CC\u062F \u06A9\u0627\u0638\u0645\u06CC",
+    note: "\u0633\u0647\u0645\u06CC\u0647\u0654 \u0645\u0627\u0647\u0627\u0646\u0647\u060C \u06A9\u0627\u0631\u062A \u0633\u0648\u062E\u062A \u062A\u062D\u0648\u06CC\u0644 \u0647\u0645\u0627\u0646\u200C\u062C\u0627"
+  },
+  {
+    side: "SELL",
+    tier: "T1500",
+    litres: 40,
+    rateToman: 300,
+    province: "\u06A9\u0631\u062F\u0633\u062A\u0627\u0646",
+    county: "\u0628\u0627\u0646\u0647",
+    stationName: "\u062C\u0627\u06CC\u06AF\u0627\u0647 \u0645\u0631\u06A9\u0632\u06CC",
+    note: "\u0641\u0642\u0637 \u0639\u0635\u0631\u0647\u0627"
+  },
+  {
+    side: "SELL",
+    tier: "T10000",
+    litres: 25,
+    rateToman: 900,
+    province: "\u06A9\u0631\u062F\u0633\u062A\u0627\u0646",
+    county: "\u0628\u0627\u0646\u0647",
+    stationName: "\u062C\u0627\u06CC\u06AF\u0627\u0647 \u0622\u0632\u0627\u062F \u0628\u0627\u0646\u0647",
+    note: ""
+  },
+  {
+    side: "BUY",
+    tier: "T1500",
+    litres: 80,
+    rateToman: 350,
+    province: "\u06A9\u0631\u062F\u0633\u062A\u0627\u0646",
+    county: "\u0628\u0627\u0646\u0647",
+    stationName: "\u062C\u0627\u06CC\u06AF\u0627\u0647 \u0634\u0647\u06CC\u062F \u06A9\u0627\u0638\u0645\u06CC",
+    note: "\u0628\u0631\u0627\u06CC \u0633\u0641\u0631 \u0647\u0641\u062A\u0647\u0654 \u0622\u06CC\u0646\u062F\u0647"
+  },
+  {
+    side: "BUY",
+    tier: "T3000",
+    litres: 50,
+    rateToman: 400,
+    province: "\u06A9\u0631\u062F\u0633\u062A\u0627\u0646",
+    county: "\u0628\u0627\u0646\u0647",
+    stationName: "",
+    note: ""
+  },
+  // تهران / تهران
+  {
+    side: "SELL",
+    tier: "T3000",
+    litres: 120,
+    rateToman: 700,
+    province: "\u062A\u0647\u0631\u0627\u0646",
+    county: "\u062A\u0647\u0631\u0627\u0646",
+    stationName: "\u062C\u0627\u06CC\u06AF\u0627\u0647 \u0628\u0632\u0631\u06AF\u0631\u0627\u0647 \u0628\u0639\u062B\u062A",
+    note: "\u062A\u062D\u0648\u06CC\u0644 \u062F\u0631 \u0645\u062D\u0644"
+  },
+  {
+    side: "SELL",
+    tier: "T1500",
+    litres: 90,
+    rateToman: 500,
+    province: "\u062A\u0647\u0631\u0627\u0646",
+    county: "\u062A\u0647\u0631\u0627\u0646",
+    stationName: "\u062C\u0627\u06CC\u06AF\u0627\u0647 \u0634\u0647\u0631\u06A9 \u063A\u0631\u0628",
+    note: ""
+  },
+  {
+    side: "BUY",
+    tier: "T1500",
+    litres: 150,
+    rateToman: 600,
+    province: "\u062A\u0647\u0631\u0627\u0646",
+    county: "\u062A\u0647\u0631\u0627\u0646",
+    stationName: "",
+    note: "\u0647\u0631 \u0686\u0647 \u0628\u06CC\u0634\u062A\u0631 \u0628\u0647\u062A\u0631"
+  },
+  {
+    side: "BUY",
+    tier: "T3000",
+    litres: 60,
+    rateToman: 650,
+    province: "\u062A\u0647\u0631\u0627\u0646",
+    county: "\u062A\u0647\u0631\u0627\u0646",
+    stationName: "",
+    note: ""
+  },
+  // اصفهان / اصفهان
+  {
+    side: "SELL",
+    tier: "T3000",
+    litres: 70,
+    rateToman: 600,
+    province: "\u0627\u0635\u0641\u0647\u0627\u0646",
+    county: "\u0627\u0635\u0641\u0647\u0627\u0646",
+    stationName: "\u062C\u0627\u06CC\u06AF\u0627\u0647 \u0686\u0647\u0627\u0631\u0628\u0627\u063A",
+    note: ""
+  },
+  {
+    side: "BUY",
+    tier: "T1500",
+    litres: 45,
+    rateToman: 520,
+    province: "\u0627\u0635\u0641\u0647\u0627\u0646",
+    county: "\u0627\u0635\u0641\u0647\u0627\u0646",
+    stationName: "",
+    note: ""
+  },
+  // خراسان رضوی / مشهد
+  {
+    side: "SELL",
+    tier: "T10000",
+    litres: 100,
+    rateToman: 1200,
+    province: "\u062E\u0631\u0627\u0633\u0627\u0646 \u0631\u0636\u0648\u06CC",
+    county: "\u0645\u0634\u0647\u062F",
+    stationName: "\u062C\u0627\u06CC\u06AF\u0627\u0647 \u0648\u06A9\u06CC\u0644\u200C\u0622\u0628\u0627\u062F",
+    note: "\u067E\u0645\u067E \u0622\u0632\u0627\u062F"
+  }
+];
+async function applyDemoOrders(repos2, clock) {
+  const existing = await repos2.orders.listAll({
+    status: null,
+    zoneId: null,
+    side: null,
+    text: null,
+    limit: 1,
+    offset: 0
+  });
+  if (existing.total > 0) return;
+  const owners = await Promise.all([
+    repos2.users.findByPhone("09187888993"),
+    repos2.users.findByPhone("09373210545")
+  ]);
+  const ownerIds = owners.filter((user) => user !== null).map((user) => user.id);
+  if (ownerIds.length === 0) return;
+  const now = clock.now();
+  for (const [index, demo] of DEMO_ORDERS.entries()) {
+    const ownerId = ownerIds[index % ownerIds.length];
+    await repos2.orders.create({
+      ownerId,
+      side: demo.side,
+      tier: demo.tier,
+      litres: demo.litres,
+      rateToman: demo.rateToman,
+      zoneId: BANEH_ZONE.id,
+      province: demo.province,
+      county: demo.county,
+      stationName: demo.stationName || null,
+      note: demo.note || null,
+      lat: null,
+      lng: null,
+      deliveryMethod: "FUEL_CARD",
+      expiresAt: new Date(now.getTime() + 36 * 36e5)
+    });
+  }
+}
+
 // ../apps/api/src/main.ts
 var config = loadConfig();
 if (config.NODE_ENV === "production") {
@@ -54187,6 +55109,9 @@ for (const demo of [
   const created = await repos.users.create({ phone: demo.phone, role: demo.role });
   created.displayName = demo.displayName;
   await repos.users.save(created);
+}
+if (process.env.SEED_DEMO_ORDERS !== "0") {
+  await applyDemoOrders(repos, systemClock);
 }
 var { app } = await buildApp({
   config,
