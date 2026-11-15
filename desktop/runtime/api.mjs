@@ -38251,7 +38251,7 @@ var require_parse_url = __commonJS({
 var require_form_data = __commonJS({
   "../node_modules/.pnpm/light-my-request@6.8.0/node_modules/light-my-request/lib/form-data.js"(exports, module) {
     "use strict";
-    var { randomUUID: randomUUID8 } = __require("node:crypto");
+    var { randomUUID: randomUUID9 } = __require("node:crypto");
     var { Readable } = __require("node:stream");
     var textEncoder;
     function isFormDataLike(payload) {
@@ -38259,7 +38259,7 @@ var require_form_data = __commonJS({
     }
     function formDataToStream(formdata) {
       textEncoder = textEncoder ?? new TextEncoder();
-      const boundary = `----formdata-${randomUUID8()}`;
+      const boundary = `----formdata-${randomUUID9()}`;
       const prefix = `--${boundary}\r
 Content-Disposition: form-data`;
       const escape2 = (str) => str.replace(/\n/g, "%0A").replace(/\r/g, "%0D").replace(/"/g, "%22");
@@ -54827,6 +54827,7 @@ var NOTIFICATION_KINDS = [
   "RESERVATION_REQUESTED",
   "RESERVATION_CONFIRMED",
   "RESERVATION_REJECTED",
+  "RESERVATION_EXTENDED",
   "RESERVATION_EXPIRED",
   "RESERVATION_CANCELLED",
   "TRADE_COMPLETED",
@@ -54859,6 +54860,12 @@ var NOTIFICATION_TEMPLATES = {
     titleFa: "\u062F\u0631\u062E\u0648\u0627\u0633\u062A \u0631\u062F \u0634\u062F",
     bodyFa: "\u0635\u0627\u062D\u0628 \u0633\u0641\u0627\u0631\u0634 \u062F\u0631\u062E\u0648\u0627\u0633\u062A \u0634\u0645\u0627 \u0628\u0631\u0627\u06CC {litres} \u0644\u06CC\u062A\u0631 \u0631\u0627 \u0631\u062F \u06A9\u0631\u062F \u0648 \u0633\u0641\u0627\u0631\u0634 \u0628\u0647 \u0628\u0627\u0632\u0627\u0631 \u0628\u0631\u06AF\u0634\u062A.",
     smsFa: "\u062F\u0631\u062E\u0648\u0627\u0633\u062A \u0631\u0632\u0631\u0648 \u0634\u0645\u0627 \u0631\u062F \u0634\u062F. \u0628\u0646\u0632\u06CC\u0646"
+  },
+  // G-04: the taker pushed the deadline once, the owner should know the clock moved.
+  RESERVATION_EXTENDED: {
+    titleFa: "\u0645\u0647\u0644\u062A \u0631\u0632\u0631\u0648 \u062A\u0645\u062F\u06CC\u062F \u0634\u062F",
+    bodyFa: "\u062E\u0631\u06CC\u062F\u0627\u0631 \u0645\u0647\u0644\u062A \u0631\u0632\u0631\u0648 {litres} \u0644\u06CC\u062A\u0631 \u0631\u0627 {minutes} \u062F\u0642\u06CC\u0642\u0647 \u062A\u0645\u062F\u06CC\u062F \u06A9\u0631\u062F. \u0628\u0631\u0627\u06CC \u062A\u0623\u06CC\u06CC\u062F \u06CC\u0627 \u0631\u062F \u0647\u0645\u06CC\u0646 \u062D\u0627\u0644\u0627 \u0627\u0642\u062F\u0627\u0645 \u06A9\u0646\u06CC\u062F.",
+    smsFa: null
   },
   RESERVATION_EXPIRED: {
     titleFa: "\u0645\u0647\u0644\u062A \u062A\u0623\u06CC\u06CC\u062F \u062A\u0645\u0627\u0645 \u0634\u062F",
@@ -55033,7 +55040,10 @@ var RATEABLE_RESERVATION_STATUSES = ["COMPLETED", "AUTO_COMPLETED"];
 
 // ../packages/shared/dist/settings.js
 var SETTING_DEFINITIONS = {
-  "reservation.ttl_minutes": { schema: external_exports.number().int().min(1).max(120), default: 10 },
+  // G-04: a reservation lives 30 minutes by default and can be extended once, by 10 minutes.
+  "reservation.ttl_minutes": { schema: external_exports.number().int().min(1).max(120), default: 30 },
+  "reservation.extend_minutes": { schema: external_exports.number().int().min(1).max(60), default: 10 },
+  "reservation.max_extensions": { schema: external_exports.number().int().min(0).max(5), default: 1 },
   "reservation.max_active_per_user": { schema: external_exports.number().int().min(1).max(10), default: 1 },
   "reservation.contact_window_minutes": { schema: external_exports.number().int().min(1).max(240), default: 45 },
   "owner.decision_ttl_minutes": { schema: external_exports.number().int().min(1).max(120), default: 5 },
@@ -55135,10 +55145,21 @@ var orderSearchSchema = external_exports.object({
   lat: external_exports.coerce.number().min(-90).max(90).optional(),
   lng: external_exports.coerce.number().min(-180).max(180).optional(),
   radiusKm: external_exports.coerce.number().min(0.5).max(200).optional(),
+  /**
+   * G-05 lot matching. `exact` asks for one standard lot (40 litres, say) and the API answers
+   * with the closest lots inside +-10% when nothing exact exists; `range` is a plain between.
+   */
+  litresMode: external_exports.enum(["exact", "range"]).default("exact"),
+  litres: external_exports.coerce.number().min(1).max(1e3).optional(),
+  minLitres: external_exports.coerce.number().min(1).max(1e3).optional(),
+  maxLitres: external_exports.coerce.number().min(1).max(1e3).optional(),
   sort: external_exports.enum(["distance", "price", "newest"]).default("distance"),
   cursor: external_exports.string().max(128).optional(),
   limit: external_exports.coerce.number().int().min(1).max(50).default(20)
-}).strict();
+}).strict().refine((value) => value.minLitres === void 0 || value.maxLitres === void 0 || value.minLitres <= value.maxLitres, {
+  message: "minLitres must not exceed maxLitres",
+  path: ["minLitres"]
+}).refine((value) => value.radiusKm === void 0 || value.lat !== void 0 && value.lng !== void 0, { message: "radiusKm requires lat and lng", path: ["radiusKm"] });
 var originQuerySchema = external_exports.object({
   lat: external_exports.coerce.number().min(-90).max(90).optional(),
   lng: external_exports.coerce.number().min(-180).max(180).optional()
@@ -55175,6 +55196,22 @@ var rejectPaymentSchema = external_exports.object({
 var paymentListSchema = external_exports.object({
   status: external_exports.enum(["PENDING", "PAID", "FAILED", "EXPIRED", "NEEDS_REVIEW"]).optional(),
   limit: external_exports.coerce.number().int().min(1).max(100).default(20)
+}).strict();
+var createPlanSchema = external_exports.object({
+  code: external_exports.string().trim().min(2).max(32).regex(/^[a-z0-9_-]+$/, { message: "CODE_INVALID" }),
+  nameFa: external_exports.string().trim().min(2).max(60),
+  priceToman: external_exports.number().int().min(0).max(1e8),
+  durationDays: external_exports.number().int().min(1).max(365),
+  /** Extra open-order slots the plan grants while it is active. */
+  maxActiveOrders: external_exports.number().int().min(0).max(50).default(0),
+  isActive: external_exports.boolean().default(true)
+}).strict();
+var updatePlanSchema = external_exports.object({
+  nameFa: external_exports.string().trim().min(2).max(60).optional(),
+  priceToman: external_exports.number().int().min(0).max(1e8).optional(),
+  durationDays: external_exports.number().int().min(1).max(365).optional(),
+  maxActiveOrders: external_exports.number().int().min(0).max(50).optional(),
+  isActive: external_exports.boolean().optional()
 }).strict();
 var createPaymentCardSchema = external_exports.object({
   cardNumber: external_exports.string().trim().transform(toAsciiDigits).pipe(external_exports.string().regex(/^\d{16}$/, { message: "CARD_NUMBER_INVALID" })),
@@ -56487,6 +56524,15 @@ function publicLocation(point2) {
 var ROAD_FACTOR = 1.35;
 var AVERAGE_SPEED_KMH = 32;
 var PROVIDER_TIMEOUT_MS = 1500;
+function wireEstimate(estimate) {
+  return {
+    distanceKm: Math.round(estimate.distanceMeters / 1e3 * 100) / 100,
+    durationMinutes: Math.max(1, Math.round(estimate.durationSeconds / 60)),
+    etaMinutes: estimate.etaMinutes,
+    approximate: estimate.approximate,
+    source: estimate.source
+  };
+}
 var isValid2 = (result) => !!result && Number.isFinite(result.distanceMeters) && Number.isFinite(result.durationSeconds) && result.distanceMeters >= 0 && result.durationSeconds >= 0;
 var withTimeout = async (promise, timeoutMs) => {
   let timer;
@@ -56541,7 +56587,8 @@ var toZoneView = (zone) => ({
   slug: zone.slug,
   nameFa: zone.nameFa,
   city: zone.city,
-  province: zone.province
+  province: zone.province,
+  boundary: zone.boundary.map(([lng, lat]) => [lng, lat])
 });
 var LocationService = class {
   constructor(zones2) {
@@ -56798,6 +56845,9 @@ var OrderService = class {
   }
   async search(query2) {
     const offset = decodeCursor(query2.cursor);
+    const origin = query2.lat !== void 0 && query2.lng !== void 0 ? { lat: query2.lat, lng: query2.lng } : null;
+    const exact = query2.litresMode === "exact" ? query2.litres ?? null : null;
+    const between2 = query2.litresMode === "range" && (query2.minLitres !== void 0 || query2.maxLitres !== void 0) ? { min: query2.minLitres ?? 1, max: query2.maxLitres ?? 1e3 } : null;
     const { items, total } = await this.repos.orders.search({
       province: query2.province ?? null,
       county: query2.county ?? null,
@@ -56808,22 +56858,67 @@ var OrderService = class {
       limit: query2.limit,
       offset,
       sort: query2.sort,
-      origin: query2.lat !== void 0 && query2.lng !== void 0 ? { lat: query2.lat, lng: query2.lng } : null,
-      radiusKm: query2.radiusKm ?? null
+      origin,
+      radiusKm: query2.radiusKm ?? null,
+      litresExact: exact,
+      litresBetween: between2
     });
     const nextOffset = offset + items.length;
+    if (exact !== null && total === 0) {
+      const margin = exact * 0.1;
+      const near = await this.repos.orders.search({
+        province: query2.province ?? null,
+        county: query2.county ?? null,
+        zoneId: query2.zoneId ?? null,
+        side: query2.side,
+        tier: query2.tier ?? null,
+        now: this.clock.now(),
+        // The suggestion list is short on purpose: it answers "what is close to 40 litres?".
+        limit: 5,
+        offset: 0,
+        sort: "price",
+        origin: null,
+        radiusKm: null,
+        litresExact: null,
+        litresBetween: { min: Math.max(1, exact - margin), max: exact + margin }
+      });
+      return {
+        items: [],
+        nextCursor: null,
+        nearest: near.items.length ? { litres: exact, items: await this.decorate(near.items, origin) } : null,
+        message: near.items.length ? `${toPersianDigits(exact)} \u0644\u06CC\u062A\u0631 \u0645\u0648\u062C\u0648\u062F \u0646\u06CC\u0633\u062A\u061B \u0646\u0632\u062F\u06CC\u06A9\u200C\u062A\u0631\u06CC\u0646 \u0644\u0627\u062A\u200C\u0647\u0627 \u0631\u0627 \u0628\u0628\u06CC\u0646.` : `${toPersianDigits(exact)} \u0644\u06CC\u062A\u0631 \u0645\u0648\u062C\u0648\u062F \u0646\u06CC\u0633\u062A \u0648 \u0644\u0627\u062A \u0646\u0632\u062F\u06CC\u06A9\u06CC \u0647\u0645 \u062B\u0628\u062A \u0646\u0634\u062F\u0647 \u0627\u0633\u062A.`
+      };
+    }
     return {
-      items: items.map(toOrderView),
-      nextCursor: nextOffset < total ? encodeCursor(nextOffset) : null
+      items: await this.decorate(items, origin),
+      nextCursor: nextOffset < total ? encodeCursor(nextOffset) : null,
+      nearest: null,
+      message: null
     };
+  }
+  /**
+   * G-07: every listing answers with distance and ETA once the caller sent a point. The
+   * exact stored coordinates are used for the maths here and never leave the process — the
+   * response carries the snapped `location` from `toOrderView` and nothing else.
+   */
+  async decorate(orders2, origin) {
+    return Promise.all(
+      orders2.map(async (order) => {
+        const view = toOrderView(order);
+        if (!origin || order.lat === null || order.lng === null) return view;
+        return {
+          ...view,
+          distance: wireEstimate(
+            await this.distance.estimate(origin, { lat: order.lat, lng: order.lng })
+          )
+        };
+      })
+    );
   }
   async getById(id, origin = null) {
     const order = await this.repos.orders.findById(id);
     if (!order) throw AppError.notFound("ORDER_NOT_AVAILABLE", "Order not found");
-    const view = toOrderView(order);
-    if (origin && order.lat !== null && order.lng !== null) {
-      view.distance = await this.distance.estimate(origin, { lat: order.lat, lng: order.lng });
-    }
+    const [view] = await this.decorate([order], origin);
     return view;
   }
   async listMine(user, limit = 20) {
@@ -57027,12 +57122,14 @@ var ZarinpalGatewayProvider = class {
 };
 
 // ../apps/api/src/modules/payment-service.ts
+import { randomUUID } from "node:crypto";
 var toPlanView = (plan) => ({
   id: plan.id,
   code: plan.code,
   nameFa: plan.nameFa,
   priceToman: plan.priceToman,
-  priceLabelFa: formatToman(plan.priceToman),
+  // G-15: a zero-priced plan reads «رایگان» instead of «۰ تومان».
+  priceLabelFa: plan.priceToman === 0 ? "\u0631\u0627\u06CC\u06AF\u0627\u0646" : formatToman(plan.priceToman),
   durationDays: plan.durationDays,
   maxActiveOrders: plan.maxActiveOrders
 });
@@ -57076,6 +57173,77 @@ var PaymentService = class {
   async listPlans() {
     const plans2 = await this.repos.plans.listActive();
     return { items: plans2.map(toPlanView) };
+  }
+  /* ------------------------------------------------------------ plan catalogue (G-15) */
+  /** Staff view: inactive plans included, so a plan can be switched back on. */
+  async listAllPlans() {
+    const plans2 = await this.repos.plans.listAll();
+    return { items: plans2.map(toPlanView) };
+  }
+  /**
+   * Creates a plan. The seeded free plan proves the invariant the brief asks for: the catalogue
+   * must always contain at least one free, active plan, otherwise a new user cannot trade at all.
+   */
+  async createPlan(actor, input) {
+    const existing = await this.repos.plans.findByCode(input.code);
+    if (existing)
+      throw AppError.conflict("PLAN_CODE_TAKEN", "A plan with this code already exists");
+    const plan = await this.repos.plans.upsert({
+      id: randomUUID(),
+      code: input.code,
+      nameFa: input.nameFa,
+      durationDays: input.durationDays,
+      priceToman: input.priceToman,
+      maxActiveOrders: input.maxActiveOrders ?? 0,
+      isActive: input.isActive ?? true
+    });
+    await this.repos.audit.append({
+      actorId: actor.id,
+      action: "plan.created",
+      entity: "plan",
+      entityId: plan.id,
+      metadata: { code: plan.code, priceToman: plan.priceToman }
+    });
+    return toPlanView(plan);
+  }
+  /**
+   * Edits a plan. Every price change is forward-only by construction: a subscription stores its
+   * own `planId` and the money it was charged lives on the payment row, so nothing is rewritten.
+   */
+  async updatePlan(actor, id, patch) {
+    const plan = await this.repos.plans.findById(id);
+    if (!plan) throw AppError.notFound("PLAN_NOT_FOUND", "Plan not found");
+    if (patch.isActive === false && plan.priceToman === 0) {
+      throw AppError.conflict("FREE_PLAN_REQUIRED", "The free plan must stay active");
+    }
+    const updated = await this.repos.plans.update(id, patch);
+    if (!updated) throw AppError.notFound("PLAN_NOT_FOUND", "Plan not found");
+    await this.repos.audit.append({
+      actorId: actor.id,
+      action: "plan.updated",
+      entity: "plan",
+      entityId: id,
+      metadata: { ...patch }
+    });
+    return toPlanView(updated);
+  }
+  /** Soft delete: sold plans stay readable for the subscriptions that point at them. */
+  async retirePlan(actor, id) {
+    const plan = await this.repos.plans.findById(id);
+    if (!plan) throw AppError.notFound("PLAN_NOT_FOUND", "Plan not found");
+    if (plan.priceToman === 0) {
+      throw AppError.conflict("FREE_PLAN_REQUIRED", "The free plan must stay active");
+    }
+    const updated = await this.repos.plans.setActive(id, false);
+    if (!updated) throw AppError.notFound("PLAN_NOT_FOUND", "Plan not found");
+    await this.repos.audit.append({
+      actorId: actor.id,
+      action: "plan.retired",
+      entity: "plan",
+      entityId: id,
+      metadata: { code: plan.code }
+    });
+    return toPlanView(updated);
   }
   async currentSubscription(user) {
     const now = this.clock.now();
@@ -57625,7 +57793,8 @@ var toReservationView = (reservation) => ({
   expiresAt: reservation.expiresAt.toISOString(),
   decidedAt: reservation.decidedAt?.toISOString() ?? null,
   completedAt: reservation.completedAt?.toISOString() ?? null,
-  cancelReason: reservation.cancelReason
+  cancelReason: reservation.cancelReason,
+  extensionCount: reservation.extensionCount
 });
 var ReservationService = class {
   constructor(repos2, settings2, clock, notifier = NOOP_NOTIFIER, reputation = NOOP_REPUTATION) {
@@ -57687,7 +57856,9 @@ var ReservationService = class {
         id: crypto.randomUUID(),
         orderId,
         takerId: taker.id,
-        expiresAt: new Date(now.getTime() + config2["owner.decision_ttl_minutes"] * 6e4)
+        // G-04: the reservation itself lives `reservation.ttl_minutes` (30 by default). The owner's
+        // decision window is a separate nudge that only drives `expireDueReservations`.
+        expiresAt: new Date(now.getTime() + config2["reservation.ttl_minutes"] * 6e4)
       });
       if (!reservation) {
         await this.repos.orders.transition(orderId, "RESERVED", "OPEN");
@@ -57703,7 +57874,7 @@ var ReservationService = class {
       await this.notify(
         order.ownerId,
         "RESERVATION_REQUESTED",
-        { litres: order.litres, minutes: config2["owner.decision_ttl_minutes"] },
+        { litres: order.litres, minutes: config2["reservation.ttl_minutes"] },
         { orderId, reservationId: reservation.id }
       );
       return toReservationView(reservation);
@@ -57940,6 +58111,72 @@ var ReservationService = class {
     }
     return toReservationView(updated);
   }
+  /**
+   * G-04: the taker may move the deadline exactly once, by `reservation.extend_minutes`.
+   * The compare-and-set on `expiresAt` makes a double tap cheap to reason about: the second call
+   * loses the race and gets a 409 instead of a second extension.
+   */
+  async extend(actor, id) {
+    const { reservation, order } = await this.load(id);
+    if (reservation.takerId !== actor.id) {
+      throw AppError.forbidden("NOT_RESERVATION_TAKER", "Only the buyer can extend a reservation");
+    }
+    if (reservation.status !== "PENDING_OWNER") {
+      throw new AppError("ALREADY_DECIDED", 409, `Reservation is ${reservation.status}`);
+    }
+    const config2 = await this.settings.get();
+    const now = this.clock.now();
+    if (reservation.expiresAt.getTime() <= now.getTime()) {
+      await this.expireOne(reservation, order, config2["reservation.ttl_minutes"]);
+      throw new AppError("RESERVATION_NOT_ACTIVE", 409, "Reservation expired");
+    }
+    if (reservation.extensionCount >= config2["reservation.max_extensions"]) {
+      throw new AppError("EXTENSION_LIMIT_REACHED", 409, "The reservation was already extended", {
+        maxExtensions: config2["reservation.max_extensions"]
+      });
+    }
+    const minutes = config2["reservation.extend_minutes"];
+    const newExpiry = new Date(reservation.expiresAt.getTime() + minutes * 6e4);
+    const updated = await this.repos.reservations.extend(id, reservation.expiresAt, newExpiry);
+    if (!updated) throw AppError.conflict("CONFLICT", "Reservation changed while extending");
+    await this.repos.audit.append({
+      actorId: actor.id,
+      action: "reservation.extended",
+      entity: "reservation",
+      entityId: id,
+      metadata: { orderId: order.id, minutes, expiresAt: newExpiry.toISOString() }
+    });
+    await this.notify(
+      order.ownerId,
+      "RESERVATION_EXTENDED",
+      { litres: order.litres, minutes },
+      { orderId: order.id, reservationId: id, expiresAt: newExpiry.toISOString() }
+    );
+    return toReservationView(updated);
+  }
+  /**
+   * G-04: when a buyer comes back after their reservation was released, the app offers to book the
+   * same order again instead of leaving them on a dead screen. Only the newest release within a day
+   * whose order is still open qualifies.
+   */
+  async rebookHint(user) {
+    const since = this.clock.now().getTime() - 24 * 36e5;
+    const recent = await this.repos.reservations.listByTaker(user.id, 10);
+    for (const reservation of recent) {
+      if (reservation.createdAt.getTime() < since) break;
+      if (reservation.status !== "EXPIRED") continue;
+      const order = await this.repos.orders.findById(reservation.orderId);
+      if (!order || order.status !== "OPEN") continue;
+      if (order.ownerId === user.id) continue;
+      return {
+        orderId: order.id,
+        reservationId: reservation.id,
+        litres: order.litres,
+        releasedAt: reservation.expiresAt.toISOString()
+      };
+    }
+    return null;
+  }
   async listMine(user, limit = 20) {
     const reservations2 = await this.repos.reservations.listByTaker(user.id, limit);
     return reservations2.map(toReservationView);
@@ -58021,8 +58258,9 @@ var ReservationService = class {
     }
     return count;
   }
+  /** The window that actually runs out is the reservation window (G-04), not the owner nudge. */
   currentDecisionTtl(config2) {
-    return config2["owner.decision_ttl_minutes"];
+    return config2["reservation.ttl_minutes"];
   }
 };
 
@@ -58742,6 +58980,14 @@ async function buildApp(options) {
     const query2 = parseInput(paginationSchema, request.query);
     return { items: await reservations2.listMine(currentUser(request), query2.limit) };
   });
+  app2.get("/v1/reservations/rebook-hint", { preHandler: requireAuth }, async (request) => {
+    const hint = await reservations2.rebookHint(currentUser(request));
+    return { hint };
+  });
+  app2.post("/v1/reservations/:id/extend", { preHandler: requireAuth }, async (request) => {
+    const { id } = request.params;
+    return reservations2.extend(currentUser(request), id);
+  });
   app2.get("/v1/reservations/:id", { preHandler: requireAuth }, async (request) => {
     const { id } = request.params;
     return reservations2.get(currentUser(request), id);
@@ -58882,6 +59128,37 @@ async function buildApp(options) {
       const patch = request.body;
       if (!patch || typeof patch !== "object") throw AppError.validation("Body must be an object");
       return { updated: await settings2.update(user.id, patch) };
+    }
+  );
+  app2.get(
+    "/v1/admin/plans",
+    { preHandler: [requireAuth, requireRole("ADMIN", "OWNER")] },
+    async () => payments2.listAllPlans()
+  );
+  app2.post(
+    "/v1/admin/plans",
+    { preHandler: [requireAuth, requireRole("ADMIN", "OWNER")] },
+    async (request, reply) => {
+      const body = parseInput(createPlanSchema, request.body);
+      const plan = await payments2.createPlan(currentUser(request), body);
+      return reply.status(201).send(plan);
+    }
+  );
+  app2.patch(
+    "/v1/admin/plans/:id",
+    { preHandler: [requireAuth, requireRole("ADMIN", "OWNER")] },
+    async (request) => {
+      const { id } = request.params;
+      const body = parseInput(updatePlanSchema, request.body);
+      return payments2.updatePlan(currentUser(request), id, body);
+    }
+  );
+  app2.delete(
+    "/v1/admin/plans/:id",
+    { preHandler: [requireAuth, requireRole("ADMIN", "OWNER")] },
+    async (request) => {
+      const { id } = request.params;
+      return payments2.retirePlan(currentUser(request), id);
     }
   );
   app2.get(
@@ -59084,10 +59361,10 @@ function loadConfig(env = process.env) {
 }
 
 // ../apps/api/src/infra/memory/index.ts
-import { randomUUID as randomUUID5 } from "node:crypto";
+import { randomUUID as randomUUID6 } from "node:crypto";
 
 // ../apps/api/src/infra/memory/chat.ts
-import { randomUUID } from "node:crypto";
+import { randomUUID as randomUUID2 } from "node:crypto";
 var clone = (value) => structuredClone(value);
 var MemoryConversationRepository = class {
   constructor(orders2, reservations2) {
@@ -59108,7 +59385,7 @@ var MemoryConversationRepository = class {
     const existing = await this.findByOrder(orderId);
     if (existing) return existing;
     const conversation = {
-      id: randomUUID(),
+      id: randomUUID2(),
       orderId,
       createdAt: at,
       closedAt: null
@@ -59144,7 +59421,7 @@ var MemoryMessageRepository = class {
       if (existing) return null;
     }
     const message = {
-      id: randomUUID(),
+      id: randomUUID2(),
       conversationId: input.conversationId,
       senderId: input.senderId,
       kind: input.kind,
@@ -59196,16 +59473,33 @@ var MemoryMessageRepository = class {
 };
 
 // ../apps/api/src/infra/memory/billing.ts
-import { randomUUID as randomUUID2 } from "node:crypto";
+import { randomUUID as randomUUID3 } from "node:crypto";
 var clone2 = (value) => structuredClone(value);
 var MemoryPlanRepository = class {
   byId = /* @__PURE__ */ new Map();
   async listActive() {
     return [...this.byId.values()].filter((plan) => plan.isActive).sort((a, b) => a.priceToman - b.priceToman).map(clone2);
   }
+  async listAll() {
+    return [...this.byId.values()].sort((a, b) => a.priceToman - b.priceToman).map(clone2);
+  }
   async findById(id) {
     const plan = this.byId.get(id);
     return plan ? clone2(plan) : null;
+  }
+  async setActive(id, isActive) {
+    const plan = this.byId.get(id);
+    if (!plan) return null;
+    const updated = { ...plan, isActive };
+    this.byId.set(id, clone2(updated));
+    return clone2(updated);
+  }
+  async update(id, patch) {
+    const plan = this.byId.get(id);
+    if (!plan) return null;
+    const updated = { ...plan, ...patch };
+    this.byId.set(id, clone2(updated));
+    return clone2(updated);
   }
   async findByCode(code) {
     const plan = [...this.byId.values()].find((candidate) => candidate.code === code);
@@ -59220,7 +59514,7 @@ var MemorySubscriptionRepository = class {
   byId = /* @__PURE__ */ new Map();
   async create(input) {
     const subscription = {
-      id: randomUUID2(),
+      id: randomUUID3(),
       userId: input.userId,
       planId: input.planId,
       status: "PENDING",
@@ -59288,7 +59582,7 @@ var MemoryPaymentRepository = class {
       return null;
     }
     const payment = {
-      id: randomUUID2(),
+      id: randomUUID3(),
       userId: input.userId,
       subscriptionId: input.subscriptionId,
       provider: input.provider,
@@ -59371,7 +59665,7 @@ var MemoryPaymentCardRepository = class {
   }
   async create(input, at) {
     const card = {
-      id: randomUUID2(),
+      id: randomUUID3(),
       cardNumber: input.cardNumber,
       holderName: input.holderName,
       bankName: input.bankName,
@@ -59391,7 +59685,7 @@ var MemoryPaymentCardRepository = class {
 };
 
 // ../apps/api/src/infra/memory/reputation.ts
-import { randomUUID as randomUUID3 } from "node:crypto";
+import { randomUUID as randomUUID4 } from "node:crypto";
 var clone3 = (value) => structuredClone(value);
 var MemoryReputationRepository = class {
   events = [];
@@ -59401,7 +59695,7 @@ var MemoryReputationRepository = class {
   }
   async append(input, at) {
     const event = {
-      id: randomUUID3(),
+      id: randomUUID4(),
       userId: input.userId,
       kind: input.kind,
       delta: input.delta,
@@ -59426,7 +59720,7 @@ var MemoryReputationRepository = class {
     const key = this.ratingKey(input.reservationId, input.raterId);
     if (this.ratings.has(key)) return null;
     const rating = {
-      id: randomUUID3(),
+      id: randomUUID4(),
       reservationId: input.reservationId,
       raterId: input.raterId,
       subjectId: input.subjectId,
@@ -59440,13 +59734,13 @@ var MemoryReputationRepository = class {
 };
 
 // ../apps/api/src/infra/memory/notifications.ts
-import { randomUUID as randomUUID4 } from "node:crypto";
+import { randomUUID as randomUUID5 } from "node:crypto";
 var clone4 = (value) => structuredClone(value);
 var MemoryNotificationRepository = class {
   byId = /* @__PURE__ */ new Map();
   async create(input, at) {
     const notification = {
-      id: randomUUID4(),
+      id: randomUUID5(),
       userId: input.userId,
       channel: input.channel,
       kind: input.kind,
@@ -59536,7 +59830,7 @@ var MemoryUserRepository = class {
   }
   async create(input) {
     const user = {
-      id: randomUUID5(),
+      id: randomUUID6(),
       phone: input.phone,
       displayName: null,
       role: input.role ?? "USER",
@@ -59591,7 +59885,7 @@ var MemoryRefreshTokenRepository = class {
   byId = /* @__PURE__ */ new Map();
   async create(input) {
     const record = {
-      id: randomUUID5(),
+      id: randomUUID6(),
       userId: input.userId,
       tokenHash: input.tokenHash,
       familyId: input.familyId,
@@ -59655,7 +59949,7 @@ var MemoryDeviceRepository = class {
       }
     }
     const created = {
-      id: randomUUID5(),
+      id: randomUUID6(),
       userId: input.userId,
       deviceId: input.deviceId,
       platform: input.platform,
@@ -59676,7 +59970,7 @@ var MemoryOrderRepository = class {
   async create(input) {
     const now = /* @__PURE__ */ new Date();
     const order = {
-      id: randomUUID5(),
+      id: randomUUID6(),
       ownerId: input.ownerId,
       side: input.side,
       tier: input.tier,
@@ -59704,7 +59998,7 @@ var MemoryOrderRepository = class {
   }
   async search(query2) {
     const matches = [...this.byId.values()].filter(
-      (order) => order.status === "OPEN" && (query2.zoneId === null || order.zoneId === query2.zoneId) && (query2.province === null || order.province === query2.province) && (query2.county === null || order.county === query2.county) && order.side === query2.side && (query2.tier === null || order.tier === query2.tier) && order.expiresAt.getTime() > query2.now.getTime()
+      (order) => order.status === "OPEN" && (query2.zoneId === null || order.zoneId === query2.zoneId) && (query2.province === null || order.province === query2.province) && (query2.county === null || order.county === query2.county) && order.side === query2.side && (query2.tier === null || order.tier === query2.tier) && (query2.litresExact === null || order.litres === query2.litresExact) && (query2.litresBetween === null || order.litres >= query2.litresBetween.min && order.litres <= query2.litresBetween.max) && order.expiresAt.getTime() > query2.now.getTime()
     );
     const withDistance = matches.map((order) => {
       if (!query2.origin || order.lat === null || order.lng === null) return { order, km: Infinity };
@@ -59712,7 +60006,10 @@ var MemoryOrderRepository = class {
     });
     const filtered = query2.origin && query2.radiusKm !== null ? withDistance.filter((entry) => entry.km <= query2.radiusKm) : withDistance;
     filtered.sort((a, b) => {
-      if (query2.sort === "price") return a.order.rateToman - b.order.rateToman;
+      if (query2.sort === "price") {
+        const allIn = (order) => order.rateToman + (order.side === "SELL" ? TIER_RATE_TOMAN[order.tier] : 0);
+        return allIn(a.order) - allIn(b.order);
+      }
       if (query2.sort === "newest") return b.order.createdAt.getTime() - a.order.createdAt.getTime();
       return a.km - b.km;
     });
@@ -59812,7 +60109,8 @@ var MemoryReservationRepository = class {
       expiresAt: input.expiresAt,
       decidedAt: null,
       completedAt: null,
-      cancelReason: null
+      cancelReason: null,
+      extensionCount: 0
     };
     this.byId.set(reservation.id, clone6(reservation));
     return clone6(reservation);
@@ -59821,6 +60119,18 @@ var MemoryReservationRepository = class {
     const current = this.byId.get(id);
     if (!current || current.status !== expected) return null;
     const updated = { ...current, ...patch, status: next };
+    this.byId.set(id, clone6(updated));
+    return clone6(updated);
+  }
+  async extend(id, expectedExpiresAt, newExpiresAt) {
+    const current = this.byId.get(id);
+    if (!current || current.status !== "PENDING_OWNER") return null;
+    if (current.expiresAt.getTime() !== expectedExpiresAt.getTime()) return null;
+    const updated = {
+      ...current,
+      expiresAt: newExpiresAt,
+      extensionCount: current.extensionCount + 1
+    };
     this.byId.set(id, clone6(updated));
     return clone6(updated);
   }
@@ -59851,7 +60161,7 @@ var MemorySettingsRepository = class {
 var MemoryAuditRepository = class {
   entries = [];
   async append(entry) {
-    const stored = { ...entry, id: randomUUID5(), createdAt: /* @__PURE__ */ new Date() };
+    const stored = { ...entry, id: randomUUID6(), createdAt: /* @__PURE__ */ new Date() };
     this.entries.unshift(stored);
     return clone6(stored);
   }
@@ -59880,7 +60190,7 @@ var MemoryProviderSettingsRepository = class {
   async upsert(input, at) {
     const existing = await this.findBy(input.kind, input.provider);
     const stored = {
-      id: existing?.id ?? input.id ?? randomUUID5(),
+      id: existing?.id ?? input.id ?? randomUUID6(),
       provider: input.provider,
       kind: input.kind,
       config: input.config,
@@ -67016,7 +67326,7 @@ var auditLogs = pgTable(
 );
 
 // ../apps/api/src/infra/db/repositories/pg-identity.ts
-import { randomUUID as randomUUID6 } from "node:crypto";
+import { randomUUID as randomUUID7 } from "node:crypto";
 
 // ../apps/api/src/infra/db/repositories/pg-common.ts
 async function query(db, text2, values = []) {
@@ -67386,7 +67696,7 @@ var PgProviderSettingsRepository = class {
              updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at
        RETURNING id, provider, kind, config, is_active, updated_by, updated_at`,
       [
-        input.id ?? randomUUID6(),
+        input.id ?? randomUUID7(),
         input.provider,
         input.kind,
         JSON.stringify(input.config ?? {}),
@@ -67547,6 +67857,11 @@ var PgOrderRepository = class {
     if (input.province !== null) parts.push(`o.province = ${param(input.province)}`);
     if (input.county !== null) parts.push(`o.county = ${param(input.county)}`);
     if (input.tier !== null) parts.push(`o.tier = ${param(input.tier)}`);
+    if (input.litresExact !== null) parts.push(`o.litres = ${param(input.litresExact)}`);
+    if (input.litresBetween !== null) {
+      parts.push(`o.litres >= ${param(input.litresBetween.min)}`);
+      parts.push(`o.litres <= ${param(input.litresBetween.max)}`);
+    }
     let distance = "NULL::double precision";
     if (input.origin && input.radiusKm !== null) {
       const lng = param(input.origin.lng);
@@ -67579,7 +67894,7 @@ var PgOrderRepository = class {
     return { items: rows.map(toOrder), total };
   }
   orderBy(sort) {
-    if (sort === "price") return "o.rate_toman ASC, o.created_at DESC";
+    if (sort === "price") return `${PRICE_PER_LITRE_SQL} ASC, o.created_at DESC`;
     if (sort === "newest") return "o.created_at DESC";
     return "distance_m ASC NULLS LAST, o.created_at DESC";
   }
@@ -67708,7 +68023,10 @@ var PgOrderRepository = class {
     return result;
   }
 };
-var RESERVATION_COLUMNS = `id, order_id, taker_id, status, cancel_reason, expires_at, decided_at, completed_at, created_at`;
+var PRICE_PER_LITRE_SQL = `(o.rate_toman + CASE WHEN o.side = 'SELL' THEN (CASE o.tier::text ${Object.entries(
+  TIER_RATE_TOMAN
+).map(([tier, fee]) => `WHEN '${tier}' THEN ${fee}`).join(" ")} ELSE 0 END) ELSE 0 END))`;
+var RESERVATION_COLUMNS = `id, order_id, taker_id, status, cancel_reason, expires_at, decided_at, completed_at, created_at, extension_count`;
 var toReservation = (row) => ({
   id: row.id,
   orderId: row.order_id,
@@ -67718,7 +68036,8 @@ var toReservation = (row) => ({
   expiresAt: row.expires_at,
   decidedAt: row.decided_at,
   completedAt: row.completed_at,
-  cancelReason: row.cancel_reason
+  cancelReason: row.cancel_reason,
+  extensionCount: row.extension_count ?? 0
 });
 var PgReservationRepository = class {
   constructor(db) {
@@ -67803,6 +68122,18 @@ var PgReservationRepository = class {
     );
     return row ? toReservation(row) : null;
   }
+  /** G-04: one deadline push per reservation, guarded by the value the caller read. */
+  async extend(id, expectedExpiresAt, newExpiresAt) {
+    const row = await queryOne(
+      this.db,
+      `UPDATE reservations
+          SET expires_at = $3, extension_count = extension_count + 1
+        WHERE id = $1 AND status = 'PENDING_OWNER' AND expires_at = $2
+        RETURNING ${RESERVATION_COLUMNS}`,
+      [id, expectedExpiresAt, newExpiresAt]
+    );
+    return row ? toReservation(row) : null;
+  }
   async listExpiredPending(now, limit) {
     const rows = await query(
       this.db,
@@ -67843,7 +68174,7 @@ var PgReservationRepository = class {
 };
 
 // ../apps/api/src/infra/db/repositories/pg-billing.ts
-import { randomUUID as randomUUID7 } from "node:crypto";
+import { randomUUID as randomUUID8 } from "node:crypto";
 var toPlan = (row) => ({
   id: row.id,
   code: row.code,
@@ -67865,11 +68196,53 @@ var PgPlanRepository = class {
     );
     return rows.map(toPlan);
   }
+  async listAll() {
+    const rows = await query(
+      this.db,
+      `SELECT ${PLAN_COLUMNS} FROM plans ORDER BY is_active DESC, price_toman`
+    );
+    return rows.map(toPlan);
+  }
   async findById(id) {
     const row = await queryOne(
       this.db,
       `SELECT ${PLAN_COLUMNS} FROM plans WHERE id = $1`,
       [id]
+    );
+    return row ? toPlan(row) : null;
+  }
+  async setActive(id, isActive) {
+    const row = await queryOne(
+      this.db,
+      `UPDATE plans SET is_active = $2 WHERE id = $1 RETURNING ${PLAN_COLUMNS}`,
+      [id, isActive]
+    );
+    return row ? toPlan(row) : null;
+  }
+  async update(id, patch) {
+    const sets = [];
+    const values = [id];
+    const assign = (column, value) => {
+      values.push(value);
+      sets.push(`${column} = $${values.length}`);
+    };
+    if (patch.nameFa !== void 0) assign("name_fa", patch.nameFa);
+    if (patch.durationDays !== void 0) assign("duration_days", patch.durationDays);
+    if (patch.priceToman !== void 0) assign("price_toman", patch.priceToman);
+    if (patch.maxActiveOrders !== void 0) assign("max_active_orders", patch.maxActiveOrders);
+    if (patch.isActive !== void 0) assign("is_active", patch.isActive);
+    if (sets.length === 0) {
+      const current = await queryOne(
+        this.db,
+        `SELECT ${PLAN_COLUMNS} FROM plans WHERE id = $1`,
+        [id]
+      );
+      return current ? toPlan(current) : null;
+    }
+    const row = await queryOne(
+      this.db,
+      `UPDATE plans SET ${sets.join(", ")} WHERE id = $1 RETURNING ${PLAN_COLUMNS}`,
+      values
     );
     return row ? toPlan(row) : null;
   }
@@ -67893,7 +68266,7 @@ var PgPlanRepository = class {
              is_active = EXCLUDED.is_active
        RETURNING ${PLAN_COLUMNS}`,
       [
-        plan.id || randomUUID7(),
+        plan.id || randomUUID8(),
         plan.code,
         plan.nameFa,
         plan.durationDays,
@@ -68915,6 +69288,15 @@ var BANEH_ZONE = {
 };
 var SEED_ZONES = [BANEH_ZONE];
 var SEED_PLANS = [
+  // G-15: the catalogue always ships a free plan, so a brand-new user can trade before paying.
+  {
+    code: "free",
+    nameFa: "\u067E\u0644\u0646 \u0631\u0627\u06CC\u06AF\u0627\u0646",
+    durationDays: 30,
+    priceToman: 0,
+    maxActiveOrders: 0,
+    isActive: true
+  },
   {
     code: "monthly",
     nameFa: "\u0627\u0634\u062A\u0631\u0627\u06A9 \u06CC\u06A9\u200C\u0645\u0627\u0647\u0647",
@@ -68936,6 +69318,7 @@ var SEED_SETTINGS = Object.fromEntries(
   SETTING_KEYS.map((key) => [key, DEFAULT_SETTINGS[key]])
 );
 var SEED_PLAN_IDS = {
+  free: "3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e4e",
   monthly: "3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e4f",
   quarterly: "3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e50"
 };
