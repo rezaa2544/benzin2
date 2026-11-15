@@ -188,6 +188,9 @@ export const orders = pgTable(
     zoneId: uuid('zone_id')
       .notNull()
       .references(() => zones.id, { onDelete: 'restrict' }),
+    /** Denormalised place (استان/شهرستان) of the listing — see migration 0004. */
+    province: text('province'),
+    county: text('county'),
     stationName: text('station_name'),
     note: text('note'),
     location: geography('location'),
@@ -352,6 +355,8 @@ export const reputationEvents = pgTable(
     kind: text('kind').notNull(),
     delta: integer('delta').notNull(),
     orderId: uuid('order_id').references(() => orders.id, { onDelete: 'set null' }),
+    /** Reason payload stored with the event (migration 0004). */
+    metadata: jsonb('metadata').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('reputation_events_user_idx').on(t.userId, t.createdAt)],

@@ -60,6 +60,8 @@ import { ReservationService } from '../modules/reservations-service.js';
 import { SettingsService } from '../modules/settings-service.js';
 import { ProfileService } from '../modules/profile-service.js';
 import { StatsService } from '../modules/stats-service.js';
+import { createScheduler, type Scheduler } from '../scheduler.js';
+import { createProcessSweepLock, type SweepLock } from '../modules/sweep-lock.js';
 import { attachChatSocket, type ChatSocketHandle } from './chat-socket.js';
 import { authenticate, currentUser, parseInput, type AppServices } from './context.js';
 import { requireRole } from './roles.js';
@@ -71,11 +73,18 @@ export interface BuildAppOptions {
   clock: Clock;
   /** Optional real router (OSRM/Mapbox). Absent or failing → straight-line fallback. */
   routeProvider?: RouteProvider | null;
+  /**
+   * Guard that makes the expiry sweep single-flight across processes (task G-02). Postgres
+   * deployments pass the advisory-lock implementation; dev/tests use the in-process one.
+   */
+  sweepLock?: SweepLock;
 }
 
 export interface BuiltApp {
   app: FastifyInstance;
   services: AppServices;
+  /** Background sweeps; `start()` is called by the entrypoint so tests stay in control. */
+  scheduler: Scheduler;
   /** Realtime chat channel (E5-01); closed together with the HTTP server. */
   chatSocket: ChatSocketHandle;
 }
@@ -89,7 +98,14 @@ const toPublicUser = (user: User) => ({
 });
 
 export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
-  const { config, repos, sms, clock, routeProvider = null } = options;
+  const {
+    config,
+    repos,
+    sms,
+    clock,
+    routeProvider = null,
+    sweepLock = createProcessSweepLock(),
+  } = options;
   const settings = new SettingsService(repos);
   const auth = new AuthService(
     repos,
@@ -137,6 +153,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     mode: config.DATABASE_URL ? 'postgres' : 'memory',
     version: config.APP_VERSION,
   });
+  const scheduler = createScheduler(reservations, orders, reputation, payments, clock, sweepLock);
   const services: AppServices = {
     auth,
     chat,
@@ -652,6 +669,23 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
 
   // --------------------------------------- admin: dashboard and status (E8-08)
   app.get('/v1/admin/dashboard', { preHandler: [...staffOnly] }, async () => admin.dashboard());
+
+  // Sweep health (task G-02): when the last expiry pass ran and what it changed. A stalled
+  // scheduler is the failure mode that silently leaves reservations holding lots.
+  app.get('/v1/admin/scheduler', { preHandler: [...staffOnly] }, async () => {
+    const last = scheduler.lastTick();
+    return {
+      intervalMs: config.SCHEDULER_INTERVAL_MS,
+      lastTickAt: last ? last.at.toISOString() : null,
+      lastResult: last ? last.result : null,
+      lock: config.DATABASE_URL ? 'postgres-advisory' : 'in-process',
+    };
+  });
+
+  app.post('/v1/admin/scheduler/tick', { preHandler: [...staffOnly] }, async () => {
+    const result = await scheduler.tick();
+    return { ran: result !== null, result };
+  });
   app.get('/v1/admin/status', { preHandler: [...staffOnly] }, async () => admin.systemStatus());
 
   // ------------------------------------------------ admin: providers (E8-06)
@@ -683,5 +717,5 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     return admin.saveZone(currentUser(request), { ...body, boundary: [...body.boundary] });
   });
 
-  return { app, services, chatSocket };
+  return { app, services, chatSocket, scheduler };
 }

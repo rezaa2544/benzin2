@@ -49,9 +49,11 @@ describe('access tokens', () => {
   });
 
   it('rejects a foreign issuer', () => {
+    // Task G-20: the fixture used the issuer of another product; a token minted for a different
+    // service must never validate here, so the test keeps a name that is not part of this project.
     const { token } = signAccessToken(
       { sub: 'user-1', role: 'USER' },
-      { ...config, issuer: 'payesh' },
+      { ...config, issuer: 'another-product' },
     );
     expect(() => verifyAccessToken(token, config)).toThrow(/issuer/i);
   });

@@ -11,6 +11,11 @@ const envSchema = z.object({
   /** HS256 key for short-lived access tokens. Must be rotated per environment. */
   JWT_SECRET: z.string().min(16).default('dev-jwt-secret-change-me-please'),
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
+  /**
+   * How often the expiry sweeper runs (task G-02). Reservations hold a lot for 30 minutes, so a
+   * 30-second cadence keeps the "expired but still reserved" window short without load.
+   */
+  SCHEDULER_INTERVAL_MS: z.coerce.number().int().min(1000).max(600_000).default(30_000),
   TOKEN_ISSUER: z.string().default('benzin'),
   SESSION_TTL_MINUTES: z.coerce
     .number()

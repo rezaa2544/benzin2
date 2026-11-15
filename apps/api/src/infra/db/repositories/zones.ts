@@ -107,9 +107,14 @@ export class PgZoneRepository implements ZoneRepository {
   }
 
   async upsert(zone: ZoneRecord): Promise<ZoneRecord> {
-    const wkt = `SRID=4326;POLYGON((${zone.boundary
-      .map(([lng, lat]) => `${lng} ${lat}`)
-      .join(',')}))`;
+    // PostGIS rejects an unclosed ring, while the seed data (and the editor UI) hand us the ring
+    // without repeating the first point — close it here instead of duplicating the rule upstream.
+    const ring = [...zone.boundary];
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    if (first && last && (first[0] !== last[0] || first[1] !== last[1])) ring.push(first);
+    if (ring.length < 4) throw new Error(`zone ${zone.slug} needs at least three points`);
+    const wkt = `SRID=4326;POLYGON((${ring.map(([lng, lat]) => `${lng} ${lat}`).join(',')}))`;
     await this.db
       .insert(zones)
       .values({

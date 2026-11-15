@@ -1,6 +1,9 @@
+import type { Repositories } from './ports.js';
 import { buildApp } from './http/app.js';
 import { loadConfig } from './config.js';
 import { createMemoryRepositories } from './infra/memory/index.js';
+import { createPostgresRepositories, type PostgresHandle } from './infra/db/repositories/index.js';
+import { createPostgresSweepLock, createProcessSweepLock } from './modules/sweep-lock.js';
 import { createSmsSender } from './infra/sms/index.js';
 import { systemClock } from './domain/entities.js';
 import { applySeed } from './infra/db/seed.js';
@@ -8,61 +11,84 @@ import { applyDemoOrders } from './infra/db/demo-orders.js';
 
 const config = loadConfig();
 
-if (config.NODE_ENV === 'production') {
-  // Fail fast instead of silently running on volatile storage.
-  if (!config.DATABASE_URL) {
-    console.error('DATABASE_URL is required in production; in-memory repositories are dev-only.');
-    process.exit(1);
-  }
-  console.error(
-    'The Postgres repository adapter is not wired yet (task E2). Refusing to start with in-memory data.',
-  );
+if (config.NODE_ENV === 'production' && !config.DATABASE_URL) {
+  console.error('DATABASE_URL is required in production; in-memory repositories are dev-only.');
   process.exit(1);
 }
 
-const repos = createMemoryRepositories();
+/**
+ * Storage selection (task G-01).
+ *
+ * With `DATABASE_URL` the API runs on the Postgres adapter — the same ports the services are
+ * tested against, now with real persistence, transactions and the partial unique indexes the
+ * concurrency guarantees rely on. Without it (desktop bundle, `pnpm dev`, tests) it keeps using
+ * in-memory repositories, which production refuses to boot on.
+ */
+const postgres: PostgresHandle | null = config.DATABASE_URL
+  ? createPostgresRepositories(config.DATABASE_URL)
+  : null;
+const repos: Repositories = postgres ? postgres.repositories : createMemoryRepositories();
+
 // Provider chain from D3: SMS.ir first, Kavenegar as failover; `console` without keys.
 const sms = createSmsSender(config);
-// Development/tests only: make the app usable immediately (Baneh zone, plans, settings).
+// Idempotent baseline every deployment needs: Baneh zone, plans, default settings, providers.
 await applySeed(repos);
 
-// Local/desktop builds: known accounts so the whole flow can be walked without an SMS provider.
-// 09187888993 owns the admin panel; 09373210545 is an ordinary customer.
-for (const demo of [
-  { phone: '09187888993', role: 'OWNER' as const, displayName: 'Benzin Admin' },
-  { phone: '09373210545', role: 'USER' as const, displayName: 'Test Buyer' },
-]) {
-  const existing = await repos.users.findByPhone(demo.phone);
-  if (existing) {
-    existing.role = demo.role;
-    existing.displayName = demo.displayName;
-    await repos.users.save(existing);
-    continue;
+// Local/desktop builds only: known accounts so the whole flow can be walked without an SMS
+// provider. 09187888993 owns the admin panel; 09373210545 is an ordinary customer.
+if (config.NODE_ENV !== 'production') {
+  for (const demo of [
+    { phone: '09187888993', role: 'OWNER' as const, displayName: 'Benzin Admin' },
+    { phone: '09373210545', role: 'USER' as const, displayName: 'Test Buyer' },
+  ]) {
+    const existing = await repos.users.findByPhone(demo.phone);
+    if (existing) {
+      existing.role = demo.role;
+      existing.displayName = demo.displayName;
+      await repos.users.save(existing);
+      continue;
+    }
+    const created = await repos.users.create({ phone: demo.phone, role: demo.role });
+    created.displayName = demo.displayName;
+    await repos.users.save(created);
   }
-  const created = await repos.users.create({ phone: demo.phone, role: demo.role });
-  created.displayName = demo.displayName;
-  await repos.users.save(created);
+
+  // A handful of demo listings so the market screen, the place statistics and the green/red split
+  // are visible on a fresh launch.
+  if (process.env.SEED_DEMO_ORDERS !== '0') {
+    await applyDemoOrders(repos, systemClock);
+  }
 }
 
-// Local/desktop builds also get a handful of demo listings so the market screen, the
-// place statistics and the green/red split are visible on a fresh launch.
-if (process.env.SEED_DEMO_ORDERS !== '0') {
-  await applyDemoOrders(repos, systemClock);
-}
+const sweepLock = postgres
+  ? createPostgresSweepLock(postgres.pool, { logger: { warn: (message) => console.warn(message) } })
+  : createProcessSweepLock();
 
-const { app } = await buildApp({
+const { app, scheduler } = await buildApp({
   config,
   repos,
   sms,
   clock: systemClock,
+  sweepLock,
 });
 
-app.log.warn('Running with in-memory repositories — data is lost on restart (development only)');
+// Expiry worker (task G-02): single-flight across instances, idempotent per row.
+const stopScheduler = scheduler.start(config.SCHEDULER_INTERVAL_MS);
+
+app.log.warn(
+  postgres
+    ? 'Storage: Postgres adapter (task G-01)'
+    : 'Running with in-memory repositories — data is lost on restart (development only)',
+);
 
 await app.listen({ port: config.API_PORT, host: config.API_HOST });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
-    void app.close().then(() => process.exit(0));
+    stopScheduler();
+    void app
+      .close()
+      .then(() => postgres?.close())
+      .then(() => process.exit(0));
   });
 }
