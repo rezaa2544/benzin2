@@ -12,6 +12,7 @@ export const NOTIFICATION_KINDS = [
   'RESERVATION_REQUESTED',
   'RESERVATION_CONFIRMED',
   'RESERVATION_REJECTED',
+  'RESERVATION_EXTENDED',
   'RESERVATION_EXPIRED',
   'RESERVATION_CANCELLED',
   'TRADE_COMPLETED',
@@ -57,6 +58,13 @@ export const NOTIFICATION_TEMPLATES: Record<NotificationKind, NotificationTempla
     titleFa: 'درخواست رد شد',
     bodyFa: 'صاحب سفارش درخواست شما برای {litres} لیتر را رد کرد و سفارش به بازار برگشت.',
     smsFa: 'درخواست رزرو شما رد شد. بنزین',
+  },
+  // G-04: the taker pushed the deadline once, the owner should know the clock moved.
+  RESERVATION_EXTENDED: {
+    titleFa: 'مهلت رزرو تمدید شد',
+    bodyFa:
+      'خریدار مهلت رزرو {litres} لیتر را {minutes} دقیقه تمدید کرد. برای تأیید یا رد همین حالا اقدام کنید.',
+    smsFa: null,
   },
   RESERVATION_EXPIRED: {
     titleFa: 'مهلت تأیید تمام شد',

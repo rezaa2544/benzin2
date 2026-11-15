@@ -1,5 +1,5 @@
 import type { OrderSide, OrderStatus, ReservationStatus, Tier } from '@benzin/shared';
-import { ACTIVE_RESERVATION_STATUSES } from '@benzin/shared';
+import { ACTIVE_RESERVATION_STATUSES, TIER_RATE_TOMAN } from '@benzin/shared';
 import type { Order, Reservation } from '../../../domain/entities.js';
 import type {
   NewOrder,
@@ -140,6 +140,11 @@ export class PgOrderRepository implements OrderRepository {
     if (input.province !== null) parts.push(`o.province = ${param(input.province)}`);
     if (input.county !== null) parts.push(`o.county = ${param(input.county)}`);
     if (input.tier !== null) parts.push(`o.tier = ${param(input.tier)}`);
+    if (input.litresExact !== null) parts.push(`o.litres = ${param(input.litresExact)}`);
+    if (input.litresBetween !== null) {
+      parts.push(`o.litres >= ${param(input.litresBetween.min)}`);
+      parts.push(`o.litres <= ${param(input.litresBetween.max)}`);
+    }
 
     // One distance expression per query, computed by the database from the GiST-indexed point.
     // A radius filter belongs to the WHERE clause (so the count query sees it too), while a plain
@@ -179,7 +184,8 @@ export class PgOrderRepository implements OrderRepository {
   }
 
   private orderBy(sort: OrderSearchQuery['sort']): string {
-    if (sort === 'price') return 'o.rate_toman ASC, o.created_at DESC';
+    // "price" is the all-in price of one litre (rate + pump fee), which is what a buyer compares.
+    if (sort === 'price') return `${PRICE_PER_LITRE_SQL} ASC, o.created_at DESC`;
     if (sort === 'newest') return 'o.created_at DESC';
     return 'distance_m ASC NULLS LAST, o.created_at DESC';
   }
@@ -356,9 +362,20 @@ type ReservationRow = {
   decided_at: Date | null;
   completed_at: Date | null;
   created_at: Date;
+  extension_count: number;
 };
 
-const RESERVATION_COLUMNS = `id, order_id, taker_id, status, cancel_reason, expires_at, decided_at, completed_at, created_at`;
+/**
+ * All-in price of one litre, mirroring `toOrderView`: a sell listing carries its tier's pump fee,
+ * a buy request does not (G-05 sorts on this).
+ */
+const PRICE_PER_LITRE_SQL = `(o.rate_toman + CASE WHEN o.side = 'SELL' THEN (CASE o.tier::text ${Object.entries(
+  TIER_RATE_TOMAN,
+)
+  .map(([tier, fee]) => `WHEN '${tier}' THEN ${fee}`)
+  .join(' ')} ELSE 0 END) ELSE 0 END))`;
+
+const RESERVATION_COLUMNS = `id, order_id, taker_id, status, cancel_reason, expires_at, decided_at, completed_at, created_at, extension_count`;
 
 const toReservation = (row: ReservationRow): Reservation => ({
   id: row.id,
@@ -370,6 +387,7 @@ const toReservation = (row: ReservationRow): Reservation => ({
   decidedAt: row.decided_at,
   completedAt: row.completed_at,
   cancelReason: row.cancel_reason,
+  extensionCount: row.extension_count ?? 0,
 });
 
 export class PgReservationRepository implements ReservationRepository {
@@ -462,6 +480,23 @@ export class PgReservationRepository implements ReservationRepository {
         patch?.completedAt ?? null,
         patch?.cancelReason ?? null,
       ],
+    );
+    return row ? toReservation(row) : null;
+  }
+
+  /** G-04: one deadline push per reservation, guarded by the value the caller read. */
+  async extend(
+    id: string,
+    expectedExpiresAt: Date,
+    newExpiresAt: Date,
+  ): Promise<Reservation | null> {
+    const row = await queryOne<ReservationRow>(
+      this.db,
+      `UPDATE reservations
+          SET expires_at = $3, extension_count = extension_count + 1
+        WHERE id = $1 AND status = 'PENDING_OWNER' AND expires_at = $2
+        RETURNING ${RESERVATION_COLUMNS}`,
+      [id, expectedExpiresAt, newExpiresAt],
     );
     return row ? toReservation(row) : null;
   }

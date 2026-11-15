@@ -22,9 +22,29 @@ export class MemoryPlanRepository implements PlanRepository {
       .map(clone);
   }
 
+  async listAll(): Promise<Plan[]> {
+    return [...this.byId.values()].sort((a, b) => a.priceToman - b.priceToman).map(clone);
+  }
+
   async findById(id: string): Promise<Plan | null> {
     const plan = this.byId.get(id);
     return plan ? clone(plan) : null;
+  }
+
+  async setActive(id: string, isActive: boolean): Promise<Plan | null> {
+    const plan = this.byId.get(id);
+    if (!plan) return null;
+    const updated: Plan = { ...plan, isActive };
+    this.byId.set(id, clone(updated));
+    return clone(updated);
+  }
+
+  async update(id: string, patch: Partial<Omit<Plan, 'id' | 'code'>>): Promise<Plan | null> {
+    const plan = this.byId.get(id);
+    if (!plan) return null;
+    const updated: Plan = { ...plan, ...patch };
+    this.byId.set(id, clone(updated));
+    return clone(updated);
   }
 
   async findByCode(code: string): Promise<Plan | null> {

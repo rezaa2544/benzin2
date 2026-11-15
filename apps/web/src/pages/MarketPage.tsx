@@ -14,10 +14,11 @@ import type { ApiClient } from '../lib/api.js';
 import { errorMessage } from '../lib/api.js';
 import type { MarketStats, MetaConfig, OrderList, OrderView, ZoneView } from '../lib/types.js';
 import type { MarketFilters, SortKey } from '../lib/market.js';
-import { TIER_LABEL_FA, toSearchQuery } from '../lib/market.js';
+import { STANDARD_LOTS, TIER_LABEL_FA, toSearchQuery } from '../lib/market.js';
 import { buildQuery, navigate } from '../lib/router.js';
 import { t, tf } from '../lib/i18n.js';
 import { OrderCard } from '../components/OrderCard.js';
+import { RebookBanner } from '../components/RebookBanner.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { Notice, PageTitle, Skeleton } from './parts.js';
 
@@ -67,6 +68,9 @@ export function MarketPage({ api, config, filters, onFilters }: MarketPageProps)
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<MarketStats | null>(null);
+  // G-05: when an exact lot is missing the API answers with close lots plus the Persian copy.
+  const [nearest, setNearest] = useState<{ litres: number; items: OrderView[] } | null>(null);
+  const [lotMessage, setLotMessage] = useState<string | null>(null);
 
   const counties = countiesOf(filters.province);
   const placeName = placeLabelFa(filters) || t('market.allIran');
@@ -91,6 +95,8 @@ export function MarketPage({ api, config, filters, onFilters }: MarketPageProps)
         setItems(list.items);
         setCursor(list.nextCursor);
         setStats(marketStats);
+        setNearest(list.nearest ?? null);
+        setLotMessage(list.message ?? null);
       })
       .catch((cause: unknown) => {
         if (!cancelled) setError(errorMessage(cause, errorMap));
@@ -101,7 +107,16 @@ export function MarketPage({ api, config, filters, onFilters }: MarketPageProps)
     return () => {
       cancelled = true;
     };
-  }, [filters.province, filters.county, filters.side, filters.sort]);
+  }, [
+    filters.province,
+    filters.county,
+    filters.side,
+    filters.sort,
+    filters.litres,
+    filters.litresMode,
+    filters.minLitres,
+    api,
+  ]);
 
   const apply = (patch: Partial<MarketFilters>): void => {
     const next = { ...filters, ...patch };
@@ -134,6 +149,77 @@ export function MarketPage({ api, config, filters, onFilters }: MarketPageProps)
   return (
     <div>
       <PageTitle title={t('market.title')} lead={t('market.lead')} />
+
+      {/* G-04: a buyer whose reservation just expired can rebook the same order in one tap. */}
+      <RebookBanner api={api} onReserved={(id) => navigate(`/trade/${id}`)} />
+
+      {/* G-05: standard lots first, an exact lot or a between-range behind one toggle. */}
+      <div className="mb-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <span className="label mb-0">{t('market.lot')}</span>
+          <div className="flex gap-1">
+            {(['exact', 'range'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={`chip ${filters.litresMode === mode ? 'chip-active' : ''}`}
+                onClick={() => apply({ litresMode: mode })}
+              >
+                {mode === 'exact' ? t('market.lotModeExact') : t('market.lotModeRange')}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            className={`chip ${!filters.litres && !filters.minLitres ? 'chip-active' : ''}`}
+            onClick={() => apply({ litres: '', minLitres: '' })}
+          >
+            {t('market.lotAny')}
+          </button>
+          {STANDARD_LOTS.map((lot) => (
+            <button
+              key={lot}
+              type="button"
+              className={`chip tnum ${filters.litres === String(lot) ? 'chip-active' : ''}`}
+              onClick={() => apply({ litres: String(lot) })}
+            >
+              {toPersianDigits(lot)}
+            </button>
+          ))}
+        </div>
+        {filters.litresMode === 'range' ? (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <div>
+              <label className="label" htmlFor="market-lot-from">
+                {t('market.lotFrom')}
+              </label>
+              <input
+                id="market-lot-from"
+                className="input text-sm tnum"
+                inputMode="numeric"
+                value={filters.minLitres}
+                onChange={(event) =>
+                  apply({ minLitres: event.target.value.replace(/[^0-9]/g, '') })
+                }
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="market-lot-to">
+                {t('market.lotTo')}
+              </label>
+              <input
+                id="market-lot-to"
+                className="input text-sm tnum"
+                inputMode="numeric"
+                value={filters.litres}
+                onChange={(event) => apply({ litres: event.target.value.replace(/[^0-9]/g, '') })}
+              />
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       <div className="mb-3 grid grid-cols-2 gap-2">
         <div>
@@ -290,8 +376,33 @@ export function MarketPage({ api, config, filters, onFilters }: MarketPageProps)
       {error ? <Notice tone="error">{error}</Notice> : null}
       {loading ? <Skeleton rows={3} /> : null}
 
-      {!loading && items.length === 0 && !error ? (
+      {lotMessage ? <Notice tone="info">{lotMessage}</Notice> : null}
+
+      {!loading && items.length === 0 && !error && !lotMessage ? (
         <EmptyState title={t('market.empty')} body={t('market.emptyBody')} icon="search" />
+      ) : null}
+
+      {nearest && nearest.items.length > 0 ? (
+        <div className="mb-3">
+          <p className="mb-1.5 text-xs text-muted">{t('market.lotNearest')}</p>
+          <div className="flex flex-col gap-3">
+            {nearest.items.map((order) => (
+              <OrderCard
+                key={`near-${order.id}`}
+                side={order.side}
+                status={order.status}
+                litres={order.litres}
+                rateToman={order.rateToman}
+                pumpFeeToman={order.pumpFeeToman}
+                buyerTotalToman={order.buyerTotalToman}
+                placeName={placeLabelFa(order) || order.stationName || placeName}
+                distanceKm={order.distance?.distanceKm}
+                expiresAt={order.expiresAt}
+                onOpen={() => navigate(`/market/${order.id}`)}
+              />
+            ))}
+          </div>
+        </div>
       ) : null}
 
       <div className="flex flex-col gap-3">

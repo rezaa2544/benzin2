@@ -14,6 +14,12 @@ export interface MarketFilters {
   county: string;
   side: OrderSide;
   sort: SortKey;
+  /** G-05 lot matching: a standard lot in «دقیق» mode, or the upper bound in «بازه» mode. */
+  litresMode: 'exact' | 'range';
+  /** Empty means «هر حجمی» — no lot filter at all. */
+  litres: string;
+  /** Lower bound of «بازه»; empty means from the smallest lot the platform allows. */
+  minLitres: string;
 }
 
 export const DEFAULT_FILTERS: MarketFilters = {
@@ -21,7 +27,13 @@ export const DEFAULT_FILTERS: MarketFilters = {
   county: '',
   side: 'BUY',
   sort: 'newest',
+  litresMode: 'exact',
+  litres: '',
+  minLitres: '',
 };
+
+/** The standard lots the app offers as one-tap chips (G-05). */
+export const STANDARD_LOTS: readonly number[] = [5, 10, 20, 30, 40, 50, 60];
 
 const SORTS: readonly SortKey[] = ['distance', 'price', 'newest'];
 
@@ -39,6 +51,9 @@ export function filtersFromQuery(
     county: query['county'] ?? fallback.county,
     side,
     sort,
+    litresMode: query['litresMode'] === 'range' ? 'range' : fallback.litresMode,
+    litres: query['litres'] ?? fallback.litres,
+    minLitres: query['minLitres'] ?? fallback.minLitres,
   };
 }
 
@@ -69,5 +84,12 @@ export function toSearchQuery(
     cursor: options.cursor,
     lat: options.origin?.lat,
     lng: options.origin?.lng,
+    // G-05: an empty lot field means "no lot filter", and exact/range only matters once set.
+    litresMode: filters.litres || filters.minLitres ? filters.litresMode : undefined,
+    litres: filters.litresMode === 'exact' && filters.litres ? Number(filters.litres) : undefined,
+    minLitres:
+      filters.litresMode === 'range' && filters.minLitres ? Number(filters.minLitres) : undefined,
+    maxLitres:
+      filters.litresMode === 'range' && filters.litres ? Number(filters.litres) : undefined,
   };
 }

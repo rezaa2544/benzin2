@@ -16,7 +16,16 @@ describe('market filters (E9-05)', () => {
   it('reads a full filter set from the URL', () => {
     expect(
       filtersFromQuery({ province: 'کردستان', county: 'بانه', side: 'SELL', sort: 'price' }),
-    ).toEqual({ province: 'کردستان', county: 'بانه', side: 'SELL', sort: 'price' });
+    ).toEqual({
+      province: 'کردستان',
+      county: 'بانه',
+      side: 'SELL',
+      sort: 'price',
+      // G-05 defaults: exact lot mode with no lot picked yet.
+      litresMode: 'exact',
+      litres: '',
+      minLitres: '',
+    });
   });
 
   it('only uses distance when there is an origin point', () => {

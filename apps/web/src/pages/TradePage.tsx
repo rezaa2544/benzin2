@@ -27,6 +27,8 @@ const errorMap = {
   NETWORK: t('errors.NETWORK'),
   UNKNOWN: t('errors.UNKNOWN'),
   RESERVATION_NOT_ACTIVE: t('errors.RESERVATION_NOT_ACTIVE'),
+  EXTENSION_LIMIT_REACHED: t('errors.EXTENSION_LIMIT_REACHED'),
+  NOT_RESERVATION_TAKER: t('errors.NOT_RESERVATION_TAKER'),
   NOT_RESERVATION_PARTY: t('errors.NOT_RESERVATION_PARTY'),
   NOT_ORDER_OWNER: t('errors.NOT_ORDER_OWNER'),
   INVALID_STATE_TRANSITION: t('errors.INVALID_STATE_TRANSITION'),
@@ -42,6 +44,7 @@ const LABELS: Record<TradeAction, string> = {
   cancel: t('trade.cancel'),
   contact: t('trade.contact'),
   rate: t('trade.rate'),
+  extend: t('trade.extend'),
 };
 
 const DANGER: readonly TradeAction[] = ['reject', 'cancel', 'dispute'];

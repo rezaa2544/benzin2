@@ -13,7 +13,8 @@ describe('settings form model (E8-05)', () => {
   it('renders one row per key with bounds from the shared schema', () => {
     expect(rows).toHaveLength(Object.keys(DEFAULT_SETTINGS).length);
     const ttl = rows.find((row) => row.key === 'reservation.ttl_minutes');
-    expect(ttl).toMatchObject({ kind: 'number', min: 1, max: 120, value: '10' });
+    // G-04 raised the reservation window to 30 minutes by default.
+    expect(ttl).toMatchObject({ kind: 'number', min: 1, max: 120, value: '30' });
     expect(rows.find((row) => row.key === 'notification.sms_enabled')?.kind).toBe('boolean');
     expect(rows.find((row) => row.key === 'chat.quick_replies')?.kind).toBe('list');
   });
@@ -45,17 +46,17 @@ describe('settings form model (E8-05)', () => {
 
   it('only sends edited keys and reports invalid ones', () => {
     const { patch, errors } = collectChanges(rows, {
-      'reservation.ttl_minutes': '15',
+      'reservation.ttl_minutes': '45',
       'otp.max_attempts': '500',
       'notification.sms_enabled': false,
     });
     expect(patch).toEqual({
-      'reservation.ttl_minutes': 15,
+      'reservation.ttl_minutes': 45,
       'notification.sms_enabled': false,
     });
     expect(Object.keys(errors)).toEqual(['otp.max_attempts']);
 
-    const untouched = collectChanges(rows, { 'reservation.ttl_minutes': '10' });
+    const untouched = collectChanges(rows, { 'reservation.ttl_minutes': '30' });
     expect(untouched.patch).toEqual({});
   });
 });

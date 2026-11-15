@@ -86,7 +86,7 @@ describe('E4 — concurrency, timers, cycle gate, contact disclosure and dispute
     const order = await createOrder(owner);
     const created = (await reserve(taker, order.id)).json() as ReservationBody;
 
-    clock.advanceMinutes(6); // owner decision window is 5 minutes
+    clock.advanceMinutes(31); // G-04: a reservation lives 30 minutes
 
     const first = await ctx.services.reservations.expireDueReservations();
     expect(first).toBeGreaterThanOrEqual(1);

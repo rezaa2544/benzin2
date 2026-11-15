@@ -30,7 +30,7 @@ import type {
   UserRepository,
   UserSearchQuery,
 } from '../../ports.js';
-import { ACTIVE_RESERVATION_STATUSES } from '@benzin/shared';
+import { ACTIVE_RESERVATION_STATUSES, TIER_RATE_TOMAN } from '@benzin/shared';
 import { MemoryConversationRepository, MemoryMessageRepository } from './chat.js';
 import {
   MemoryPaymentCardRepository,
@@ -276,6 +276,9 @@ export class MemoryOrderRepository implements OrderRepository {
         (query.county === null || order.county === query.county) &&
         order.side === query.side &&
         (query.tier === null || order.tier === query.tier) &&
+        (query.litresExact === null || order.litres === query.litresExact) &&
+        (query.litresBetween === null ||
+          (order.litres >= query.litresBetween.min && order.litres <= query.litresBetween.max)) &&
         order.expiresAt.getTime() > query.now.getTime(),
     );
 
@@ -290,7 +293,15 @@ export class MemoryOrderRepository implements OrderRepository {
         : withDistance;
 
     filtered.sort((a, b) => {
-      if (query.sort === 'price') return a.order.rateToman - b.order.rateToman;
+      if (query.sort === 'price') {
+        // All-in price of one litre: a sell listing carries its tier's pump fee (G-05).
+        const allIn = (order: {
+          side: string;
+          rateToman: number;
+          tier: keyof typeof TIER_RATE_TOMAN;
+        }): number => order.rateToman + (order.side === 'SELL' ? TIER_RATE_TOMAN[order.tier] : 0);
+        return allIn(a.order) - allIn(b.order);
+      }
       if (query.sort === 'newest') return b.order.createdAt.getTime() - a.order.createdAt.getTime();
       return a.km - b.km;
     });
@@ -463,6 +474,7 @@ export class MemoryReservationRepository implements ReservationRepository {
       decidedAt: null,
       completedAt: null,
       cancelReason: null,
+      extensionCount: 0,
     };
     this.byId.set(reservation.id, clone(reservation));
     return clone(reservation);
@@ -477,6 +489,23 @@ export class MemoryReservationRepository implements ReservationRepository {
     const current = this.byId.get(id);
     if (!current || current.status !== expected) return null;
     const updated: Reservation = { ...current, ...patch, status: next };
+    this.byId.set(id, clone(updated));
+    return clone(updated);
+  }
+
+  async extend(
+    id: string,
+    expectedExpiresAt: Date,
+    newExpiresAt: Date,
+  ): Promise<Reservation | null> {
+    const current = this.byId.get(id);
+    if (!current || current.status !== 'PENDING_OWNER') return null;
+    if (current.expiresAt.getTime() !== expectedExpiresAt.getTime()) return null;
+    const updated: Reservation = {
+      ...current,
+      expiresAt: newExpiresAt,
+      extensionCount: current.extensionCount + 1,
+    };
     this.byId.set(id, clone(updated));
     return clone(updated);
   }

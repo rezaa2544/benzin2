@@ -13,6 +13,7 @@ import { SettingsPage } from './pages/SettingsPage.js';
 import { SmsPage } from './pages/SmsPage.js';
 import { StatusPage } from './pages/StatusPage.js';
 import { SubscriptionsPage } from './pages/SubscriptionsPage.js';
+import { PlansPage } from './pages/PlansPage.js';
 import { UsersPage } from './pages/UsersPage.js';
 import { ZonesPage } from './pages/ZonesPage.js';
 import fa from './i18n/fa.json';
@@ -83,6 +84,8 @@ export function App(): JSX.Element {
         return <PaymentsPage api={api} />;
       case 'subscriptions':
         return <SubscriptionsPage api={api} />;
+      case 'plans':
+        return <PlansPage api={api} />;
       case 'settings':
         return <SettingsPage api={api} />;
       case 'sms':

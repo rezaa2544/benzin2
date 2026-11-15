@@ -25,10 +25,12 @@ describe('trade model (E9-09)', () => {
     expect(tradeRole(reservation(), 'someone', undefined)).toBe('spectator');
   });
 
-  it('offers the owner a decision and the taker only a cancel while pending', () => {
+  it('offers the owner a decision and the taker one extension plus a cancel while pending', () => {
     const pending = reservation({ status: 'PENDING_OWNER' });
     expect(tradeActions(pending, 'owner')).toEqual(['confirm', 'reject']);
-    expect(tradeActions(pending, 'taker')).toEqual(['cancel']);
+    expect(tradeActions(pending, 'taker')).toEqual(['extend', 'cancel']);
+    // G-04: after the single extension the button is gone, the cancel stays.
+    expect(tradeActions({ ...pending, extensionCount: 1 }, 'taker')).toEqual(['cancel']);
     expect(tradeActions(pending, 'spectator')).toEqual([]);
   });
 

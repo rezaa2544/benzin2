@@ -60,6 +60,10 @@ export interface OrderView {
 export interface OrderList {
   items: OrderView[];
   nextCursor: string | null;
+  /** G-05: closest lots when an exact lot has no listing. */
+  nearest?: { litres: number; items: OrderView[] } | null;
+  /** Persian copy for the empty-lot case, rendered as-is. */
+  message?: string | null;
 }
 
 export interface ReservationView {
@@ -72,6 +76,8 @@ export interface ReservationView {
   decidedAt: string | null;
   completedAt: string | null;
   cancelReason: string | null;
+  /** How many deadline pushes the buyer used (G-04 allows one by default). */
+  extensionCount?: number;
 }
 
 export interface MarketStats {

@@ -12,3 +12,4 @@ export { PriceTag, type PriceTagProps } from './PriceTag.js';
 export { TierBadge, type TierBadgeProps } from './TierBadge.js';
 export { Toast, ToastStack, useToasts, type ToastItem, type ToastTone } from './Toast.js';
 export { VersionBadge, type VersionBadgeProps } from './VersionBadge.js';
+export { RebookBanner, type RebookHint } from './RebookBanner.js';

@@ -78,6 +78,18 @@ export interface PaymentCardRow {
   dailyLimit: number | null;
 }
 
+/** G-15: one row of the plan catalogue (`/v1/admin/plans`). */
+export interface PlanRow {
+  id: string;
+  code: string;
+  nameFa: string;
+  priceToman: number;
+  priceLabelFa: string;
+  durationDays: number;
+  maxActiveOrders: number;
+  isActive: boolean;
+}
+
 export interface SubscriptionRow {
   id: string;
   userId: string;

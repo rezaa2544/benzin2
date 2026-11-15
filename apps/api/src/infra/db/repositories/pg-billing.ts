@@ -46,11 +46,57 @@ export class PgPlanRepository implements PlanRepository {
     return rows.map(toPlan);
   }
 
+  async listAll(): Promise<Plan[]> {
+    const rows = await query<PlanRow>(
+      this.db,
+      `SELECT ${PLAN_COLUMNS} FROM plans ORDER BY is_active DESC, price_toman`,
+    );
+    return rows.map(toPlan);
+  }
+
   async findById(id: string): Promise<Plan | null> {
     const row = await queryOne<PlanRow>(
       this.db,
       `SELECT ${PLAN_COLUMNS} FROM plans WHERE id = $1`,
       [id],
+    );
+    return row ? toPlan(row) : null;
+  }
+
+  async setActive(id: string, isActive: boolean): Promise<Plan | null> {
+    const row = await queryOne<PlanRow>(
+      this.db,
+      `UPDATE plans SET is_active = $2 WHERE id = $1 RETURNING ${PLAN_COLUMNS}`,
+      [id, isActive],
+    );
+    return row ? toPlan(row) : null;
+  }
+
+  async update(id: string, patch: Partial<Omit<Plan, 'id' | 'code'>>): Promise<Plan | null> {
+    // Fixed column list keeps the SQL static: only the fields present are written.
+    const sets: string[] = [];
+    const values: unknown[] = [id];
+    const assign = (column: string, value: unknown): void => {
+      values.push(value);
+      sets.push(`${column} = $${values.length}`);
+    };
+    if (patch.nameFa !== undefined) assign('name_fa', patch.nameFa);
+    if (patch.durationDays !== undefined) assign('duration_days', patch.durationDays);
+    if (patch.priceToman !== undefined) assign('price_toman', patch.priceToman);
+    if (patch.maxActiveOrders !== undefined) assign('max_active_orders', patch.maxActiveOrders);
+    if (patch.isActive !== undefined) assign('is_active', patch.isActive);
+    if (sets.length === 0) {
+      const current = await queryOne<PlanRow>(
+        this.db,
+        `SELECT ${PLAN_COLUMNS} FROM plans WHERE id = $1`,
+        [id],
+      );
+      return current ? toPlan(current) : null;
+    }
+    const row = await queryOne<PlanRow>(
+      this.db,
+      `UPDATE plans SET ${sets.join(', ')} WHERE id = $1 RETURNING ${PLAN_COLUMNS}`,
+      values,
     );
     return row ? toPlan(row) : null;
   }

@@ -27,6 +27,7 @@ export interface ReservationView {
   decidedAt: string | null;
   completedAt: string | null;
   cancelReason: string | null;
+  extensionCount: number;
 }
 
 export const toReservationView = (reservation: Reservation): ReservationView => ({
@@ -39,6 +40,7 @@ export const toReservationView = (reservation: Reservation): ReservationView => 
   decidedAt: reservation.decidedAt?.toISOString() ?? null,
   completedAt: reservation.completedAt?.toISOString() ?? null,
   cancelReason: reservation.cancelReason,
+  extensionCount: reservation.extensionCount,
 });
 
 export class ReservationService {
@@ -117,7 +119,9 @@ export class ReservationService {
         id: crypto.randomUUID(),
         orderId,
         takerId: taker.id,
-        expiresAt: new Date(now.getTime() + config['owner.decision_ttl_minutes'] * 60_000),
+        // G-04: the reservation itself lives `reservation.ttl_minutes` (30 by default). The owner's
+        // decision window is a separate nudge that only drives `expireDueReservations`.
+        expiresAt: new Date(now.getTime() + config['reservation.ttl_minutes'] * 60_000),
       });
 
       if (!reservation) {
@@ -135,7 +139,7 @@ export class ReservationService {
       await this.notify(
         order.ownerId,
         'RESERVATION_REQUESTED',
-        { litres: order.litres, minutes: config['owner.decision_ttl_minutes'] },
+        { litres: order.litres, minutes: config['reservation.ttl_minutes'] },
         { orderId, reservationId: reservation.id },
       );
       return toReservationView(reservation);
@@ -401,6 +405,83 @@ export class ReservationService {
     return toReservationView(updated);
   }
 
+  /**
+   * G-04: the taker may move the deadline exactly once, by `reservation.extend_minutes`.
+   * The compare-and-set on `expiresAt` makes a double tap cheap to reason about: the second call
+   * loses the race and gets a 409 instead of a second extension.
+   */
+  async extend(actor: User, id: string): Promise<ReservationView> {
+    const { reservation, order } = await this.load(id);
+    if (reservation.takerId !== actor.id) {
+      throw AppError.forbidden('NOT_RESERVATION_TAKER', 'Only the buyer can extend a reservation');
+    }
+    if (reservation.status !== 'PENDING_OWNER') {
+      throw new AppError('ALREADY_DECIDED', 409, `Reservation is ${reservation.status}`);
+    }
+    const config = await this.settings.get();
+    const now = this.clock.now();
+    if (reservation.expiresAt.getTime() <= now.getTime()) {
+      await this.expireOne(reservation, order, config['reservation.ttl_minutes']);
+      throw new AppError('RESERVATION_NOT_ACTIVE', 409, 'Reservation expired');
+    }
+    if (reservation.extensionCount >= config['reservation.max_extensions']) {
+      throw new AppError('EXTENSION_LIMIT_REACHED', 409, 'The reservation was already extended', {
+        maxExtensions: config['reservation.max_extensions'],
+      });
+    }
+
+    const minutes = config['reservation.extend_minutes'];
+    const newExpiry = new Date(reservation.expiresAt.getTime() + minutes * 60_000);
+    const updated = await this.repos.reservations.extend(id, reservation.expiresAt, newExpiry);
+    if (!updated) throw AppError.conflict('CONFLICT', 'Reservation changed while extending');
+
+    await this.repos.audit.append({
+      actorId: actor.id,
+      action: 'reservation.extended',
+      entity: 'reservation',
+      entityId: id,
+      metadata: { orderId: order.id, minutes, expiresAt: newExpiry.toISOString() },
+    });
+    await this.notify(
+      order.ownerId,
+      'RESERVATION_EXTENDED',
+      { litres: order.litres, minutes },
+      { orderId: order.id, reservationId: id, expiresAt: newExpiry.toISOString() },
+    );
+    return toReservationView(updated);
+  }
+
+  /**
+   * G-04: when a buyer comes back after their reservation was released, the app offers to book the
+   * same order again instead of leaving them on a dead screen. Only the newest release within a day
+   * whose order is still open qualifies.
+   */
+  async rebookHint(
+    user: User,
+  ): Promise<{
+    orderId: string;
+    reservationId: string;
+    litres: number;
+    releasedAt: string;
+  } | null> {
+    const since = this.clock.now().getTime() - 24 * 3_600_000;
+    const recent = await this.repos.reservations.listByTaker(user.id, 10);
+    for (const reservation of recent) {
+      if (reservation.createdAt.getTime() < since) break;
+      if (reservation.status !== 'EXPIRED') continue;
+      const order = await this.repos.orders.findById(reservation.orderId);
+      if (!order || order.status !== 'OPEN') continue;
+      if (order.ownerId === user.id) continue;
+      return {
+        orderId: order.id,
+        reservationId: reservation.id,
+        litres: order.litres,
+        releasedAt: reservation.expiresAt.toISOString(),
+      };
+    }
+    return null;
+  }
+
   async listMine(user: User, limit = 20): Promise<ReservationView[]> {
     const reservations = await this.repos.reservations.listByTaker(user.id, limit);
     return reservations.map(toReservationView);
@@ -486,7 +567,8 @@ export class ReservationService {
     return count;
   }
 
+  /** The window that actually runs out is the reservation window (G-04), not the owner nudge. */
   private currentDecisionTtl(config: Settings): number {
-    return config['owner.decision_ttl_minutes'];
+    return config['reservation.ttl_minutes'];
   }
 }

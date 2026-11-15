@@ -118,12 +118,14 @@ describe('seed data', () => {
     expect(Object.keys(SEED_SETTINGS).sort()).toEqual([...SETTING_KEYS].sort());
   });
 
-  it('seeds plans with sane prices and durations', () => {
+  it('seeds plans with sane prices and durations, including a free one', () => {
     expect(SEED_PLANS.length).toBeGreaterThanOrEqual(2);
     for (const plan of SEED_PLANS) {
       expect(plan.durationDays).toBeGreaterThan(0);
-      expect(plan.priceToman).toBeGreaterThan(0);
+      expect(plan.priceToman).toBeGreaterThanOrEqual(0);
       expect(plan.code).toMatch(/^[a-z0-9-]+$/);
     }
+    // G-15: the catalogue must always contain at least one free plan.
+    expect(SEED_PLANS.some((plan) => plan.priceToman === 0)).toBe(true);
   });
 });

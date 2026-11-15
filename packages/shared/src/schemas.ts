@@ -128,11 +128,29 @@ export const orderSearchSchema = z
     lat: z.coerce.number().min(-90).max(90).optional(),
     lng: z.coerce.number().min(-180).max(180).optional(),
     radiusKm: z.coerce.number().min(0.5).max(200).optional(),
+    /**
+     * G-05 lot matching. `exact` asks for one standard lot (40 litres, say) and the API answers
+     * with the closest lots inside +-10% when nothing exact exists; `range` is a plain between.
+     */
+    litresMode: z.enum(['exact', 'range']).default('exact'),
+    litres: z.coerce.number().min(1).max(1000).optional(),
+    minLitres: z.coerce.number().min(1).max(1000).optional(),
+    maxLitres: z.coerce.number().min(1).max(1000).optional(),
     sort: z.enum(['distance', 'price', 'newest']).default('distance'),
     cursor: z.string().max(128).optional(),
     limit: z.coerce.number().int().min(1).max(50).default(20),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) =>
+      value.minLitres === undefined ||
+      value.maxLitres === undefined ||
+      value.minLitres <= value.maxLitres,
+    {
+      message: 'minLitres must not exceed maxLitres',
+      path: ['minLitres'],
+    },
+  );
 
 export type OrderSearchInput = z.infer<typeof orderSearchSchema>;
 
@@ -217,6 +235,41 @@ export const paymentListSchema = z
     limit: z.coerce.number().int().min(1).max(100).default(20),
   })
   .strict();
+
+/**
+ * G-15: the panel owns the plan catalogue. `code` is the immutable handle the mobile apps and the
+ * seeded free plan rely on, so it exists only on creation.
+ */
+export const createPlanSchema = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .min(2)
+      .max(32)
+      .regex(/^[a-z0-9_-]+$/, { message: 'CODE_INVALID' }),
+    nameFa: z.string().trim().min(2).max(60),
+    priceToman: z.number().int().min(0).max(100_000_000),
+    durationDays: z.number().int().min(1).max(365),
+    /** Extra open-order slots the plan grants while it is active. */
+    maxActiveOrders: z.number().int().min(0).max(50).default(0),
+    isActive: z.boolean().default(true),
+  })
+  .strict();
+
+export type CreatePlanInput = z.infer<typeof createPlanSchema>;
+
+export const updatePlanSchema = z
+  .object({
+    nameFa: z.string().trim().min(2).max(60).optional(),
+    priceToman: z.number().int().min(0).max(100_000_000).optional(),
+    durationDays: z.number().int().min(1).max(365).optional(),
+    maxActiveOrders: z.number().int().min(0).max(50).optional(),
+    isActive: z.boolean().optional(),
+  })
+  .strict();
+
+export type UpdatePlanInput = z.infer<typeof updatePlanSchema>;
 
 export const createPaymentCardSchema = z
   .object({

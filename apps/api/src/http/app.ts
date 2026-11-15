@@ -18,7 +18,9 @@ import {
   isAppError,
   marketStatsSchema,
   notificationQuerySchema,
+  createPlanSchema,
   orderSearchSchema,
+  updatePlanSchema,
   paymentListSchema,
   providerSettingSchema,
   providerTestSchema,
@@ -389,6 +391,17 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     return { items: await reservations.listMine(currentUser(request), query.limit) };
   });
 
+  // G-04: "the previous reservation was released — book the same order again?" prompt.
+  app.get('/v1/reservations/rebook-hint', { preHandler: requireAuth }, async (request) => {
+    const hint = await reservations.rebookHint(currentUser(request));
+    return { hint };
+  });
+
+  app.post('/v1/reservations/:id/extend', { preHandler: requireAuth }, async (request) => {
+    const { id } = request.params as { id: string };
+    return reservations.extend(currentUser(request), id);
+  });
+
   app.get('/v1/reservations/:id', { preHandler: requireAuth }, async (request) => {
     const { id } = request.params as { id: string };
     return reservations.get(currentUser(request), id);
@@ -556,6 +569,42 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
       const patch = request.body as Record<string, unknown> | undefined;
       if (!patch || typeof patch !== 'object') throw AppError.validation('Body must be an object');
       return { updated: await settings.update(user.id, patch) };
+    },
+  );
+
+  // G-15: the plan catalogue, editable from the panel.
+  app.get(
+    '/v1/admin/plans',
+    { preHandler: [requireAuth, requireRole('ADMIN', 'OWNER')] },
+    async () => payments.listAllPlans(),
+  );
+
+  app.post(
+    '/v1/admin/plans',
+    { preHandler: [requireAuth, requireRole('ADMIN', 'OWNER')] },
+    async (request, reply) => {
+      const body = parseInput(createPlanSchema, request.body);
+      const plan = await payments.createPlan(currentUser(request), body);
+      return reply.status(201).send(plan);
+    },
+  );
+
+  app.patch(
+    '/v1/admin/plans/:id',
+    { preHandler: [requireAuth, requireRole('ADMIN', 'OWNER')] },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      const body = parseInput(updatePlanSchema, request.body);
+      return payments.updatePlan(currentUser(request), id, body);
+    },
+  );
+
+  app.delete(
+    '/v1/admin/plans/:id',
+    { preHandler: [requireAuth, requireRole('ADMIN', 'OWNER')] },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      return payments.retirePlan(currentUser(request), id);
     },
   );
 

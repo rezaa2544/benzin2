@@ -1,6 +1,7 @@
 import {
   AppError,
   TIER_RATE_TOMAN,
+  toPersianDigits,
   type CreateOrderInput,
   type OrderSearchInput,
   type OrderStatus,
@@ -190,10 +191,20 @@ export class OrderService {
     });
   }
 
-  async search(
-    query: OrderSearchInput,
-  ): Promise<{ items: OrderView[]; nextCursor: string | null }> {
+  async search(query: OrderSearchInput): Promise<{
+    items: OrderView[];
+    nextCursor: string | null;
+    /** G-05: when an exact lot has no listing, the closest lots inside +-10% come back here. */
+    nearest: { litres: number; items: OrderView[] } | null;
+    message: string | null;
+  }> {
     const offset = decodeCursor(query.cursor);
+    const exact = query.litresMode === 'exact' ? (query.litres ?? null) : null;
+    const between =
+      query.litresMode === 'range' &&
+      (query.minLitres !== undefined || query.maxLitres !== undefined)
+        ? { min: query.minLitres ?? 1, max: query.maxLitres ?? 1000 }
+        : null;
     const { items, total } = await this.repos.orders.search({
       province: query.province ?? null,
       county: query.county ?? null,
@@ -209,11 +220,44 @@ export class OrderService {
           ? { lat: query.lat, lng: query.lng }
           : null,
       radiusKm: query.radiusKm ?? null,
+      litresExact: exact,
+      litresBetween: between,
     });
     const nextOffset = offset + items.length;
+
+    if (exact !== null && total === 0) {
+      const margin = exact * 0.1;
+      const near = await this.repos.orders.search({
+        province: query.province ?? null,
+        county: query.county ?? null,
+        zoneId: query.zoneId ?? null,
+        side: query.side,
+        tier: query.tier ?? null,
+        now: this.clock.now(),
+        // The suggestion list is short on purpose: it answers "what is close to 40 litres?".
+        limit: 5,
+        offset: 0,
+        sort: 'price',
+        origin: null,
+        radiusKm: null,
+        litresExact: null,
+        litresBetween: { min: Math.max(1, exact - margin), max: exact + margin },
+      });
+      return {
+        items: [],
+        nextCursor: null,
+        nearest: near.items.length ? { litres: exact, items: near.items.map(toOrderView) } : null,
+        message: near.items.length
+          ? `${toPersianDigits(exact)} لیتر موجود نیست؛ نزدیک‌ترین لات‌ها را ببین.`
+          : `${toPersianDigits(exact)} لیتر موجود نیست و لات نزدیکی هم ثبت نشده است.`,
+      };
+    }
+
     return {
       items: items.map(toOrderView),
       nextCursor: nextOffset < total ? encodeCursor(nextOffset) : null,
+      nearest: null,
+      message: null,
     };
   }
 

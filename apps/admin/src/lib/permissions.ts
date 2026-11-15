@@ -13,6 +13,7 @@ export type PageId =
   | 'orders'
   | 'payments'
   | 'subscriptions'
+  | 'plans'
   | 'settings'
   | 'sms'
   | 'zones'
@@ -26,6 +27,7 @@ export const PAGE_ACCESS: Record<PageId, readonly UserRole[]> = {
   orders: ['SUPPORT', 'ADMIN', 'OWNER'],
   payments: ['ADMIN', 'OWNER'],
   subscriptions: ['ADMIN', 'OWNER'],
+  plans: ['ADMIN', 'OWNER'],
   settings: ['ADMIN', 'OWNER'],
   sms: ['ADMIN', 'OWNER'],
   zones: ['ADMIN', 'OWNER'],
@@ -54,6 +56,7 @@ export const defaultPageFor = (role: UserRole): PageId | null => {
     'orders',
     'payments',
     'subscriptions',
+    'plans',
     'settings',
     'sms',
     'zones',

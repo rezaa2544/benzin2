@@ -63,8 +63,10 @@ describe('plans and subscriptions', () => {
     const items = json<{ items: { code: string; priceLabelFa: string; durationDays: number }[] }>(
       response,
     ).items;
-    expect(items.map((plan) => plan.code)).toEqual(['monthly', 'quarterly']);
-    expect(items[0]?.priceLabelFa).toBe('۴۹٬۰۰۰ تومان');
+    // G-15: the free plan is part of the catalogue and sorts first (price ascending).
+    expect(items.map((plan) => plan.code)).toEqual(['free', 'monthly', 'quarterly']);
+    expect(items[0]?.priceLabelFa).toContain('رایگان');
+    expect(items[1]?.priceLabelFa).toBe('۴۹٬۰۰۰ تومان');
     expect(items[0]?.durationDays).toBe(30);
   });
 

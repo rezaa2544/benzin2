@@ -4,11 +4,14 @@ import {
   formatToman,
   toPersianDigits,
   type CreatePaymentCardInput,
+  type CreatePlanInput,
   type GatewayCallbackInput,
   type PaymentStatus,
   type PurchaseSubscriptionInput,
+  type UpdatePlanInput,
 } from '@benzin/shared';
 import type { Clock, Payment, Plan, Subscription, User } from '../domain/entities.js';
+import { randomUUID } from 'node:crypto';
 import type { NotificationEmitter, PaymentProvider, Repositories } from '../ports.js';
 import type { SettingsService } from './settings-service.js';
 
@@ -77,7 +80,8 @@ const toPlanView = (plan: Plan): PlanView => ({
   code: plan.code,
   nameFa: plan.nameFa,
   priceToman: plan.priceToman,
-  priceLabelFa: formatToman(plan.priceToman),
+  // G-15: a zero-priced plan reads «رایگان» instead of «۰ تومان».
+  priceLabelFa: plan.priceToman === 0 ? 'رایگان' : formatToman(plan.priceToman),
   durationDays: plan.durationDays,
   maxActiveOrders: plan.maxActiveOrders,
 });
@@ -145,6 +149,82 @@ export class PaymentService {
   async listPlans(): Promise<{ items: PlanView[] }> {
     const plans = await this.repos.plans.listActive();
     return { items: plans.map(toPlanView) };
+  }
+
+  /* ------------------------------------------------------------ plan catalogue (G-15) */
+
+  /** Staff view: inactive plans included, so a plan can be switched back on. */
+  async listAllPlans(): Promise<{ items: PlanView[] }> {
+    const plans = await this.repos.plans.listAll();
+    return { items: plans.map(toPlanView) };
+  }
+
+  /**
+   * Creates a plan. The seeded free plan proves the invariant the brief asks for: the catalogue
+   * must always contain at least one free, active plan, otherwise a new user cannot trade at all.
+   */
+  async createPlan(actor: User, input: CreatePlanInput): Promise<PlanView> {
+    const existing = await this.repos.plans.findByCode(input.code);
+    if (existing)
+      throw AppError.conflict('PLAN_CODE_TAKEN', 'A plan with this code already exists');
+    const plan = await this.repos.plans.upsert({
+      id: randomUUID(),
+      code: input.code,
+      nameFa: input.nameFa,
+      durationDays: input.durationDays,
+      priceToman: input.priceToman,
+      maxActiveOrders: input.maxActiveOrders ?? 0,
+      isActive: input.isActive ?? true,
+    });
+    await this.repos.audit.append({
+      actorId: actor.id,
+      action: 'plan.created',
+      entity: 'plan',
+      entityId: plan.id,
+      metadata: { code: plan.code, priceToman: plan.priceToman },
+    });
+    return toPlanView(plan);
+  }
+
+  /**
+   * Edits a plan. Every price change is forward-only by construction: a subscription stores its
+   * own `planId` and the money it was charged lives on the payment row, so nothing is rewritten.
+   */
+  async updatePlan(actor: User, id: string, patch: UpdatePlanInput): Promise<PlanView> {
+    const plan = await this.repos.plans.findById(id);
+    if (!plan) throw AppError.notFound('PLAN_NOT_FOUND', 'Plan not found');
+    if (patch.isActive === false && plan.priceToman === 0) {
+      throw AppError.conflict('FREE_PLAN_REQUIRED', 'The free plan must stay active');
+    }
+    const updated = await this.repos.plans.update(id, patch);
+    if (!updated) throw AppError.notFound('PLAN_NOT_FOUND', 'Plan not found');
+    await this.repos.audit.append({
+      actorId: actor.id,
+      action: 'plan.updated',
+      entity: 'plan',
+      entityId: id,
+      metadata: { ...patch },
+    });
+    return toPlanView(updated);
+  }
+
+  /** Soft delete: sold plans stay readable for the subscriptions that point at them. */
+  async retirePlan(actor: User, id: string): Promise<PlanView> {
+    const plan = await this.repos.plans.findById(id);
+    if (!plan) throw AppError.notFound('PLAN_NOT_FOUND', 'Plan not found');
+    if (plan.priceToman === 0) {
+      throw AppError.conflict('FREE_PLAN_REQUIRED', 'The free plan must stay active');
+    }
+    const updated = await this.repos.plans.setActive(id, false);
+    if (!updated) throw AppError.notFound('PLAN_NOT_FOUND', 'Plan not found');
+    await this.repos.audit.append({
+      actorId: actor.id,
+      action: 'plan.retired',
+      entity: 'plan',
+      entityId: id,
+      metadata: { code: plan.code },
+    });
+    return toPlanView(updated);
   }
 
   async currentSubscription(user: User): Promise<{ subscription: SubscriptionView | null }> {

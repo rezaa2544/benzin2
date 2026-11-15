@@ -11,6 +11,7 @@ const NAV: { page: PageId; label: string }[] = [
   { page: 'orders', label: fa.nav.orders },
   { page: 'payments', label: fa.nav.payments },
   { page: 'subscriptions', label: fa.nav.subscriptions },
+  { page: 'plans', label: fa.nav.plans },
   { page: 'settings', label: fa.nav.settings },
   { page: 'sms', label: fa.nav.sms },
   { page: 'zones', label: fa.nav.zones },

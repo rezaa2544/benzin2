@@ -37,6 +37,15 @@ export interface SeedPlan {
 }
 
 export const SEED_PLANS: readonly SeedPlan[] = [
+  // G-15: the catalogue always ships a free plan, so a brand-new user can trade before paying.
+  {
+    code: 'free',
+    nameFa: 'پلن رایگان',
+    durationDays: 30,
+    priceToman: 0,
+    maxActiveOrders: 0,
+    isActive: true,
+  },
   {
     code: 'monthly',
     nameFa: 'اشتراک یک‌ماهه',
@@ -62,6 +71,7 @@ export const SEED_SETTINGS: Record<string, unknown> = Object.fromEntries(
 /** Applies the seed to any repository set (memory today, Postgres in the CLI path). */
 /** Stable ids keep re-seeding idempotent across restarts (dev memory store and Postgres). */
 export const SEED_PLAN_IDS: Record<string, string> = {
+  free: '3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e4e',
   monthly: '3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e4f',
   quarterly: '3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e50',
 };

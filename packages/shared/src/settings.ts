@@ -6,7 +6,10 @@ import { z } from 'zod';
  * Values marked ASSUMPTION were not fixed by the brief and are recorded in docs/ASSUMPTIONS.md.
  */
 export const SETTING_DEFINITIONS = {
-  'reservation.ttl_minutes': { schema: z.number().int().min(1).max(120), default: 10 },
+  // G-04: a reservation lives 30 minutes by default and can be extended once, by 10 minutes.
+  'reservation.ttl_minutes': { schema: z.number().int().min(1).max(120), default: 30 },
+  'reservation.extend_minutes': { schema: z.number().int().min(1).max(60), default: 10 },
+  'reservation.max_extensions': { schema: z.number().int().min(0).max(5), default: 1 },
   'reservation.max_active_per_user': { schema: z.number().int().min(1).max(10), default: 1 },
   'reservation.contact_window_minutes': { schema: z.number().int().min(1).max(240), default: 45 },
   'owner.decision_ttl_minutes': { schema: z.number().int().min(1).max(120), default: 5 },
@@ -90,6 +93,8 @@ export type SettingGroup = (typeof SETTING_GROUPS)[number];
 
 export const SETTING_META: Record<SettingKey, { labelFa: string; group: SettingGroup }> = {
   'reservation.ttl_minutes': { labelFa: 'مهلت رزرو (دقیقه)', group: 'RESERVATION' },
+  'reservation.extend_minutes': { labelFa: 'مدت هر تمدید رزرو (دقیقه)', group: 'RESERVATION' },
+  'reservation.max_extensions': { labelFa: 'حداکثر تعداد تمدید رزرو', group: 'RESERVATION' },
   'reservation.max_active_per_user': {
     labelFa: 'حداکثر رزرو هم‌زمان هر کاربر',
     group: 'RESERVATION',

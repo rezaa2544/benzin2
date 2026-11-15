@@ -59,6 +59,8 @@ export interface Reservation {
   decidedAt: Date | null;
   completedAt: Date | null;
   cancelReason: string | null;
+  /** How many times the taker pushed the deadline (G-04 allows exactly one 10-minute extension). */
+  extensionCount: number;
 }
 
 /** One chat thread per order; both trade parties write into it (task E5-01). */

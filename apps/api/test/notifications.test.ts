@@ -52,7 +52,8 @@ describe('notifications', () => {
     expect(request?.channel).toBe('IN_APP');
     expect(request?.titleFa).toBe('درخواست رزرو جدید');
     expect(request?.bodyFa).toContain('۲۰ لیتر');
-    expect(request?.bodyFa).toContain('۵ دقیقه');
+    // G-04: the reservation window is 30 minutes by default.
+    expect(request?.bodyFa).toContain('۳۰ دقیقه');
     expect(request?.readAt).toBeNull();
     expect(request?.bodyFa).toMatch(/[\u0600-\u06FF]/);
   });
@@ -216,15 +217,17 @@ describe('scheduled notifications', () => {
 
   it('warns the taker when their request expires unanswered', async () => {
     const trade = await startTrade(ctx, { confirm: false });
-    clock.advanceMinutes(11);
+    clock.advanceMinutes(31);
 
     const expired = await ctx.services.reservations.expireDueReservations();
     expect(expired).toBeGreaterThanOrEqual(1);
 
-    const items = await inbox(ctx, trade.taker.token);
+    // Access tokens live 15 minutes, so the 31-minute jump requires a fresh login.
+    const takerToken = (await login(ctx, trade.taker.phone)).token;
+    const items = await inbox(ctx, takerToken);
     const notification = items.find((item) => item.kind === 'RESERVATION_EXPIRED');
     expect(notification?.bodyFa).toContain('منقضی');
-    expect(notification?.bodyFa).toContain('۵ دقیقه');
+    expect(notification?.bodyFa).toContain('۳۰ دقیقه');
   });
 
   it('tells both parties when an abandoned trade auto-completes', async () => {

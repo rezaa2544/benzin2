@@ -1,6 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppError } from '@benzin/shared';
-import { auth, createTestContext, login, orderPayload, type TestContext } from './helpers.js';
+import {
+  auth,
+  createTestContext,
+  login,
+  ManualClock,
+  orderPayload,
+  type TestContext,
+} from './helpers.js';
 
 let phoneSeq = 0;
 
@@ -224,5 +231,153 @@ describe('reservations', () => {
       headers: auth(outsider),
     });
     expect(response.statusCode).toBe(403);
+  });
+
+  it('gives every new reservation the 30-minute window from settings (G-04)', async () => {
+    const clock = new ManualClock();
+    const scoped = await createTestContext(clock);
+    try {
+      const seller = (await login(scoped, '09121100001')).token;
+      const buyer = (await login(scoped, '09121100002')).token;
+      const orderId = await createOrder(scoped, seller);
+      const requested = await scoped.app.inject({
+        method: 'POST',
+        url: `/v1/orders/${orderId}/reservations`,
+        headers: auth(buyer),
+      });
+      expect(requested.statusCode).toBe(201);
+      const reservation = requested.json() as { expiresAt: string; extensionCount: number };
+      expect(reservation.extensionCount).toBe(0);
+      const minutes = (new Date(reservation.expiresAt).getTime() - clock.now().getTime()) / 60_000;
+      expect(minutes).toBe(30);
+    } finally {
+      await scoped.close();
+    }
+  });
+
+  it('allows exactly one 10-minute extension, then refuses with 409 (G-04)', async () => {
+    const clock = new ManualClock();
+    const scoped = await createTestContext(clock);
+    try {
+      const seller = (await login(scoped, '09121110001')).token;
+      const buyer = (await login(scoped, '09121110002')).token;
+      const orderId = await createOrder(scoped, seller);
+      const requested = await scoped.app.inject({
+        method: 'POST',
+        url: `/v1/orders/${orderId}/reservations`,
+        headers: auth(buyer),
+      });
+      const reservation = requested.json() as { id: string; expiresAt: string };
+      const before = new Date(reservation.expiresAt).getTime();
+
+      const extended = await scoped.app.inject({
+        method: 'POST',
+        url: `/v1/reservations/${reservation.id}/extend`,
+        headers: auth(buyer),
+      });
+      expect(extended.statusCode).toBe(200);
+      const body = extended.json() as { expiresAt: string; extensionCount: number };
+      expect(body.extensionCount).toBe(1);
+      expect(new Date(body.expiresAt).getTime() - before).toBe(10 * 60_000);
+
+      const again = await scoped.app.inject({
+        method: 'POST',
+        url: `/v1/reservations/${reservation.id}/extend`,
+        headers: auth(buyer),
+      });
+      expect(again.statusCode).toBe(409);
+      expect((again.json() as { error: { code: string } }).error.code).toBe(
+        'EXTENSION_LIMIT_REACHED',
+      );
+    } finally {
+      await scoped.close();
+    }
+  });
+
+  it('refuses an extension from the owner and after the deadline (G-04)', async () => {
+    const clock = new ManualClock();
+    const scoped = await createTestContext(clock);
+    try {
+      const seller = (await login(scoped, '09121120001')).token;
+      const buyer = (await login(scoped, '09121120002')).token;
+      const orderId = await createOrder(scoped, seller);
+      const requested = await scoped.app.inject({
+        method: 'POST',
+        url: `/v1/orders/${orderId}/reservations`,
+        headers: auth(buyer),
+      });
+      const reservationId = (requested.json() as { id: string }).id;
+
+      const byOwner = await scoped.app.inject({
+        method: 'POST',
+        url: `/v1/reservations/${reservationId}/extend`,
+        headers: auth(seller),
+      });
+      expect(byOwner.statusCode).toBe(403);
+      expect((byOwner.json() as { error: { code: string } }).error.code).toBe(
+        'NOT_RESERVATION_TAKER',
+      );
+
+      clock.advanceMinutes(31);
+      // Access tokens expire in minutes, so the buyer signs in again before the late attempt.
+      const lateBuyer = (await login(scoped, '09121120002')).token;
+      const late = await scoped.app.inject({
+        method: 'POST',
+        url: `/v1/reservations/${reservationId}/extend`,
+        headers: auth(lateBuyer),
+      });
+      expect(late.statusCode).toBe(409);
+      expect((late.json() as { error: { code: string } }).error.code).toBe(
+        'RESERVATION_NOT_ACTIVE',
+      );
+    } finally {
+      await scoped.close();
+    }
+  });
+
+  it('offers to book the same order again after an expiry (G-04)', async () => {
+    const clock = new ManualClock();
+    const scoped = await createTestContext(clock);
+    try {
+      const seller = (await login(scoped, '09121130001')).token;
+      const buyer = (await login(scoped, '09121130002')).token;
+      const orderId = await createOrder(scoped, seller);
+      await scoped.app.inject({
+        method: 'POST',
+        url: `/v1/orders/${orderId}/reservations`,
+        headers: auth(buyer),
+      });
+
+      const empty = await scoped.app.inject({
+        method: 'GET',
+        url: '/v1/reservations/rebook-hint',
+        headers: auth(buyer),
+      });
+      expect(empty.statusCode).toBe(200);
+      expect((empty.json() as { hint: unknown }).hint).toBeNull();
+
+      clock.advanceMinutes(31);
+      await scoped.services.reservations.expireDueReservations();
+      const again = (await login(scoped, '09121130002')).token;
+
+      const hint = await scoped.app.inject({
+        method: 'GET',
+        url: '/v1/reservations/rebook-hint',
+        headers: auth(again),
+      });
+      expect(hint.statusCode).toBe(200);
+      const body = hint.json() as { hint: { orderId: string } | null };
+      expect(body.hint?.orderId).toBe(orderId);
+
+      // The order is bookable again exactly as the prompt promises.
+      const rebooked = await scoped.app.inject({
+        method: 'POST',
+        url: `/v1/orders/${orderId}/reservations`,
+        headers: auth(again),
+      });
+      expect(rebooked.statusCode).toBe(201);
+    } finally {
+      await scoped.close();
+    }
   });
 });

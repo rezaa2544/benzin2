@@ -122,4 +122,9 @@ export class ApiClient {
   patch<T>(path: string, body?: unknown) {
     return this.request<T>('PATCH', path, { body: body ?? {} });
   }
+
+  /** Used by the plan catalogue (G-15), where retiring a plan is a soft delete. */
+  del<T>(path: string) {
+    return this.request<T>('DELETE', path);
+  }
 }

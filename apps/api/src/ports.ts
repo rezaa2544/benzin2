@@ -136,6 +136,9 @@ export interface OrderSearchQuery {
   sort: 'distance' | 'price' | 'newest';
   origin: { lat: number; lng: number } | null;
   radiusKm: number | null;
+  /** G-05: exact lot (with +-10% fallback handled by the service) or an inclusive between. */
+  litresExact: number | null;
+  litresBetween: { min: number; max: number } | null;
 }
 
 export interface OrderRepository {
@@ -206,6 +209,11 @@ export interface ReservationRepository {
     next: ReservationStatus,
     patch?: Partial<Pick<Reservation, 'decidedAt' | 'completedAt' | 'cancelReason'>>,
   ): Promise<Reservation | null>;
+  /**
+   * Pushes the deadline of a still-pending reservation (G-04). `expectedExpiresAt` makes it a
+   * compare-and-set, so two taps on "extend" cannot buy 20 minutes.
+   */
+  extend(id: string, expectedExpiresAt: Date, newExpiresAt: Date): Promise<Reservation | null>;
   listExpiredPending(now: Date, limit: number): Promise<Reservation[]>;
   /** Every reservation of one order, newest first — chat access checks use this. */
   listByOrder(orderId: string, limit: number): Promise<Reservation[]>;
@@ -276,9 +284,15 @@ export interface ReputationRepository {
 
 export interface PlanRepository {
   listActive(): Promise<Plan[]>;
+  /** G-15: the panel needs the inactive plans too, otherwise a removed plan disappears forever. */
+  listAll(): Promise<Plan[]>;
   findById(id: string): Promise<Plan | null>;
   findByCode(code: string): Promise<Plan | null>;
   upsert(plan: Plan): Promise<Plan>;
+  /** Soft delete: a plan that was ever sold must stay readable for its subscriptions. */
+  setActive(id: string, isActive: boolean): Promise<Plan | null>;
+  /** Edits in place; `code` and `id` are immutable so old links keep working. */
+  update(id: string, patch: Partial<Omit<Plan, 'id' | 'code'>>): Promise<Plan | null>;
 }
 
 export interface NewSubscription {

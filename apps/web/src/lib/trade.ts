@@ -2,7 +2,7 @@ import { ACTIVE_RESERVATION_STATUSES, type ReservationStatus } from '@benzin/sha
 import type { ReservationView } from './types.js';
 
 export type TradeAction =
-  'confirm' | 'reject' | 'complete' | 'dispute' | 'cancel' | 'contact' | 'rate';
+  'confirm' | 'reject' | 'complete' | 'dispute' | 'cancel' | 'contact' | 'rate' | 'extend';
 
 export type TradeRole = 'taker' | 'owner' | 'spectator';
 
@@ -22,14 +22,17 @@ export function tradeRole(
  * confirmed trade, and only the taker can rate a finished one.
  */
 export function tradeActions(
-  reservation: Pick<ReservationView, 'status' | 'takerId'>,
+  reservation: Pick<ReservationView, 'status' | 'takerId'> & { extensionCount?: number },
   role: TradeRole,
+  maxExtensions = 1,
 ): TradeAction[] {
   const { status } = reservation;
   if (role === 'spectator') return [];
   switch (status) {
     case 'PENDING_OWNER':
-      return role === 'owner' ? ['confirm', 'reject'] : ['cancel'];
+      // G-04: the buyer gets one deadline push while the owner has not decided yet.
+      if (role === 'owner') return ['confirm', 'reject'];
+      return (reservation.extensionCount ?? 0) < maxExtensions ? ['extend', 'cancel'] : ['cancel'];
     case 'CONFIRMED':
       return ['complete', 'dispute', 'cancel', 'contact'];
     case 'COMPLETED':
