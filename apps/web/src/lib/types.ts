@@ -115,6 +115,8 @@ export interface MarketStats {
 }
 
 export interface MetaConfig {
+  /** API build version; the desktop shell reports the newer content version separately. */
+  version?: string;
   otpTtlSeconds: number;
   otpLength: number;
   reservationTtlMinutes: number;

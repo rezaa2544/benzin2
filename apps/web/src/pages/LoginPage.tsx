@@ -5,7 +5,7 @@ import type { ApiClient } from '../lib/api.js';
 import type { AuthResult, MetaConfig, OtpRequestResult } from '../lib/types.js';
 import { t, tf } from '../lib/i18n.js';
 import { Notice } from './parts.js';
-import { FormField, OtpInput } from '../components/index.js';
+import { FormField, OtpInput, VersionBadge } from '../components/index.js';
 
 export interface LoginPageProps {
   api: ApiClient;
@@ -88,92 +88,96 @@ export function LoginPage({ api, config, onAuthenticated, reason }: LoginPagePro
   };
 
   return (
-    <div className="phone-frame flex min-h-dvh flex-col justify-center py-10">
-      <div className="mb-6 text-center">
-        <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-card bg-brand text-2xl text-brandInk">
-          ⛽
+    <>
+      {/* No header on the auth screen, so the version chip pins itself to the corner. */}
+      <VersionBadge fixed />
+      <div className="phone-frame flex min-h-dvh flex-col justify-center py-10">
+        <div className="mb-6 text-center">
+          <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-card bg-brand text-2xl text-brandInk">
+            ⛽
+          </div>
+          <h1 className="text-2xl font-bold">{t('login.title')}</h1>
+          <p className="mt-1 text-sm text-muted">{t('login.subtitle')}</p>
         </div>
-        <h1 className="text-2xl font-bold">{t('login.title')}</h1>
-        <p className="mt-1 text-sm text-muted">{t('login.subtitle')}</p>
-      </div>
 
-      {info ? <Notice tone="info">{info}</Notice> : null}
-      {error ? <Notice tone="error">{error}</Notice> : null}
+        {info ? <Notice tone="info">{info}</Notice> : null}
+        {error ? <Notice tone="error">{error}</Notice> : null}
 
-      {step === 'phone' ? (
-        <>
-          <FormField label={t('form.phone')} hint={t('form.phoneHint')} required>
-            {(field) => (
-              <input
-                {...field}
-                className="input tnum text-center"
-                dir="ltr"
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder={t('login.phonePlaceholder')}
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') void requestCode();
-                }}
-              />
-            )}
-          </FormField>
-          <button
-            type="button"
-            className="btn btn-primary w-full"
-            disabled={busy}
-            onClick={() => void requestCode()}
-          >
-            {busy ? t('login.sending') : t('login.request')}
-          </button>
-          <p className="mt-4 text-center text-xs text-muted">{t('login.devHint')}</p>
-        </>
-      ) : (
-        <>
-          <OtpInput
-            length={length}
-            value={code}
-            autoFocus
-            disabled={busy}
-            invalid={Boolean(error)}
-            onChange={setCode}
-            onComplete={(value) => void verify(value)}
-          />
-          <button
-            type="button"
-            className="btn btn-primary mt-4 w-full"
-            disabled={busy || code.length < length}
-            onClick={() => void verify(code)}
-          >
-            {busy ? t('login.verifying') : t('login.verify')}
-          </button>
-          <div className="mt-3 flex items-center justify-between text-xs">
+        {step === 'phone' ? (
+          <>
+            <FormField label={t('form.phone')} hint={t('form.phoneHint')} required>
+              {(field) => (
+                <input
+                  {...field}
+                  className="input tnum text-center"
+                  dir="ltr"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder={t('login.phonePlaceholder')}
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void requestCode();
+                  }}
+                />
+              )}
+            </FormField>
             <button
               type="button"
-              className="btn btn-ghost px-2"
-              onClick={() => {
-                setStep('phone');
-                setCode('');
-                setError(null);
-              }}
-            >
-              {t('login.changePhone')}
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost px-2 tnum"
-              disabled={busy || cooldown > 0}
+              className="btn btn-primary w-full"
+              disabled={busy}
               onClick={() => void requestCode()}
             >
-              {cooldown > 0
-                ? tf('otp.resendIn', { seconds: toPersianDigits(cooldown) })
-                : t('otp.resend')}
+              {busy ? t('login.sending') : t('login.request')}
             </button>
-          </div>
-        </>
-      )}
-    </div>
+            <p className="mt-4 text-center text-xs text-muted">{t('login.devHint')}</p>
+          </>
+        ) : (
+          <>
+            <OtpInput
+              length={length}
+              value={code}
+              autoFocus
+              disabled={busy}
+              invalid={Boolean(error)}
+              onChange={setCode}
+              onComplete={(value) => void verify(value)}
+            />
+            <button
+              type="button"
+              className="btn btn-primary mt-4 w-full"
+              disabled={busy || code.length < length}
+              onClick={() => void verify(code)}
+            >
+              {busy ? t('login.verifying') : t('login.verify')}
+            </button>
+            <div className="mt-3 flex items-center justify-between text-xs">
+              <button
+                type="button"
+                className="btn btn-ghost px-2"
+                onClick={() => {
+                  setStep('phone');
+                  setCode('');
+                  setError(null);
+                }}
+              >
+                {t('login.changePhone')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost px-2 tnum"
+                disabled={busy || cooldown > 0}
+                onClick={() => void requestCode()}
+              >
+                {cooldown > 0
+                  ? tf('otp.resendIn', { seconds: toPersianDigits(cooldown) })
+                  : t('otp.resend')}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
 

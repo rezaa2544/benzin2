@@ -3,6 +3,7 @@ import { canAccess, type PageId } from '../lib/permissions.js';
 import { buildHash } from '../lib/router.js';
 import type { SessionUser } from '../lib/session.js';
 import fa from '../i18n/fa.json';
+import { VersionBadge } from './VersionBadge.js';
 
 const NAV: { page: PageId; label: string }[] = [
   { page: 'dashboard', label: fa.nav.dashboard },
@@ -55,9 +56,12 @@ export function AppShell({
           <div className="text-xs text-muted">
             {user.displayName ?? user.phone} · {fa.app.subtitle}
           </div>
-          <button type="button" className="btn px-2 py-1 text-xs" onClick={onLogout}>
-            {fa.app.logout}
-          </button>
+          <div className="flex items-center gap-2">
+            <VersionBadge />
+            <button type="button" className="btn px-2 py-1 text-xs" onClick={onLogout}>
+              {fa.app.logout}
+            </button>
+          </div>
         </header>
         <main className="mx-auto max-w-6xl p-4">{children}</main>
       </div>

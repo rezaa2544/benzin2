@@ -231,6 +231,9 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
   app.get('/v1/meta/config', async () => {
     const effective = await settings.get();
     return {
+      // Running build: the desktop shell shows the content version on top of this, but a browser
+      // or PWA install has no shell, so the chip falls back to the API build.
+      version: config.APP_VERSION,
       otpTtlSeconds: effective['otp.ttl_seconds'],
       otpLength: effective['otp.length'],
       reservationTtlMinutes: effective['reservation.ttl_minutes'],

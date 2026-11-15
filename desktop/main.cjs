@@ -21,6 +21,12 @@ const API_HOST = '127.0.0.1';
 // Stable URL: re-uploaded (clobbered) on every content build, so it always points at the newest.
 const CONTENT_BASE = 'https://github.com/rezaa2544/benzin2/releases/download/content-latest';
 
+// Automatic update cadence: check shortly after launch and then every few minutes. The shell
+// installs a new content build as soon as the release channel publishes one and restarts itself,
+// so the owner never has to look for updates or download an installer again.
+const UPDATE_INTERVAL_MS = Number(process.env.BENZIN_UPDATE_INTERVAL_MS || 5 * 60 * 1000);
+const UPDATE_BOOT_DELAY_MS = Number(process.env.BENZIN_UPDATE_BOOT_DELAY_MS || 4000);
+
 const bundledRuntime = app.isPackaged
   ? path.join(process.resourcesPath, 'runtime')
   : path.join(__dirname, 'runtime');
@@ -29,6 +35,16 @@ const contentRoot = path.join(app.getPath('userData'), 'content');
 let runtimeDir = bundledRuntime;
 let runtimeSource = 'bundled';
 let installedVersion = '0.0.0';
+
+/** Live update state, also served to the UI at /shell/status (the version chip in the header). */
+const updateState = {
+  status: 'idle', // idle | checking | current | downloading | installing | restarting | offline | failed
+  latest: null,
+  checkedAt: null,
+  error: null,
+};
+let updateInFlight = false;
+let updateTimer = null;
 
 let apiProcess = null;
 let appWindow = null;
@@ -130,79 +146,159 @@ async function downloadBuffer(url) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-async function checkForUpdates({ manual = false } = {}) {
-  let remote;
-  try {
-    remote = await fetchJson(`${CONTENT_BASE}/content.json`);
-  } catch (error) {
-    if (manual) dialog.showMessageBox({ message: 'بررسی به‌روزرسانی ناموفق بود', detail: String(error.message) });
-    return { status: 'offline' };
-  }
-  if (!remote || !remote.version) return { status: 'offline' };
-  if (remote.version === installedVersion) {
-    if (manual) {
-      dialog.showMessageBox({
-        message: 'برنامه به‌روز است',
-        detail: `نسخهٔ محتوا: ${installedVersion}`,
-      });
-    }
-    return { status: 'current', version: remote.version };
-  }
+function updatePayload() {
+  return {
+    version: installedVersion,
+    source: runtimeSource,
+    status: updateState.status,
+    latest: updateState.latest,
+    updateAvailable: Boolean(updateState.latest && updateState.latest !== installedVersion),
+    checkedAt: updateState.checkedAt,
+    error: updateState.error,
+    intervalMs: UPDATE_INTERVAL_MS,
+  };
+}
 
-  // BENZIN_AUTO_UPDATE=1 installs without prompting (used for smoke tests).
-  const auto = process.env.BENZIN_AUTO_UPDATE === '1';
-  if (!auto) {
-    const answer = await dialog.showMessageBox({
-      type: 'question',
-      buttons: ['دریافت و ری‌استارت', 'بعداً'],
-      defaultId: 0,
-      cancelId: 1,
-      message: 'به‌روزرسانی آماده است',
-      detail: `نسخهٔ نصب‌شده: ${installedVersion}\nنسخهٔ جدید: ${remote.version}\nحجم دانلود: ${(
-        remote.size / 1024 / 1024
-      ).toFixed(1)} مگابایت (فقط بخش‌های تغییریافته)`,
-    });
-    if (answer.response !== 0) return { status: 'declined' };
-  }
+function setUpdateState(patch) {
+  Object.assign(updateState, patch);
+}
 
-  const staging = path.join(contentRoot, `.staging-${Date.now()}`);
-  try {
-    fs.mkdirSync(staging, { recursive: true });
-    const archive = await downloadBuffer(`${CONTENT_BASE}/${remote.file || 'content.tar.gz'}`);
-    const digest = crypto.createHash('sha256').update(archive).digest('hex');
-    if (remote.sha256 && digest !== remote.sha256) throw new Error('checksum mismatch');
-    const count = untar(zlib.gunzipSync(archive), staging);
-    const target = path.join(contentRoot, remote.version);
-    fs.rmSync(target, { recursive: true, force: true });
-    fs.renameSync(staging, target);
-    fs.writeFileSync(
-      path.join(contentRoot, 'current.json'),
-      JSON.stringify({ version: remote.version, files: count, installedAt: new Date().toISOString() }, null, 2),
-    );
-    log(`content ${remote.version} installed (${count} files)`);
-  } catch (error) {
-    fs.rmSync(staging, { recursive: true, force: true });
-    dialog.showMessageBox({ message: 'نصب به‌روزرسانی ناموفق بود', detail: String(error.message) });
-    return { status: 'failed' };
-  }
-
-  if (auto) {
-    log(`update installed: ${remote.version} (auto mode, no restart)`);
-    return { status: 'installed', version: remote.version };
-  }
-
-  const restart = await dialog.showMessageBox({
-    type: 'info',
-    buttons: ['ری‌استارت', 'دستی'],
-    defaultId: 0,
-    message: 'به‌روزرسانی نصب شد',
-    detail: 'برای اعمال، برنامه دوباره اجرا می‌شود.',
-  });
-  if (restart.response === 0) {
+function restartSoon(delayMs = 1500) {
+  // The window is closed by `app.exit`, so the relaunch is what the owner sees: the app simply
+  // reopens on the new content build.
+  setTimeout(() => {
+    log('relaunching on the new content build');
     app.relaunch();
     app.exit(0);
+  }, delayMs);
+}
+
+/**
+ * Fetch the release channel, install a newer content build and restart the app.
+ *
+ * Runs unattended after launch and on a timer: no dialogs, no "download an installer again".
+ * `manual` only decides whether the outcome is also reported in a message box.
+ */
+async function checkForUpdates({ manual = false, restart = true } = {}) {
+  if (updateInFlight) return updatePayload();
+  updateInFlight = true;
+  setUpdateState({ status: 'checking', error: null });
+  try {
+    let remote;
+    try {
+      remote = await fetchJson(`${CONTENT_BASE}/content.json`);
+    } catch (error) {
+      setUpdateState({
+        status: 'offline',
+        checkedAt: new Date().toISOString(),
+        error: error && error.message ? error.message : String(error),
+      });
+      if (manual) {
+        dialog.showMessageBox({
+          message: 'بررسی به‌روزرسانی ناموفق بود',
+          detail: String(error.message || error),
+        });
+      }
+      return updatePayload();
+    }
+    if (!remote || !remote.version) {
+      setUpdateState({ status: 'offline', checkedAt: new Date().toISOString() });
+      return updatePayload();
+    }
+
+    setUpdateState({
+      checkedAt: new Date().toISOString(),
+      latest: remote.version,
+      error: null,
+    });
+
+    if (remote.version === installedVersion) {
+      setUpdateState({ status: 'current' });
+      if (manual) {
+        dialog.showMessageBox({
+          message: 'برنامه به‌روز است',
+          detail: `نسخهٔ محتوا: ${installedVersion}`,
+        });
+      }
+      return updatePayload();
+    }
+
+    log(`update ${remote.version} found (installed ${installedVersion}) — downloading`);
+    setUpdateState({ status: 'downloading' });
+
+    const staging = path.join(contentRoot, `.staging-${Date.now()}`);
+    try {
+      fs.mkdirSync(staging, { recursive: true });
+      const archive = await downloadBuffer(`${CONTENT_BASE}/${remote.file || 'content.tar.gz'}`);
+      const digest = crypto.createHash('sha256').update(archive).digest('hex');
+      if (remote.sha256 && digest !== remote.sha256) throw new Error('checksum mismatch');
+
+      setUpdateState({ status: 'installing' });
+      const count = untar(zlib.gunzipSync(archive), staging);
+      const target = path.join(contentRoot, remote.version);
+      fs.rmSync(target, { recursive: true, force: true });
+      fs.renameSync(staging, target);
+      fs.writeFileSync(
+        path.join(contentRoot, 'current.json'),
+        JSON.stringify(
+          { version: remote.version, files: count, installedAt: new Date().toISOString() },
+          null,
+          2,
+        ),
+      );
+      log(`content ${remote.version} installed (${count} files)`);
+    } catch (error) {
+      fs.rmSync(staging, { recursive: true, force: true });
+      setUpdateState({ status: 'failed', error: String(error.message || error) });
+      if (manual) {
+        dialog.showMessageBox({
+          message: 'نصب به‌روزرسانی ناموفق بود',
+          detail: String(error.message || error),
+        });
+      }
+      return updatePayload();
+    }
+
+    setUpdateState({ status: 'restarting' });
+    if (restart && process.env.BENZIN_NO_AUTO_RESTART !== '1') {
+      restartSoon();
+    } else {
+      log(`update installed: ${remote.version} (restart skipped)`);
+    }
+    return updatePayload();
+  } finally {
+    updateInFlight = false;
   }
-  return { status: 'installed', version: remote.version };
+}
+
+function scheduleUpdateChecks() {
+  if (updateTimer) clearInterval(updateTimer);
+  updateTimer = setInterval(() => {
+    void checkForUpdates();
+  }, Math.max(30_000, UPDATE_INTERVAL_MS));
+  updateTimer.unref?.();
+}
+
+/** `/shell/*` is answered by the shell itself, never proxied to the API. */
+function handleShellRoute(req, res) {
+  const url = (req.url || '').split('?')[0];
+  if (url === '/shell/status') {
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(updatePayload()));
+    return true;
+  }
+  if (url === '/shell/check' && req.method === 'POST') {
+    void checkForUpdates({ manual: false });
+    res.writeHead(202, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(JSON.stringify({ started: true }));
+    return true;
+  }
+  if (url.startsWith('/shell/')) {
+    res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'unknown shell route' }));
+    return true;
+  }
+  return false;
 }
 
 /* ------------------------------------------------------------------ api + static servers */
@@ -250,6 +346,9 @@ function startApi(dir) {
       SMS_PROVIDERS: 'console',
       PAYMENT_GATEWAY: 'sandbox',
       DEV_FIXED_OTP: process.env.BENZIN_DEV_OTP || '12345',
+      // The API reports this on /v1/meta/config, so a browser tab of the same build shows the same
+      // version the header chip displays in the desktop shell.
+      APP_VERSION: installedVersion,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -317,6 +416,7 @@ function startStaticServer(root, port) {
   const proxyV1 = proxyTo(API_PORT);
   const server = http.createServer((req, res) => {
     const p = (req.url || '/').split('?')[0];
+    if (handleShellRoute(req, res)) return undefined;
     if (p.startsWith('/v1/') || p === '/healthz' || p === '/health') return proxyV1(req, res);
     return serveStatic(root, req, res);
   });
@@ -399,14 +499,12 @@ function buildMenu() {
           { label: 'پنل مدیریت', accelerator: 'CmdOrCtrl+2', click: () => openAdmin() },
           { type: 'separator' },
           {
+            // The version lives in the header chip, not in the menu; this stays as the manual
+            // fallback for a machine that cannot reach the release channel.
             label: 'بررسی به‌روزرسانی',
             click: () => {
               void checkForUpdates({ manual: true });
             },
-          },
-          {
-            label: `نسخهٔ محتوا: ${installedVersion}`,
-            enabled: false,
           },
           { type: 'separator' },
           { role: 'reload', label: 'بارگذاری مجدد' },
@@ -450,14 +548,19 @@ app.whenReady().then(async () => {
   await startStaticServer(path.join(runtimeDir, 'admin'), ADMIN_PORT);
   buildMenu();
   openApp();
+
+  // Automatic update loop: one check just after the window appears, then every UPDATE_INTERVAL_MS.
+  // A newer content build is installed and the app restarts on its own.
   setTimeout(() => {
     void checkForUpdates();
-  }, 3000);
+  }, UPDATE_BOOT_DELAY_MS);
+  scheduleUpdateChecks();
 });
 
 app.on('window-all-closed', () => app.quit());
 
 app.on('before-quit', () => {
+  if (updateTimer) clearInterval(updateTimer);
   for (const server of servers) {
     try {
       server.close();

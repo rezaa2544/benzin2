@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { BottomNav, type NavKey } from './BottomNav.js';
 import { Icon } from './icons.js';
+import { VersionBadge } from './VersionBadge.js';
 import { t } from '../lib/i18n.js';
 import { themeLabelKey, type ThemeMode } from '../lib/theme.js';
 
@@ -60,6 +61,8 @@ export function AppShell({
                 {theme === 'dark' ? '🌙' : theme === 'light' ? '☀️' : '🌗'}
               </button>
             ) : null}
+            {/* Version + updater light, pinned to the top-left corner of the header. */}
+            <VersionBadge />
           </div>
         </div>
       </header>

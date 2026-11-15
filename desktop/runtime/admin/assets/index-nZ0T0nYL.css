@@ -580,14 +580,23 @@ body {
 .grid {
   display: grid;
 }
+.h-2 {
+  height: 0.5rem;
+}
 .h-32 {
   height: 8rem;
 }
 .h-5 {
   height: 1.25rem;
 }
+.h-6 {
+  height: 1.5rem;
+}
 .min-h-screen {
   min-height: 100vh;
+}
+.w-2 {
+  width: 0.5rem;
 }
 .w-40 {
   width: 10rem;
@@ -616,6 +625,17 @@ body {
 .flex-1 {
   flex: 1 1 0%;
 }
+.shrink-0 {
+  flex-shrink: 0;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
 .cursor-pointer {
   cursor: pointer;
 }
@@ -639,6 +659,9 @@ body {
 }
 .gap-1 {
   gap: 0.25rem;
+}
+.gap-1\.5 {
+  gap: 0.375rem;
 }
 .gap-2 {
   gap: 0.5rem;
@@ -701,6 +724,10 @@ body {
   --tw-bg-opacity: 1;
   background-color: rgb(var(--brand) / var(--tw-bg-opacity, 1));
 }
+.bg-danger {
+  --tw-bg-opacity: 1;
+  background-color: rgb(var(--danger) / var(--tw-bg-opacity, 1));
+}
 .bg-danger\/10 {
   background-color: rgb(var(--danger) / 0.1);
 }
@@ -710,9 +737,17 @@ body {
 .bg-ink\/40 {
   background-color: rgb(var(--ink) / 0.4);
 }
+.bg-muted {
+  --tw-bg-opacity: 1;
+  background-color: rgb(var(--muted) / var(--tw-bg-opacity, 1));
+}
 .bg-raised {
   --tw-bg-opacity: 1;
   background-color: rgb(var(--raised) / var(--tw-bg-opacity, 1));
+}
+.bg-success {
+  --tw-bg-opacity: 1;
+  background-color: rgb(var(--success) / var(--tw-bg-opacity, 1));
 }
 .bg-success\/10 {
   background-color: rgb(var(--success) / 0.1);
@@ -723,6 +758,10 @@ body {
 .bg-surface {
   --tw-bg-opacity: 1;
   background-color: rgb(var(--surface) / var(--tw-bg-opacity, 1));
+}
+.bg-warning {
+  --tw-bg-opacity: 1;
+  background-color: rgb(var(--warning) / var(--tw-bg-opacity, 1));
 }
 .bg-warning\/10 {
   background-color: rgb(var(--warning) / 0.1);
@@ -780,9 +819,23 @@ body {
 .text-center {
   text-align: center;
 }
+.font-mono {
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    Liberation Mono,
+    Courier New,
+    monospace;
+}
 .text-2xl {
   font-size: 1.5rem;
   line-height: 2rem;
+}
+.text-\[0\.625rem\] {
+  font-size: 0.625rem;
 }
 .text-base {
   font-size: 1rem;
@@ -805,6 +858,9 @@ body {
 }
 .font-medium {
   font-weight: 500;
+}
+.leading-none {
+  line-height: 1;
 }
 .tracking-\[0\.4em\] {
   letter-spacing: 0.4em;
@@ -866,6 +922,10 @@ body {
 .hover\:bg-surface:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(var(--surface) / var(--tw-bg-opacity, 1));
+}
+.hover\:text-ink:hover {
+  --tw-text-opacity: 1;
+  color: rgb(var(--ink) / var(--tw-text-opacity, 1));
 }
 @media (min-width: 640px) {
   .sm\:grid-cols-2 {
