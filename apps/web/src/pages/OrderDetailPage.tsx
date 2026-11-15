@@ -12,6 +12,7 @@ import type { OrderView, PublicUser, ReservationView } from '../lib/types.js';
 import { TIER_LABEL_FA } from '../lib/market.js';
 import { navigate } from '../lib/router.js';
 import { t } from '../lib/i18n.js';
+import { estimateEtaMinutes, readOrigin } from '../lib/geo.js';
 import { Notice, PageTitle, Skeleton } from './parts.js';
 
 export interface OrderDetailPageProps {
@@ -31,6 +32,12 @@ const errorMap = {
   INVALID_STATE_TRANSITION: t('errors.INVALID_STATE_TRANSITION'),
 };
 
+/** The stored traveler point, as the two query parameters the API expects. */
+const originQuery = (): { lat?: number; lng?: number } => {
+  const origin = readOrigin();
+  return origin ? { lat: origin.lat, lng: origin.lng } : {};
+};
+
 /** Order detail with the reserve action (E9-08). The API owns every rule; we surface them. */
 export function OrderDetailPage({ api, user, orderId }: OrderDetailPageProps): JSX.Element {
   const [order, setOrder] = useState<OrderView | null>(null);
@@ -39,11 +46,12 @@ export function OrderDetailPage({ api, user, orderId }: OrderDetailPageProps): J
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // G-07: a stored traveler point lets the detail card answer «چقدر دور است؟» as well.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     api
-      .get<OrderView>(`/v1/orders/${orderId}`)
+      .get<OrderView>(`/v1/orders/${orderId}`, originQuery())
       .then((result) => {
         if (!cancelled) {
           setOrder(result);
@@ -124,6 +132,26 @@ export function OrderDetailPage({ api, user, orderId }: OrderDetailPageProps): J
           <dd className="tnum text-end">{formatToman(official)}</dd>
           <dt className="text-muted">{t('orderDetail.delivery')}</dt>
           <dd className="text-end">{t('orderDetail.deliveryFuelCard')}</dd>
+          {order.distance ? (
+            <>
+              <dt className="text-muted">{t('market.distanceLabel')}</dt>
+              <dd className="tnum text-end font-medium">
+                {t('market.distance').replace(
+                  '{km}',
+                  toPersianDigits(order.distance.distanceKm.toFixed(1)),
+                )}
+              </dd>
+              <dt className="text-muted">{t('market.eta')}</dt>
+              <dd className="tnum text-end font-medium">
+                {t('market.eta').replace(
+                  '{min}',
+                  toPersianDigits(
+                    order.distance.etaMinutes ?? estimateEtaMinutes(order.distance.distanceKm),
+                  ),
+                )}
+              </dd>
+            </>
+          ) : null}
           <dt className="text-muted">{t('orderDetail.expiresAt')}</dt>
           <dd className="text-end tnum">{formatJalaliDateTime(order.expiresAt)}</dd>
         </dl>

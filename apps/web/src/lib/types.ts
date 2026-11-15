@@ -24,9 +24,13 @@ export interface ZoneView {
   boundary: Array<[number, number]>;
 }
 
+/** G-07 wire shape of `GET /v1/orders?lat=…&lng=…` — metres stay on the server. */
 export interface RouteEstimate {
   distanceKm: number;
   durationMinutes: number;
+  etaMinutes: number;
+  approximate: boolean;
+  source: 'provider' | 'straight-line';
 }
 
 export interface OrderView {

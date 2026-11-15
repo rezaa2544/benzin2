@@ -10,8 +10,8 @@ interface OrderBody {
   id: string;
   location: { lat: number; lng: number; approximate: boolean; precisionMeters: number } | null;
   distance?: {
-    distanceMeters: number;
-    durationSeconds: number;
+    distanceKm: number;
+    durationMinutes: number;
     etaMinutes: number;
     approximate: boolean;
     source: string;
@@ -132,7 +132,7 @@ describe('distance and ETA (E2-03)', () => {
     expect(body.distance).toBeDefined();
     expect(body.distance!.approximate).toBe(true);
     expect(body.distance!.source).toBe('straight-line');
-    expect(body.distance!.distanceMeters).toBeGreaterThan(0);
+    expect(body.distance!.distanceKm).toBeGreaterThan(0);
     expect(body.distance!.etaMinutes).toBeGreaterThanOrEqual(1);
     await ctx.close();
   });
@@ -155,7 +155,7 @@ describe('distance and ETA (E2-03)', () => {
     expect(response.statusCode).toBe(200);
     const body = response.json() as OrderBody;
     expect(body.distance!.approximate).toBe(true);
-    expect(body.distance!.distanceMeters).toBeGreaterThan(0);
+    expect(body.distance!.distanceKm).toBeGreaterThan(0);
     await ctx.close();
   });
 
@@ -183,8 +183,8 @@ describe('distance and ETA (E2-03)', () => {
     const response = await distance({ lat: 36.0, lng: 45.9 });
     const body = response.json() as OrderBody;
     expect(body.distance).toMatchObject({
-      distanceMeters: 1_234,
-      durationSeconds: 600,
+      distanceKm: 1.23,
+      durationMinutes: 10,
       etaMinutes: 10,
       approximate: false,
       source: 'provider',

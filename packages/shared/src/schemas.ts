@@ -150,6 +150,12 @@ export const orderSearchSchema = z
       message: 'minLitres must not exceed maxLitres',
       path: ['minLitres'],
     },
+  )
+  // G-07: a radius is measured from a point, so asking for one without a point is a bug
+  // in the client rather than an empty filter — answer 422 instead of ignoring it.
+  .refine(
+    (value) => value.radiusKm === undefined || (value.lat !== undefined && value.lng !== undefined),
+    { message: 'radiusKm requires lat and lng', path: ['radiusKm'] },
   );
 
 export type OrderSearchInput = z.infer<typeof orderSearchSchema>;

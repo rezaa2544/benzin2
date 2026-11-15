@@ -25,6 +25,7 @@ describe('market filters (E9-05)', () => {
       litresMode: 'exact',
       litres: '',
       minLitres: '',
+      radiusKm: '',
     });
   });
 
@@ -49,6 +50,18 @@ describe('market filters (E9-05)', () => {
       { cursor: 'c1', origin: { lat: 35, lng: 46 }, limit: 5 },
     );
     expect(query).toMatchObject({ cursor: 'c1', lat: 35, lng: 46, limit: 5, sort: 'distance' });
+  });
+
+  it('reads a radius from the URL and only sends it with a point (G-07)', () => {
+    const filters = filtersFromQuery({ radiusKm: '5' });
+    expect(filters.radiusKm).toBe('5');
+    expect(toSearchQuery(filters, { origin: { lat: 35.99, lng: 45.88 } })['radiusKm']).toBe(5);
+    // No point means the radius is meaningless, so it never reaches the API.
+    expect(toSearchQuery(filters)['radiusKm']).toBeUndefined();
+    // An empty chip is «هر فاصله‌ای» and is dropped even when a point exists.
+    expect(
+      toSearchQuery(DEFAULT_FILTERS, { origin: { lat: 1, lng: 2 } })['radiusKm'],
+    ).toBeUndefined();
   });
 
   it('labels every tier in Persian', () => {

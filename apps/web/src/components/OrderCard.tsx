@@ -18,6 +18,8 @@ export interface OrderCardProps {
   zoneName?: string;
   ownerName?: string;
   distanceKm?: number;
+  /** G-07 driving estimate from the caller's search point. */
+  etaMinutes?: number;
   score?: number;
   expiresAt?: string | null;
   onOpen?: () => void;
@@ -39,6 +41,7 @@ export function OrderCard({
   ownerName,
   score,
   distanceKm,
+  etaMinutes,
   expiresAt,
   onOpen,
 }: OrderCardProps): JSX.Element {
@@ -74,8 +77,14 @@ export function OrderCard({
             ) : null}
             {distanceKm !== undefined ? (
               <span className="inline-flex items-center gap-1 tnum">
-                <Icon name="timer" size={14} />
+                <Icon name="market" size={14} />
                 {t('market.distance').replace('{km}', toPersianDigits(distanceKm.toFixed(1)))}
+              </span>
+            ) : null}
+            {etaMinutes !== undefined ? (
+              <span className="inline-flex items-center gap-1 tnum">
+                <Icon name="timer" size={14} />
+                {t('market.eta').replace('{min}', toPersianDigits(etaMinutes))}
               </span>
             ) : null}
             {ownerName ? <span>{ownerName}</span> : null}

@@ -11,6 +11,12 @@ export interface ZoneView {
   nameFa: string;
   city: string;
   province: string;
+  /**
+   * City outline as `[lng, lat]` pairs (G-07). It is a municipal boundary, not a user
+   * point, so it is safe to publish: the client draws it under the map picker and the
+   * API still rejects any point outside it.
+   */
+  boundary: Array<[number, number]>;
 }
 
 export const toZoneView = (zone: ZoneRecord): ZoneView => ({
@@ -19,6 +25,7 @@ export const toZoneView = (zone: ZoneRecord): ZoneView => ({
   nameFa: zone.nameFa,
   city: zone.city,
   province: zone.province,
+  boundary: zone.boundary.map(([lng, lat]) => [lng, lat] as [number, number]),
 });
 
 /**

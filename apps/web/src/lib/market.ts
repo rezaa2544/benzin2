@@ -20,6 +20,11 @@ export interface MarketFilters {
   litres: string;
   /** Lower bound of «بازه»; empty means from the smallest lot the platform allows. */
   minLitres: string;
+  /**
+   * G-07 radius in kilometres; empty means «هر فاصله‌ای». It only means anything once a
+   * search point exists, which is why the chips stay hidden until the traveler switch is on.
+   */
+  radiusKm: string;
 }
 
 export const DEFAULT_FILTERS: MarketFilters = {
@@ -30,6 +35,7 @@ export const DEFAULT_FILTERS: MarketFilters = {
   litresMode: 'exact',
   litres: '',
   minLitres: '',
+  radiusKm: '',
 };
 
 /** The standard lots the app offers as one-tap chips (G-05). */
@@ -54,6 +60,7 @@ export function filtersFromQuery(
     litresMode: query['litresMode'] === 'range' ? 'range' : fallback.litresMode,
     litres: query['litres'] ?? fallback.litres,
     minLitres: query['minLitres'] ?? fallback.minLitres,
+    radiusKm: query['radiusKm'] ?? fallback.radiusKm,
   };
 }
 
@@ -91,5 +98,7 @@ export function toSearchQuery(
       filters.litresMode === 'range' && filters.minLitres ? Number(filters.minLitres) : undefined,
     maxLitres:
       filters.litresMode === 'range' && filters.litres ? Number(filters.litres) : undefined,
+    // G-07: a radius is only sent with a point; the API rejects one without the other.
+    radiusKm: options.origin && filters.radiusKm ? Number(filters.radiusKm) : undefined,
   };
 }

@@ -17,6 +17,16 @@ import type { MarketFilters, SortKey } from '../lib/market.js';
 import { STANDARD_LOTS, TIER_LABEL_FA, toSearchQuery } from '../lib/market.js';
 import { buildQuery, navigate } from '../lib/router.js';
 import { t, tf } from '../lib/i18n.js';
+import {
+  RADIUS_OPTIONS_KM,
+  clearOrigin,
+  currentPosition,
+  estimateEtaMinutes,
+  readOrigin,
+  saveOrigin,
+  type LatLng,
+} from '../lib/geo.js';
+import { MapPicker } from '../components/MapPicker.js';
 import { OrderCard } from '../components/OrderCard.js';
 import { RebookBanner } from '../components/RebookBanner.js';
 import { EmptyState } from '../components/EmptyState.js';
@@ -61,7 +71,13 @@ const litres = (value: number): string => formatLitres(value);
  * filters live in the URL, and a stat block answers the two questions a user actually has:
  * «سهمیه در این شهر چند است؟» and «در کل کشور چطور؟».
  */
-export function MarketPage({ api, config, filters, onFilters }: MarketPageProps): JSX.Element {
+export function MarketPage({
+  api,
+  config,
+  zones,
+  filters,
+  onFilters,
+}: MarketPageProps): JSX.Element {
   const [items, setItems] = useState<OrderView[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,6 +88,11 @@ export function MarketPage({ api, config, filters, onFilters }: MarketPageProps)
   const [nearest, setNearest] = useState<{ litres: number; items: OrderView[] } | null>(null);
   const [lotMessage, setLotMessage] = useState<string | null>(null);
 
+  // G-07: the traveler point lives on the device, so a reload keeps the distance figures.
+  const [origin, setOrigin] = useState<LatLng | null>(() => readOrigin());
+  const [travelerNote, setTravelerNote] = useState<string | null>(null);
+  const [pickPoint, setPickPoint] = useState(false);
+
   const counties = countiesOf(filters.province);
   const placeName = placeLabelFa(filters) || t('market.allIran');
 
@@ -79,7 +100,7 @@ export function MarketPage({ api, config, filters, onFilters }: MarketPageProps)
     let cancelled = false;
     setLoading(true);
     setError(null);
-    const query = toSearchQuery(filters);
+    const query = toSearchQuery(filters, { origin });
     Promise.all([
       api.get<OrderList>('/v1/orders', query),
       api
@@ -115,6 +136,8 @@ export function MarketPage({ api, config, filters, onFilters }: MarketPageProps)
     filters.litres,
     filters.litresMode,
     filters.minLitres,
+    filters.radiusKm,
+    origin,
     api,
   ]);
 
@@ -131,7 +154,10 @@ export function MarketPage({ api, config, filters, onFilters }: MarketPageProps)
     if (!cursor) return;
     setLoadingMore(true);
     try {
-      const list = await api.get<OrderList>('/v1/orders', toSearchQuery(filters, { cursor }));
+      const list = await api.get<OrderList>(
+        '/v1/orders',
+        toSearchQuery(filters, { cursor, origin }),
+      );
       setItems((current) => [...current, ...list.items]);
       setCursor(list.nextCursor);
     } catch (cause) {
@@ -140,6 +166,49 @@ export function MarketPage({ api, config, filters, onFilters }: MarketPageProps)
       setLoadingMore(false);
     }
   };
+
+  /** Turning the switch on asks the browser once; a refusal drops the user on the map. */
+  const toggleTraveler = async (): Promise<void> => {
+    if (origin) {
+      clearOrigin();
+      setOrigin(null);
+      setPickPoint(false);
+      setTravelerNote(null);
+      apply({ radiusKm: '' });
+      return;
+    }
+    const result = await currentPosition();
+    if (result.point) {
+      saveOrigin(result.point);
+      setOrigin(result.point);
+      setTravelerNote(null);
+      apply({ sort: 'distance' });
+      return;
+    }
+    setTravelerNote(t('market.travelerDenied'));
+    setPickPoint(true);
+  };
+
+  const chooseOrigin = (point: LatLng | null): void => {
+    if (!point) {
+      clearOrigin();
+      setOrigin(null);
+      setPickPoint(false);
+      apply({ radiusKm: '' });
+      return;
+    }
+    saveOrigin(point);
+    setOrigin(point);
+    setPickPoint(false);
+    setTravelerNote(null);
+    if (filters.sort === 'newest') apply({ sort: 'distance' });
+  };
+
+  /** The card shows the API's ETA, and falls back to the same formula when it is absent. */
+  const etaOf = (view: OrderView): number | undefined =>
+    view.distance
+      ? (view.distance.etaMinutes ?? estimateEtaMinutes(view.distance.distanceKm))
+      : undefined;
 
   const nationalDelta =
     stats?.averageTotalRateToman != null && stats.nationalAverageTotalRateToman != null
@@ -291,6 +360,84 @@ export function MarketPage({ api, config, filters, onFilters }: MarketPageProps)
         </select>
       </div>
 
+      {/* G-07: search from a point — distance, ETA and an optional radius. */}
+      <div className="card mb-3 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <span className="text-sm font-bold">{t('market.traveler')}</span>
+            <p className="mt-0.5 text-[11px] text-muted">{t('market.travelerLead')}</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={origin !== null}
+            aria-label={t('market.traveler')}
+            onClick={() => void toggleTraveler()}
+            className={`min-h-tap rounded-full px-3 text-xs font-medium ${
+              origin ? 'bg-brand text-brandInk' : 'bg-surface2 text-muted'
+            }`}
+          >
+            {origin ? t('market.travelerOn') : t('market.travelerOff')}
+          </button>
+        </div>
+
+        {travelerNote ? <p className="mt-2 text-[11px] text-danger">{travelerNote}</p> : null}
+
+        {origin ? (
+          <>
+            <div className="mt-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="label mb-0">{t('market.radius')}</span>
+                <span className="text-[11px] text-muted tnum" dir="ltr">
+                  {filters.radiusKm
+                    ? tf('market.radiusOption', { km: filters.radiusKm })
+                    : t('market.radiusAny')}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  className={`chip ${!filters.radiusKm ? 'chip-active' : ''}`}
+                  onClick={() => apply({ radiusKm: '' })}
+                >
+                  {t('market.radiusAny')}
+                </button>
+                {RADIUS_OPTIONS_KM.map((km) => (
+                  <button
+                    key={km}
+                    type="button"
+                    className={`chip tnum ${filters.radiusKm === String(km) ? 'chip-active' : ''}`}
+                    onClick={() => apply({ radiusKm: String(km), sort: 'distance' })}
+                  >
+                    {tf('market.radiusOption', { km: toPersianDigits(km) })}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px] text-muted">{t('market.originHint')}</p>
+            </div>
+            <button
+              type="button"
+              className="chip mt-2"
+              onClick={() => setPickPoint((open) => !open)}
+            >
+              {t('map.title')}
+            </button>
+          </>
+        ) : null}
+
+        {pickPoint ? (
+          <div className="mt-2">
+            <MapPicker
+              boundary={zones[0]?.boundary ?? null}
+              value={origin}
+              onChange={chooseOrigin}
+              allowCurrent
+              compact
+            />
+          </div>
+        ) : null}
+      </div>
+
       {stats ? (
         <div className="card mb-3 p-3">
           <div className="mb-2 flex items-baseline justify-between gap-2">
@@ -397,6 +544,7 @@ export function MarketPage({ api, config, filters, onFilters }: MarketPageProps)
                 buyerTotalToman={order.buyerTotalToman}
                 placeName={placeLabelFa(order) || order.stationName || placeName}
                 distanceKm={order.distance?.distanceKm}
+                etaMinutes={etaOf(order)}
                 expiresAt={order.expiresAt}
                 onOpen={() => navigate(`/market/${order.id}`)}
               />
@@ -417,6 +565,7 @@ export function MarketPage({ api, config, filters, onFilters }: MarketPageProps)
             buyerTotalToman={order.buyerTotalToman}
             placeName={placeLabelFa(order) || order.stationName || placeName}
             distanceKm={order.distance?.distanceKm}
+            etaMinutes={etaOf(order)}
             expiresAt={order.expiresAt}
             onOpen={() => navigate(`/market/${order.id}`)}
           />

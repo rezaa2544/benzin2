@@ -11,7 +11,7 @@ import type { Clock, Order, User } from '../domain/entities.js';
 import { publicLocation, type PublicLocation } from '../domain/geo.js';
 import { buyerSavingToman, isAboveOfficialRate, orderTotalToman } from '../domain/pricing.js';
 import type { NotificationEmitter, Repositories } from '../ports.js';
-import type { DistanceService, RouteEstimate } from './distance-service.js';
+import { wireEstimate, type DistanceService, type RouteEstimateWire } from './distance-service.js';
 import { DistanceService as Distance } from './distance-service.js';
 import { LocationService } from './location-service.js';
 import { KeyedLock } from './keyed-lock.js';
@@ -43,8 +43,8 @@ export interface OrderView {
   deliveryMethod: Order['deliveryMethod'];
   expiresAt: string;
   createdAt: string;
-  /** Present only when the caller supplied an origin and the order has a point. */
-  distance?: RouteEstimate;
+  /** Present only when the caller supplied an origin and the order has a point (G-07). */
+  distance?: RouteEstimateWire;
 }
 
 export function toOrderView(order: Order): OrderView {
@@ -199,6 +199,10 @@ export class OrderService {
     message: string | null;
   }> {
     const offset = decodeCursor(query.cursor);
+    const origin =
+      query.lat !== undefined && query.lng !== undefined
+        ? { lat: query.lat, lng: query.lng }
+        : null;
     const exact = query.litresMode === 'exact' ? (query.litres ?? null) : null;
     const between =
       query.litresMode === 'range' &&
@@ -215,10 +219,7 @@ export class OrderService {
       limit: query.limit,
       offset,
       sort: query.sort,
-      origin:
-        query.lat !== undefined && query.lng !== undefined
-          ? { lat: query.lat, lng: query.lng }
-          : null,
+      origin,
       radiusKm: query.radiusKm ?? null,
       litresExact: exact,
       litresBetween: between,
@@ -246,7 +247,9 @@ export class OrderService {
       return {
         items: [],
         nextCursor: null,
-        nearest: near.items.length ? { litres: exact, items: near.items.map(toOrderView) } : null,
+        nearest: near.items.length
+          ? { litres: exact, items: await this.decorate(near.items, origin) }
+          : null,
         message: near.items.length
           ? `${toPersianDigits(exact)} لیتر موجود نیست؛ نزدیک‌ترین لات‌ها را ببین.`
           : `${toPersianDigits(exact)} لیتر موجود نیست و لات نزدیکی هم ثبت نشده است.`,
@@ -254,11 +257,34 @@ export class OrderService {
     }
 
     return {
-      items: items.map(toOrderView),
+      items: await this.decorate(items, origin),
       nextCursor: nextOffset < total ? encodeCursor(nextOffset) : null,
       nearest: null,
       message: null,
     };
+  }
+
+  /**
+   * G-07: every listing answers with distance and ETA once the caller sent a point. The
+   * exact stored coordinates are used for the maths here and never leave the process — the
+   * response carries the snapped `location` from `toOrderView` and nothing else.
+   */
+  private async decorate(
+    orders: readonly Order[],
+    origin: { lat: number; lng: number } | null,
+  ): Promise<OrderView[]> {
+    return Promise.all(
+      orders.map(async (order) => {
+        const view = toOrderView(order);
+        if (!origin || order.lat === null || order.lng === null) return view;
+        return {
+          ...view,
+          distance: wireEstimate(
+            await this.distance.estimate(origin, { lat: order.lat, lng: order.lng }),
+          ),
+        };
+      }),
+    );
   }
 
   async getById(
@@ -267,12 +293,8 @@ export class OrderService {
   ): Promise<OrderView> {
     const order = await this.repos.orders.findById(id);
     if (!order) throw AppError.notFound('ORDER_NOT_AVAILABLE', 'Order not found');
-    const view = toOrderView(order);
-    if (origin && order.lat !== null && order.lng !== null) {
-      // Exact stored coordinates are used for the maths but never returned.
-      view.distance = await this.distance.estimate(origin, { lat: order.lat, lng: order.lng });
-    }
-    return view;
+    const [view] = await this.decorate([order], origin);
+    return view!;
   }
 
   async listMine(user: User, limit = 20): Promise<OrderView[]> {

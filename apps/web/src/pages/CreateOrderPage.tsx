@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   DEFAULT_PLACE,
   IRAN_PROVINCES,
@@ -24,6 +24,8 @@ import {
 import { navigate } from '../lib/router.js';
 import { t } from '../lib/i18n.js';
 import { FormField } from '../components/FormField.js';
+import { MapPicker } from '../components/MapPicker.js';
+import type { LatLng } from '../lib/geo.js';
 import { Notice, PageTitle } from './parts.js';
 
 export interface CreateOrderPageProps {
@@ -68,9 +70,15 @@ export function CreateOrderPage({
   const [errors, setErrors] = useState<Partial<Record<keyof OrderFormValues, string>>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [zoneId] = useState(zones[0]?.id ?? '');
+  // The zone arrives with the bootstrap fetch, so it cannot be frozen at mount (G-07).
+  const [zoneId, setZoneId] = useState(zones[0]?.id ?? '');
+  useEffect(() => {
+    if (!zoneId && zones[0]) setZoneId(zones[0].id);
+  }, [zones, zoneId]);
   const [province, setProvince] = useState<string>(DEFAULT_PLACE.province);
   const [county, setCounty] = useState<string>(DEFAULT_PLACE.county);
+  // G-07: an optional point on the city map. Without it the listing has no distance/ETA.
+  const [point, setPoint] = useState<LatLng | null>(null);
 
   const counties = countiesOf(province);
   const isSell = values.side === 'SELL';
@@ -81,6 +89,34 @@ export function CreateOrderPage({
   };
   const update = (patch: Partial<OrderFormValues>): void =>
     setValues((current) => ({ ...current, ...patch }));
+
+  /**
+   * G-07: the picked point is the strongest statement about where the fuel is, so it also
+   * decides the city. Asking the API keeps the zone check in one place: an unsupported
+   * point clears the selection instead of being submitted and rejected later.
+   */
+  const choosePoint = async (next: LatLng | null): Promise<void> => {
+    setPoint(next);
+    if (!next) return;
+    try {
+      const located = await api.get<{
+        supported: boolean;
+        zone: { id: string; province: string; city: string } | null;
+      }>('/v1/zones/locate', { lat: next.lat, lng: next.lng });
+      if (located.supported && located.zone) {
+        setZoneId(located.zone.id);
+        setProvince(located.zone.province);
+        setCounty(located.zone.city);
+        setError(null);
+        return;
+      }
+      setPoint(null);
+      setError(t('errors.ZONE_NOT_SUPPORTED'));
+    } catch (cause) {
+      setPoint(null);
+      setError(errorMessage(cause, errorMap));
+    }
+  };
 
   const submit = async (): Promise<void> => {
     setError(null);
@@ -103,6 +139,7 @@ export function CreateOrderPage({
         zoneId,
         province,
         county,
+        location: point ?? undefined,
       });
       onCreated?.(created);
       navigate('/orders');
@@ -157,6 +194,8 @@ export function CreateOrderPage({
                 const next = event.target.value;
                 setProvince(next);
                 setCounty(countiesOf(next)[0] ?? '');
+                // A point from the previous city would be rejected by the zone check.
+                setPoint(null);
               }}
             >
               {IRAN_PROVINCES.map((item) => (
@@ -174,7 +213,10 @@ export function CreateOrderPage({
               id="create-county"
               className="input text-sm"
               value={county}
-              onChange={(event) => setCounty(event.target.value)}
+              onChange={(event) => {
+                setCounty(event.target.value);
+                setPoint(null);
+              }}
             >
               {counties.map((item) => (
                 <option key={item} value={item}>
@@ -184,6 +226,14 @@ export function CreateOrderPage({
             </select>
           </div>
         </div>
+
+        <MapPicker
+          boundary={zones[0]?.boundary ?? null}
+          value={point}
+          onChange={(next) => void choosePoint(next)}
+          label={t('create.location')}
+          hint={point ? t('map.privacy') : t('create.locationHint')}
+        />
 
         {isSell ? (
           <div className="mb-4">

@@ -17,6 +17,26 @@ export interface RouteEstimate {
   source: 'provider' | 'straight-line';
 }
 
+/** What a client sees. Metres and seconds stay inside the process. */
+export interface RouteEstimateWire {
+  distanceKm: number;
+  durationMinutes: number;
+  etaMinutes: number;
+  approximate: boolean;
+  source: RouteEstimate['source'];
+}
+
+/** Rounds for the wire: 10 m on distance is finer than any card needs to show. */
+export function wireEstimate(estimate: RouteEstimate): RouteEstimateWire {
+  return {
+    distanceKm: Math.round((estimate.distanceMeters / 1000) * 100) / 100,
+    durationMinutes: Math.max(1, Math.round(estimate.durationSeconds / 60)),
+    etaMinutes: estimate.etaMinutes,
+    approximate: estimate.approximate,
+    source: estimate.source,
+  };
+}
+
 const isValid = (result: RouteResult | null | undefined): result is RouteResult =>
   !!result &&
   Number.isFinite(result.distanceMeters) &&
