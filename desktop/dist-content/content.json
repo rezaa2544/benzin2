@@ -1,8 +1,8 @@
 {
-  "version": "0.3.1-4eb4486",
+  "version": "0.3.1-203fe35",
   "file": "content.tar.gz",
-  "size": 1141620,
-  "sha256": "c18fb4ff99f1465bd5e36b352590527a03cbda2fd43a247a6d67ba33a8079ada",
+  "size": 1233463,
+  "sha256": "ee11e55e1a6d8c26d11f42821513109373ff4d5daaccd536e8f847f194d30fa4",
   "files": 22,
-  "builtAt": "2026-11-15T14:59:40.255Z"
+  "builtAt": "2026-11-15T20:09:00.317Z"
 }
