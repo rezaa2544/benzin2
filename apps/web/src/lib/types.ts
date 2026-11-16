@@ -269,3 +269,29 @@ export interface DeviceView {
   appVersion: string | null;
   lastSeenAt: string;
 }
+
+/**
+ * 72-hour trade median (task G-08). `sufficient: false` means the place closed fewer than
+ * `requiredTrades` deals, so the API sends `medianRateToman: null` and the copy «دادهٔ کافی نیست».
+ */
+export interface TradeMedianRegion {
+  province: string | null;
+  county: string | null;
+  labelFa: string;
+  trades: number;
+  medianRateToman: number | null;
+  sufficient: boolean;
+}
+
+export interface TradeMedian {
+  windowHours: number;
+  requiredTrades: number;
+  scope: { province: string | null; county: string | null };
+  labelFa: string;
+  trades: number;
+  medianRateToman: number | null;
+  sufficient: boolean;
+  messageFa: string;
+  byRegion: TradeMedianRegion[];
+  generatedAt: string;
+}

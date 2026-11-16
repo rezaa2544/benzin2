@@ -189,7 +189,13 @@
     "radiusOption": "{km} کیلومتر",
     "eta": "حدود {min} دقیقه",
     "originHint": "نقطهٔ جست‌وجو روی همین دستگاه ذخیره می‌شود",
-    "distanceLabel": "فاصله"
+    "distanceLabel": "فاصله",
+    "medianTitle": "میانهٔ بازار (۷۲ ساعت)",
+    "medianLead": "قیمت هر لیتر بر پایهٔ معامله‌های انجام‌شدهٔ ۷۲ ساعت گذشته — نه قیمت‌های درخواستی.",
+    "medianInsufficient": "دادهٔ کافی نیست",
+    "medianSample": "بر پایهٔ {count} معامله",
+    "medianNeeded": "حداقل {count} معامله لازم است",
+    "medianPerLitre": "هر لیتر"
   },
   "orderDetail": {
     "title": "جزئیات سفارش",

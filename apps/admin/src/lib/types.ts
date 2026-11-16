@@ -231,3 +231,26 @@ export interface NodesOverview {
   failover: { shouldTakeOver: boolean; reason: string; reasonFa: string };
   nodes: NodeView[];
 }
+
+/** 72-hour trade median (task G-08) — the same payload the home screen uses, plus per-region rows. */
+export interface TradeMedianRegion {
+  province: string | null;
+  county: string | null;
+  labelFa: string;
+  trades: number;
+  medianRateToman: number | null;
+  sufficient: boolean;
+}
+
+export interface TradeMedian {
+  windowHours: number;
+  requiredTrades: number;
+  scope: { province: string | null; county: string | null };
+  labelFa: string;
+  trades: number;
+  medianRateToman: number | null;
+  sufficient: boolean;
+  messageFa: string;
+  byRegion: TradeMedianRegion[];
+  generatedAt: string;
+}

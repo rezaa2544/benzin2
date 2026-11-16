@@ -12,7 +12,14 @@ import {
 } from '@benzin/shared';
 import type { ApiClient } from '../lib/api.js';
 import { errorMessage } from '../lib/api.js';
-import type { MarketStats, MetaConfig, OrderList, OrderView, ZoneView } from '../lib/types.js';
+import type {
+  MarketStats,
+  MetaConfig,
+  OrderList,
+  OrderView,
+  TradeMedian,
+  ZoneView,
+} from '../lib/types.js';
 import type { MarketFilters, SortKey } from '../lib/market.js';
 import { STANDARD_LOTS, TIER_LABEL_FA, toSearchQuery } from '../lib/market.js';
 import { buildQuery, navigate } from '../lib/router.js';
@@ -84,6 +91,8 @@ export function MarketPage({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<MarketStats | null>(null);
+  // G-08: «میانگین بازار» — the median of closed trades, which is the number a seller anchors on.
+  const [median, setMedian] = useState<TradeMedian | null>(null);
   // G-05: when an exact lot is missing the API answers with close lots plus the Persian copy.
   const [nearest, setNearest] = useState<{ litres: number; items: OrderView[] } | null>(null);
   const [lotMessage, setLotMessage] = useState<string | null>(null);
@@ -110,12 +119,19 @@ export function MarketPage({
           side: filters.side,
         })
         .catch(() => null),
+      api
+        .get<TradeMedian>('/v1/stats/market/median', {
+          province: filters.province || undefined,
+          county: filters.county || undefined,
+        })
+        .catch(() => null),
     ])
-      .then(([list, marketStats]) => {
+      .then(([list, marketStats, tradeMedian]) => {
         if (cancelled) return;
         setItems(list.items);
         setCursor(list.nextCursor);
         setStats(marketStats);
+        setMedian(tradeMedian);
         setNearest(list.nearest ?? null);
         setLotMessage(list.message ?? null);
       })
@@ -437,6 +453,36 @@ export function MarketPage({
           </div>
         ) : null}
       </div>
+
+      {median ? (
+        <div className="card mb-3 flex flex-wrap items-center justify-between gap-2 p-3">
+          <div>
+            <p className="text-sm font-bold">{t('market.medianTitle')}</p>
+            <p className="mt-0.5 text-[11px] text-muted">{t('market.medianLead')}</p>
+          </div>
+          <div className="text-end">
+            {median.sufficient && median.medianRateToman !== null ? (
+              <>
+                <p className="money text-base tnum">{formatToman(median.medianRateToman)}</p>
+                <p className="text-[11px] text-muted tnum">
+                  {t('market.medianPerLitre')}
+                  <span aria-hidden="true"> · </span>
+                  {tf('market.medianSample', { count: toPersianDigits(median.trades) })}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-bold text-muted">{t('market.medianInsufficient')}</p>
+                <p className="text-[11px] text-muted tnum">
+                  {tf('market.medianNeeded', {
+                    count: toPersianDigits(median.requiredTrades),
+                  })}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {stats ? (
         <div className="card mb-3 p-3">

@@ -141,6 +141,28 @@ export interface OrderSearchQuery {
   litresBetween: { min: number; max: number } | null;
 }
 
+/**
+ * One closed trade (task G-08): the only price that is a *fact* rather than an asking price.
+ * The market median the home screen shows is computed from these rows and nothing else.
+ */
+export interface CompletedTrade {
+  orderId: string;
+  reservationId: string;
+  /** Toman per litre the buyer actually paid for the quota. */
+  rateToman: number;
+  litres: number;
+  province: string | null;
+  county: string | null;
+  completedAt: Date;
+}
+
+export interface CompletedTradeQuery {
+  since: Date;
+  province?: string | null;
+  county?: string | null;
+  limit: number;
+}
+
 export interface OrderRepository {
   create(input: NewOrder): Promise<Order>;
   findById(id: string): Promise<Order | null>;
@@ -183,6 +205,12 @@ export interface OrderRepository {
     offset: number;
   }): Promise<{ items: Order[]; total: number }>;
   countByStatus(): Promise<Record<OrderStatus, number>>;
+  /**
+   * Closed trades since `since`, newest first (task G-08). A trade is closed when its reservation
+   * reached COMPLETED or AUTO_COMPLETED — a confirmed reservation that nobody finished is not a
+   * price signal.
+   */
+  listCompletedTrades(query: CompletedTradeQuery): Promise<CompletedTrade[]>;
 }
 
 export interface NewReservation {

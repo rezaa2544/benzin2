@@ -13,6 +13,7 @@ import { SettingsPage } from './pages/SettingsPage.js';
 import { SmsPage } from './pages/SmsPage.js';
 import { StatusPage } from './pages/StatusPage.js';
 import { NodesPage } from './pages/NodesPage.js';
+import { MarketMedianPage } from './pages/MarketMedianPage.js';
 import { SubscriptionsPage } from './pages/SubscriptionsPage.js';
 import { PlansPage } from './pages/PlansPage.js';
 import { UsersPage } from './pages/UsersPage.js';
@@ -99,6 +100,8 @@ export function App(): JSX.Element {
         return <StatusPage api={api} />;
       case 'nodes':
         return <NodesPage api={api} />;
+      case 'market':
+        return <MarketMedianPage api={api} />;
       default:
         return <Notice>{fa.app.empty}</Notice>;
     }

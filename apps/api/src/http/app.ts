@@ -18,6 +18,7 @@ import {
   createOrderSchema,
   isAppError,
   marketStatsSchema,
+  tradeMedianQuerySchema,
   nodeHeartbeatSchema,
   notificationQuerySchema,
   createPlanSchema,
@@ -63,7 +64,7 @@ import { ReputationService } from '../modules/reputation-service.js';
 import { ReservationService } from '../modules/reservations-service.js';
 import { SettingsService } from '../modules/settings-service.js';
 import { ProfileService } from '../modules/profile-service.js';
-import { StatsService } from '../modules/stats-service.js';
+import { StatsService, TradeMedianService } from '../modules/stats-service.js';
 import { NodesService } from '../modules/nodes-service.js';
 import { createScheduler, type Scheduler } from '../scheduler.js';
 import { createProcessSweepLock, type SweepLock } from '../modules/sweep-lock.js';
@@ -165,6 +166,8 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
   const hub: { publisher: ChatEventPublisher } = { publisher: NOOP_CHAT_EVENTS };
   const chat = new ChatService(repos, settings, clock, notifications, events);
   const stats = new StatsService(repos, settings, clock);
+  // G-08: the number the home screen anchors on — median of *closed* trades, not asking prices.
+  const tradeMedian = new TradeMedianService(repos, clock);
   const admin = new AdminService(repos, settings, clock, notifications, reputation, sms, {
     nodeEnv: config.NODE_ENV,
     mode: config.DATABASE_URL ? 'postgres' : 'memory',
@@ -200,6 +203,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     admin,
     stats,
     nodes,
+    tradeMedian,
   };
   const requireAuth = authenticate(auth);
 
@@ -423,6 +427,13 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
   app.get('/v1/stats/market', { preHandler: requireAuth }, async (request) => {
     const query = parseInput(marketStatsSchema, request.query);
     return stats.market(query);
+  });
+
+  // G-08: «میانگین بازار» — median price per litre of the trades closed in the last 72 hours,
+  // optionally narrowed to a province/county. Under five trades the answer is «دادهٔ کافی نیست».
+  app.get('/v1/stats/market/median', { preHandler: requireAuth }, async (request) => {
+    const query = parseInput(tradeMedianQuerySchema, request.query ?? {});
+    return tradeMedian.median(query);
   });
 
   // -------------------------------------------------------- reservations

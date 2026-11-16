@@ -2,6 +2,8 @@ import type { OrderSide, OrderStatus, ReservationStatus, Tier } from '@benzin/sh
 import { ACTIVE_RESERVATION_STATUSES, TIER_RATE_TOMAN } from '@benzin/shared';
 import type { Order, Reservation } from '../../../domain/entities.js';
 import type {
+  CompletedTrade,
+  CompletedTradeQuery,
   NewOrder,
   NewReservation,
   OrderRepository,
@@ -349,6 +351,54 @@ export class PgOrderRepository implements OrderRepository {
     >;
     for (const row of rows) result[row.key as OrderStatus] = Number(row.total);
     return result;
+  }
+
+  /**
+   * Closed trades (task G-08). A trade is a *completed reservation*, so the join is the source of
+   * truth: `completed_at` is what the 72-hour window measures, and `rate_toman` on the order is
+   * the price per litre that actually changed hands.
+   */
+  async listCompletedTrades(input: CompletedTradeQuery): Promise<CompletedTrade[]> {
+    const params: unknown[] = [input.since];
+    const filters: string[] = ['r.status IN (\'COMPLETED\', \'AUTO_COMPLETED\')'];
+    if (input.province) {
+      params.push(input.province);
+      filters.push(`o.province = $${params.length}`);
+    }
+    if (input.county) {
+      params.push(input.county);
+      filters.push(`o.county = $${params.length}`);
+    }
+    params.push(input.limit);
+    const rows = await query<{
+      order_id: string;
+      reservation_id: string;
+      rate_toman: number | string;
+      litres: number | string;
+      province: string | null;
+      county: string | null;
+      completed_at: Date;
+    }>(
+      this.db,
+      `SELECT r.order_id, r.id AS reservation_id, o.rate_toman, o.litres, o.province, o.county,
+              COALESCE(r.completed_at, r.decided_at) AS completed_at
+         FROM reservations r
+         JOIN orders o ON o.id = r.order_id
+        WHERE COALESCE(r.completed_at, r.decided_at) >= $1
+          AND ${filters.join(' AND ')}
+        ORDER BY completed_at DESC
+        LIMIT $${params.length}`,
+      params,
+    );
+    return rows.map((row) => ({
+      orderId: row.order_id,
+      reservationId: row.reservation_id,
+      rateToman: Number(row.rate_toman),
+      litres: Number(row.litres),
+      province: row.province,
+      county: row.county,
+      completedAt: row.completed_at,
+    }));
   }
 }
 

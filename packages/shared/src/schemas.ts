@@ -505,6 +505,16 @@ export type CreateOwnerInput = z.infer<typeof createOwnerSchema>;
  * a stripped-down agent on a Windows box should be able to report "I am alive, here is my CPU"
  * with four fields, and fill in traffic/jobs later if it has them.
  */
+/** Optional place filter for the 72-hour trade median (task G-08). */
+export const tradeMedianQuerySchema = z
+  .object({
+    province: z.string().trim().min(1).max(60).optional(),
+    county: z.string().trim().min(1).max(60).optional(),
+  })
+  .strict();
+
+export type TradeMedianQuery = z.infer<typeof tradeMedianQuerySchema>;
+
 export const nodeHeartbeatSchema = z
   .object({
     nodeId: z

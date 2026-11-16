@@ -24,13 +24,19 @@ import type {
   OtpRepository,
   ProviderSettingsRepository,
   RefreshTokenRepository,
+  CompletedTrade,
+  CompletedTradeQuery,
   Repositories,
   ReservationRepository,
   SettingsRepository,
   UserRepository,
   UserSearchQuery,
 } from '../../ports.js';
-import { ACTIVE_RESERVATION_STATUSES, TIER_RATE_TOMAN } from '@benzin/shared';
+import {
+  ACTIVE_RESERVATION_STATUSES,
+  TIER_RATE_TOMAN,
+  type ReservationStatus,
+} from '@benzin/shared';
 import { MemoryConversationRepository, MemoryMessageRepository } from './chat.js';
 import {
   MemoryPaymentCardRepository,
@@ -236,6 +242,16 @@ export class MemoryDeviceRepository implements DeviceRepository {
 
 export class MemoryOrderRepository implements OrderRepository {
   private readonly byId = new Map<string, Order>();
+  /**
+   * Closed trades need both tables (task G-08): the price and place live on the order, the
+   * completion timestamp on the reservation. Postgres joins them; here the factory hands the
+   * reservation store over, which keeps the port free of a second repository argument.
+   */
+  private reservations: MemoryReservationRepository | null = null;
+
+  attachReservations(reservations: MemoryReservationRepository): void {
+    this.reservations = reservations;
+  }
 
   async create(input: NewOrder): Promise<Order> {
     const now = new Date();
@@ -423,6 +439,33 @@ export class MemoryOrderRepository implements OrderRepository {
       .slice(0, query.limit)
       .map(clone);
   }
+
+  async listCompletedTrades(query: CompletedTradeQuery): Promise<CompletedTrade[]> {
+    if (!this.reservations) return [];
+    const closed = await this.reservations.listByStatusSince(
+      ['COMPLETED', 'AUTO_COMPLETED'],
+      query.since,
+      query.limit,
+    );
+    const trades: CompletedTrade[] = [];
+    for (const reservation of closed) {
+      const order = this.byId.get(reservation.orderId);
+      if (!order) continue;
+      if (query.province && order.province !== query.province) continue;
+      if (query.county && order.county !== query.county) continue;
+      trades.push({
+        orderId: order.id,
+        reservationId: reservation.id,
+        rateToman: order.rateToman,
+        litres: order.litres,
+        province: order.province,
+        county: order.county,
+        completedAt: reservation.completedAt ?? reservation.decidedAt ?? reservation.createdAt,
+      });
+      if (trades.length >= query.limit) break;
+    }
+    return trades.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
+  }
 }
 
 export class MemoryReservationRepository implements ReservationRepository {
@@ -509,6 +552,22 @@ export class MemoryReservationRepository implements ReservationRepository {
     };
     this.byId.set(id, clone(updated));
     return clone(updated);
+  }
+
+  /** Reservations in one of `statuses` closed since `since` (task G-08). */
+  async listByStatusSince(
+    statuses: readonly ReservationStatus[],
+    since: Date,
+    limit: number,
+  ): Promise<Reservation[]> {
+    const timeOf = (reservation: Reservation): number =>
+      (reservation.completedAt ?? reservation.decidedAt ?? reservation.createdAt).getTime();
+    return [...this.byId.values()]
+      .filter((reservation) => statuses.includes(reservation.status))
+      .filter((reservation) => timeOf(reservation) >= since.getTime())
+      .sort((a, b) => timeOf(b) - timeOf(a))
+      .slice(0, limit)
+      .map(clone);
   }
 
   async listExpiredPending(now: Date, limit: number): Promise<Reservation[]> {
@@ -613,6 +672,7 @@ export class MemoryProviderSettingsRepository implements ProviderSettingsReposit
 export function createMemoryRepositories(): Repositories {
   const orders = new MemoryOrderRepository();
   const reservations = new MemoryReservationRepository();
+  orders.attachReservations(reservations);
   return {
     users: new MemoryUserRepository(),
     conversations: new MemoryConversationRepository(orders, reservations),

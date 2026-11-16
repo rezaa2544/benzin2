@@ -1,4 +1,4 @@
-import { TIER_RATE_TOMAN, type OrderSide, type Tier } from '@benzin/shared';
+import { TIER_RATE_TOMAN, toPersianDigits, type OrderSide, type Tier } from '@benzin/shared';
 import { mean, median, percentile } from '../domain/stats.js';
 import type { Clock, Order } from '../domain/entities.js';
 import type { Repositories } from '../ports.js';
@@ -184,5 +184,137 @@ export class StatsService {
       overallSampleSize: place.length,
       generatedAt: now.toISOString(),
     };
+  }
+}
+
+/**
+ * Trade median (task G-08) — «میانگین بازار».
+ *
+ * The listing figures above answer "what are people asking?". This answers "what did a litre
+ * actually cost?", and only counts *closed* trades: a reservation that reached COMPLETED or
+ * AUTO_COMPLETED. The window is 72 hours and the sample is deliberately small, so a place with
+ * fewer than `TRADE_MEDIAN_MIN_TRADES` trades reports `sufficient: false` and the UI says
+ * «دادهٔ کافی نیست» instead of inventing a number from two deals.
+ *
+ * The median (not the mean) is the headline because one panic sale at half price would drag an
+ * average for days while leaving the median untouched — and this number is what a seller anchors
+ * on.
+ */
+export const TRADE_MEDIAN_WINDOW_HOURS = 72;
+export const TRADE_MEDIAN_MIN_TRADES = 5;
+/** Enough rows for the admin table without turning the panel into a dump. */
+const MAX_REGION_ROWS = 40;
+const MAX_TRADE_SAMPLE = 5_000;
+
+export interface TradeMedianRegion {
+  province: string | null;
+  county: string | null;
+  labelFa: string;
+  trades: number;
+  medianRateToman: number | null;
+  sufficient: boolean;
+}
+
+export interface TradeMedian {
+  windowHours: number;
+  requiredTrades: number;
+  scope: { province: string | null; county: string | null };
+  labelFa: string;
+  trades: number;
+  medianRateToman: number | null;
+  sufficient: boolean;
+  /** Ready-made Persian copy: the whole point of the task is *not* leaving the client to decide. */
+  messageFa: string;
+  /** Per-region rows, busiest first; the place of the caller is always included when it has trades. */
+  byRegion: TradeMedianRegion[];
+  generatedAt: string;
+}
+
+export interface TradeMedianInput {
+  province?: string | null;
+  county?: string | null;
+}
+
+/** «بانه، کردستان» / «کردستان» / «کل کشور». */
+const placeLabel = (province: string | null, county: string | null): string =>
+  county && province ? `${county}، ${province}` : (county ?? province ?? 'کل کشور');
+
+const medianOf = (values: number[]): number | null => {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  const value =
+    sorted.length % 2 === 0 ? ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2 : sorted[middle];
+  return Math.round(value ?? 0);
+};
+
+export class TradeMedianService {
+  constructor(
+    private readonly repos: Pick<Repositories, 'orders'>,
+    private readonly clock: Clock,
+  ) {}
+
+  async median(input: TradeMedianInput = {}): Promise<TradeMedian> {
+    const province = input.province ?? null;
+    const county = province === null ? null : (input.county ?? null);
+    const since = new Date(this.clock.now().getTime() - TRADE_MEDIAN_WINDOW_HOURS * 3_600_000);
+
+    // One read of the window covers both the scope the caller asked for and the region table.
+    const trades = await this.repos.orders.listCompletedTrades({ since, limit: MAX_TRADE_SAMPLE });
+    const inScope = trades.filter(
+      (trade) =>
+        (province === null || trade.province === province) &&
+        (county === null || trade.county === county),
+    );
+
+    const medianRateToman = this.medianOfTrades(inScope.map((trade) => trade.rateToman));
+    const sufficient = inScope.length >= TRADE_MEDIAN_MIN_TRADES;
+
+    const buckets = new Map<string, { province: string | null; county: string | null; rates: number[] }>();
+    for (const trade of trades) {
+      const key = `${trade.province ?? ''}|${trade.county ?? ''}`;
+      const bucket = buckets.get(key) ?? {
+        province: trade.province,
+        county: trade.county,
+        rates: [],
+      };
+      bucket.rates.push(trade.rateToman);
+      buckets.set(key, bucket);
+    }
+    const byRegion: TradeMedianRegion[] = [...buckets.values()]
+      .map((bucket) => {
+        const median = this.medianOfTrades(bucket.rates);
+        const enough = bucket.rates.length >= TRADE_MEDIAN_MIN_TRADES;
+        return {
+          province: bucket.province,
+          county: bucket.county,
+          labelFa: placeLabel(bucket.province, bucket.county),
+          trades: bucket.rates.length,
+          // Same rule as the headline: below the threshold there is no number, only a count.
+          medianRateToman: enough ? median : null,
+          sufficient: enough,
+        };
+      })
+      .sort((a, b) => b.trades - a.trades || a.labelFa.localeCompare(b.labelFa, 'fa'))
+      .slice(0, MAX_REGION_ROWS);
+
+    return {
+      windowHours: TRADE_MEDIAN_WINDOW_HOURS,
+      requiredTrades: TRADE_MEDIAN_MIN_TRADES,
+      scope: { province, county },
+      labelFa: placeLabel(province, county),
+      trades: inScope.length,
+      medianRateToman: sufficient ? medianRateToman : null,
+      sufficient,
+      messageFa: sufficient
+        ? `میانهٔ ${toPersianDigits(TRADE_MEDIAN_WINDOW_HOURS)} ساعت گذشته بر پایهٔ ${toPersianDigits(inScope.length)} معاملهٔ انجام‌شده`
+        : `دادهٔ کافی نیست — برای این ناحیه کمتر از ${toPersianDigits(TRADE_MEDIAN_MIN_TRADES)} معاملهٔ انجام‌شده ثبت شده است`,
+      byRegion,
+      generatedAt: this.clock.now().toISOString(),
+    };
+  }
+
+  private medianOfTrades(values: number[]): number | null {
+    return medianOf(values);
   }
 }

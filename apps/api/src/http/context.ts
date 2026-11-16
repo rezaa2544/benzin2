@@ -14,6 +14,7 @@ import type { ReservationService } from '../modules/reservations-service.js';
 import type { SettingsService } from '../modules/settings-service.js';
 import type { StatsService } from '../modules/stats-service.js';
 import type { NodesService } from '../modules/nodes-service.js';
+import type { TradeMedianService } from '../modules/stats-service.js';
 
 export interface AppServices {
   auth: AuthService;
@@ -29,6 +30,8 @@ export interface AppServices {
   stats: StatsService;
   /** Node monitor and failover registry (task G-28). */
   nodes: NodesService;
+  /** 72-hour median of closed trades (task G-08). */
+  tradeMedian: TradeMedianService;
 }
 
 declare module 'fastify' {

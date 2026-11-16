@@ -27,6 +27,7 @@ const ROUTES: { pattern: string; page: PageId }[] = [
   { pattern: '/audit', page: 'audit' },
   { pattern: '/status', page: 'status' },
   { pattern: '/nodes', page: 'nodes' },
+  { pattern: '/market', page: 'market' },
 ];
 
 export const parseHash = (hash: string): { path: string; query: Record<string, string> } => {

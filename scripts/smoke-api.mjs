@@ -109,6 +109,27 @@ const statsBefore = await step('GET /v1/stats/market', async () => {
   return `sample ${payload.sampleSize ?? payload.count ?? '?'}, avg ${payload.averageRateToman ?? payload.average ?? '?'}`;
 });
 
+await step('GET /v1/stats/market/median (G-08)', async () => {
+  const { status, payload } = await call(
+    'GET',
+    `/v1/stats/market/median?province=${encodeURIComponent(PLACE.province)}&county=${encodeURIComponent(PLACE.county)}`,
+    { token: buyer.token },
+  );
+  expect(status === 200, `status ${status}: ${JSON.stringify(payload)}`);
+  expect(payload.windowHours === 72, `windowHours ${payload.windowHours}`);
+  expect(typeof payload.sufficient === 'boolean', 'sufficient is a boolean');
+  expect(Array.isArray(payload.byRegion), 'byRegion is an array');
+  expect(typeof payload.messageFa === 'string' && payload.messageFa.length > 0, 'messageFa present');
+  if (payload.sufficient) {
+    expect(typeof payload.medianRateToman === 'number', 'median is a number when sufficient');
+  } else {
+    expect(payload.medianRateToman === null, 'median is null when not sufficient');
+  }
+  return payload.sufficient
+    ? `median ${payload.medianRateToman} از ${payload.trades} معامله`
+    : `دادهٔ کافی نیست (${payload.trades} معامله)`;
+});
+
 await step('clear previous open listings (owner has a 2-listing plan limit)', async () => {
   const { payload } = await call('GET', '/v1/orders/mine?limit=20', { token: owner.token });
   const items = payload?.items ?? [];
@@ -216,6 +237,23 @@ await step('POST /v1/reservations/:id/rating', async () => {
   });
   expect(status === 201 || status === 200, `status ${status}: ${JSON.stringify(payload)}`);
   return `${payload.stars} stars`;
+});
+
+await step('GET /v1/stats/market/median counts the closed trade (G-08)', async () => {
+  const { status, payload } = await call(
+    'GET',
+    `/v1/stats/market/median?province=${encodeURIComponent(PLACE.province)}&county=${encodeURIComponent(PLACE.county)}`,
+    { token: buyer.token },
+  );
+  expect(status === 200, `status ${status}: ${JSON.stringify(payload)}`);
+  expect(payload.trades >= 1, `trades ${payload.trades} — the completed trade should be counted`);
+  const region = (payload.byRegion ?? [])[0];
+  expect(region, 'the region row is present');
+  expect(region.trades >= 1, `region trades ${region.trades}`);
+  // One trade is still far below the threshold of five, so the number stays hidden.
+  expect(payload.sufficient === false, 'one trade is not enough');
+  expect(payload.medianRateToman === null, 'median stays null below the threshold');
+  return `${payload.trades} معامله در ناحیه، آستانه ${payload.requiredTrades}`;
 });
 
 await step('GET /v1/notifications', async () => {
