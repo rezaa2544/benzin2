@@ -54849,7 +54849,10 @@ var NOTIFICATION_KINDS = [
   // pause on the listings, never a mark on the person — the copy says so, and the pause expires by
   // itself.
   "LISTINGS_PAUSED",
-  "LISTINGS_RESUMED"
+  "LISTINGS_RESUMED",
+  // G-11: money arrived that we could not place, and a transfer waiting for an operator.
+  "PAYMENT_DEPOSIT_UNMATCHED",
+  "PAYMENT_NEEDS_REVIEW"
 ];
 var NOTIFICATION_TEMPLATES = {
   RESERVATION_REQUESTED: {
@@ -54946,6 +54949,16 @@ var NOTIFICATION_TEMPLATES = {
   ACCOUNT_ROLE_CHANGED: {
     titleFa: "\u0646\u0642\u0634 \u062D\u0633\u0627\u0628 \u0634\u0645\u0627 \u062A\u063A\u06CC\u06CC\u0631 \u06A9\u0631\u062F",
     bodyFa: "\u0646\u0642\u0634 \u062D\u0633\u0627\u0628 \u0634\u0645\u0627 \u0628\u0647 \xAB{role}\xBB \u062A\u063A\u06CC\u06CC\u0631 \u06CC\u0627\u0641\u062A. \u0627\u06AF\u0631 \u0627\u06CC\u0646 \u062A\u063A\u06CC\u06CC\u0631 \u0631\u0627 \u0627\u0646\u062C\u0627\u0645 \u0646\u062F\u0627\u062F\u0647\u200C\u0627\u06CC\u062F \u0628\u0627 \u067E\u0634\u062A\u06CC\u0628\u0627\u0646\u06CC \u062A\u0645\u0627\u0633 \u0628\u06AF\u06CC\u0631\u06CC\u062F.",
+    smsFa: null
+  },
+  PAYMENT_DEPOSIT_UNMATCHED: {
+    titleFa: "\u0648\u0627\u0631\u06CC\u0632 \u0628\u06CC\u200C\u0635\u0627\u062D\u0628",
+    bodyFa: "\u0645\u0628\u0644\u063A {amount} \u062A\u0648\u0645\u0627\u0646 \u0628\u0627 \u0634\u0645\u0627\u0631\u0647\u0654 \u067E\u06CC\u06AF\u06CC\u0631\u06CC {reference} \u0628\u0647 \u06A9\u0627\u0631\u062A \u0631\u0633\u06CC\u062F \u0648\u0644\u06CC \u0647\u06CC\u0686 \u0641\u0627\u06A9\u062A\u0648\u0631\u06CC \u0628\u0627 \u0627\u06CC\u0646 \u0645\u0628\u0644\u063A \u0645\u0646\u062A\u0638\u0631 \u0646\u06CC\u0633\u062A. \u062F\u0631 \u067E\u0646\u0644\u060C \xAB\u0648\u0627\u0631\u06CC\u0632\u0647\u0627\u06CC \u0628\u06CC\u200C\u0635\u0627\u062D\u0628\xBB \u0631\u0627 \u0628\u0631\u0631\u0633\u06CC \u06A9\u0646\u06CC\u062F.",
+    smsFa: null
+  },
+  PAYMENT_NEEDS_REVIEW: {
+    titleFa: "\u067E\u0631\u062F\u0627\u062E\u062A \u062F\u0631 \u0627\u0646\u062A\u0638\u0627\u0631 \u062A\u0623\u06CC\u06CC\u062F",
+    bodyFa: "\u062E\u0631\u06CC\u062F\u0627\u0631 \u0628\u0631\u0627\u06CC \u0641\u0627\u06A9\u062A\u0648\u0631 {amount} \u062A\u0648\u0645\u0627\u0646\u06CC \u0634\u0645\u0627\u0631\u0647\u0654 \u067E\u06CC\u06AF\u06CC\u0631\u06CC {tracking} \u0631\u0627 \u0641\u0631\u0633\u062A\u0627\u062F. \u062A\u0623\u06CC\u06CC\u062F \u06CC\u0627 \u0631\u062F \u0622\u0646 \u062F\u0631 \u0635\u0641 \xAB\u067E\u0631\u062F\u0627\u062E\u062A\u200C\u0647\u0627\u06CC \u062F\u0631 \u0627\u0646\u062A\u0638\u0627\u0631\xBB \u0627\u0633\u062A.",
     smsFa: null
   },
   LISTINGS_PAUSED: {
@@ -55087,6 +55100,17 @@ var SETTING_DEFINITIONS = {
   "payment.card_to_card_ttl_minutes": { schema: external_exports.number().int().min(15).max(1440), default: 120 },
   "payment.gateway_ttl_minutes": { schema: external_exports.number().int().min(5).max(180), default: 30 },
   "payment.unique_suffix_max": { schema: external_exports.number().int().min(1).max(999), default: 999 },
+  /**
+   * G-11 — how a card-to-card transfer gets confirmed.
+   * `auto`: the deposit webhook matches the unique amount and activates the plan immediately.
+   * `review`: the buyer types the tracking number and an operator approves it in the panel.
+   */
+  "payment.card_mode": { schema: external_exports.enum(["auto", "review"]), default: "auto" },
+  /** G-11 — the destination account, editable from the panel instead of hard-coded. */
+  // The default matches the seeded destination card, so a fresh install shows the same account
+  // whether the buyer looks at the old `payment_cards` row or at these settings (G-11).
+  "payment.card_number": { schema: external_exports.string().regex(/^\d{16}$/), default: "6037991234567890" },
+  "payment.card_holder": { schema: external_exports.string().min(3).max(60), default: "\u0634\u0631\u06A9\u062A \u0628\u0646\u0632\u06CC\u0646" },
   "trust.suspend_below_score": { schema: external_exports.number().int().min(0).max(99), default: 20 },
   "trust.suspend_hours": { schema: external_exports.number().int().min(1).max(720), default: 24 },
   "trust.window_days": { schema: external_exports.number().int().min(1).max(365), default: 180 },
@@ -55211,6 +55235,23 @@ var confirmPaymentSchema = external_exports.object({
 }).strict();
 var rejectPaymentSchema = external_exports.object({
   reason: external_exports.string().trim().min(3).max(240)
+}).strict();
+var cardDepositSchema = external_exports.object({
+  amountToman: external_exports.number().int().min(1).max(1e8),
+  reference: external_exports.string().trim().min(3).max(128),
+  paidAt: external_exports.string().datetime().optional(),
+  senderName: external_exports.string().trim().min(2).max(80).optional()
+}).strict();
+var cardProofSchema = external_exports.object({
+  trackingNumber: external_exports.string().trim().min(4).max(64)
+}).strict();
+var attachDepositSchema = external_exports.object({
+  paymentId: external_exports.string().uuid()
+}).strict();
+var depositListSchema = external_exports.object({
+  status: external_exports.enum(["MATCHED", "UNMATCHED", "IGNORED"]).optional(),
+  limit: external_exports.coerce.number().int().min(1).max(100).default(50),
+  offset: external_exports.coerce.number().int().min(0).default(0)
 }).strict();
 var paymentListSchema = external_exports.object({
   status: external_exports.enum(["PENDING", "PAID", "FAILED", "EXPIRED", "NEEDS_REVIEW"]).optional(),
@@ -57330,8 +57371,9 @@ var OrderService = class {
 
 // ../apps/api/src/modules/payment-providers.ts
 var CardToCardProvider = class {
-  constructor(cards) {
+  constructor(cards, override = null) {
     this.cards = cards;
+    this.override = override;
   }
   kind = "CARD_TO_CARD";
   destination(card) {
@@ -57342,6 +57384,15 @@ var CardToCardProvider = class {
     };
   }
   async init(input) {
+    const fromSettings = this.override ? await this.override() : null;
+    if (fromSettings) {
+      return {
+        redirectUrl: null,
+        authority: null,
+        destination: fromSettings,
+        uniqueAmountToman: input.uniqueAmountToman
+      };
+    }
     const [card] = await this.cards.list(true);
     if (!card) throw new AppError("NO_PAYMENT_CARD", 503, "No destination card is configured");
     return {
@@ -57711,9 +57762,9 @@ var PaymentService = class {
     return payment;
   }
   /** Marks the payment PAID, activates the subscription and notifies the buyer. */
-  async settle(payment, reference, actorId, nextStatus = "PAID") {
+  async settle(payment, reference, actorId, nextStatus = "PAID", expected = "PENDING") {
     const now = this.clock.now();
-    const updated = await this.repos.payments.transition(payment.id, "PENDING", nextStatus, {
+    const updated = await this.repos.payments.transition(payment.id, expected, nextStatus, {
       paidAt: now,
       reference
     });
@@ -57754,19 +57805,36 @@ var PaymentService = class {
     });
     return { payment: toPaymentView(updated), subscription };
   }
+  /**
+   * G-11: the deposit webhook settles through the very same path an operator approval takes, so a
+   * matched transfer and a hand-approved one can never diverge in what they activate.
+   */
+  async settleDeposit(payment, reference) {
+    await this.settle(payment, reference, null);
+  }
   /** Operator confirmation for a card-to-card transfer (task E7-07). */
   async confirmPayment(actor, paymentId, reference) {
     const payment = await this.repos.payments.findById(paymentId);
     if (!payment) throw AppError.notFound("PAYMENT_NOT_FOUND", "Payment not found");
-    if (payment.status !== "PENDING") {
+    if (payment.status !== "PENDING" && payment.status !== "NEEDS_REVIEW") {
       throw new AppError("PAYMENT_ALREADY_SETTLED", 409, "Payment is already settled");
     }
-    return this.settle(payment, reference ?? `MANUAL-${payment.id.slice(0, 8)}`, actor.id);
+    return this.settle(
+      payment,
+      reference ?? payment.reference ?? `MANUAL-${payment.id.slice(0, 8)}`,
+      actor.id,
+      "PAID",
+      payment.status
+    );
   }
   async rejectPayment(actor, paymentId, reason) {
     const payment = await this.repos.payments.findById(paymentId);
     if (!payment) throw AppError.notFound("PAYMENT_NOT_FOUND", "Payment not found");
-    const updated = await this.repos.payments.transition(payment.id, "PENDING", "FAILED", {
+    const expected = payment.status === "NEEDS_REVIEW" ? "NEEDS_REVIEW" : "PENDING";
+    if (payment.status !== "PENDING" && payment.status !== "NEEDS_REVIEW") {
+      throw new AppError("PAYMENT_ALREADY_SETTLED", 409, "Payment is already settled");
+    }
+    const updated = await this.repos.payments.transition(payment.id, expected, "FAILED", {
       reference: reason
     });
     if (!updated) {
@@ -57875,6 +57943,242 @@ var PaymentService = class {
       });
     }
     return { expiredPayments, healedPayments, expiredSubscriptions };
+  }
+};
+
+// ../apps/api/src/modules/card-deposit-service.ts
+import { createHmac as createHmac2, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
+var toDepositView = (deposit) => ({
+  id: deposit.id,
+  reference: deposit.reference,
+  amountToman: deposit.amountToman,
+  senderName: deposit.senderName,
+  paidAt: deposit.paidAt.toISOString(),
+  receivedAt: deposit.receivedAt.toISOString(),
+  status: deposit.status,
+  paymentId: deposit.paymentId
+});
+function verifyDepositSignature(rawBody, header, secret) {
+  if (!header) return false;
+  const provided = header.startsWith("sha256=") ? header.slice("sha256=".length) : header;
+  const expected = createHmac2("sha256", secret).update(rawBody).digest("hex");
+  if (provided.length !== expected.length) return false;
+  try {
+    return timingSafeEqual2(Buffer.from(provided, "hex"), Buffer.from(expected, "hex"));
+  } catch {
+    return false;
+  }
+}
+var CardDepositService = class {
+  constructor(repos2, settings2, clock, notifier, settle = null) {
+    this.repos = repos2;
+    this.settings = settings2;
+    this.clock = clock;
+    this.notifier = notifier;
+    this.settle = settle;
+  }
+  attachSettlement(settle) {
+    this.settle = settle;
+  }
+  /** The destination account the buyer is told to pay, straight from the settings (G-11). */
+  async destination() {
+    const config2 = await this.settings.get();
+    const [card] = await this.repos.paymentCards.list(true);
+    return {
+      // Settings win: an operator can rotate the card from the panel without a deploy.
+      cardNumber: config2["payment.card_number"] ?? card?.cardNumber ?? "",
+      holderName: config2["payment.card_holder"] ?? card?.holderName ?? "",
+      bankName: card?.bankName ?? null
+    };
+  }
+  /**
+   * Handles one transfer from the bank.
+   *
+   * Idempotent by reference: a replayed callback records nothing new and settles nothing new, and
+   * the caller still gets `200` so the bank stops retrying.
+   */
+  async handleDeposit(input) {
+    const recorded = await this.repos.cardDeposits.record({
+      reference: input.reference,
+      amountToman: input.amountToman,
+      senderName: input.senderName ?? null,
+      paidAt: input.paidAt,
+      note: null
+    });
+    const deposit = recorded.deposit;
+    if (!recorded.created) {
+      return {
+        deposit: toDepositView(deposit),
+        duplicate: true,
+        outcome: deposit.status === "MATCHED" ? "ALREADY_SETTLED" : "NO_INVOICE"
+      };
+    }
+    const match = await this.match(deposit);
+    if (match.outcome === "MATCHED") {
+      return { deposit: toDepositView(match.deposit), duplicate: false, outcome: "MATCHED" };
+    }
+    await this.repos.audit.append({
+      actorId: null,
+      action: "payment.deposit_unmatched",
+      entity: "card_deposit",
+      entityId: deposit.id,
+      metadata: { amountToman: deposit.amountToman, reference: deposit.reference }
+    });
+    for (const staff of await this.staff()) {
+      await this.notifier.emit({
+        userId: staff.id,
+        kind: "PAYMENT_DEPOSIT_UNMATCHED",
+        params: { amount: deposit.amountToman, reference: deposit.reference },
+        payload: { depositId: deposit.id }
+      });
+    }
+    return {
+      deposit: toDepositView(await this.repos.cardDeposits.findById(deposit.id) ?? deposit),
+      duplicate: false,
+      outcome: match.outcome
+    };
+  }
+  /**
+   * Finds the invoice this amount belongs to.
+   *
+   * The unique amount is the key, so this is an equality test, not a heuristic — and it only ever
+   * looks at invoices that are still payable. `AMBIGUOUS` (two invoices with the same amount) is
+   * treated like a miss on purpose: guessing would give a stranger's money to the wrong buyer.
+   */
+  async match(deposit) {
+    const candidates = await this.repos.payments.findPayableByAmount(
+      "CARD_TO_CARD",
+      deposit.amountToman,
+      this.clock.now()
+    );
+    if (candidates.length === 0) return { outcome: "NO_INVOICE", deposit };
+    if (candidates.length > 1) {
+      await this.repos.audit.append({
+        actorId: null,
+        action: "payment.deposit_ambiguous",
+        entity: "card_deposit",
+        entityId: deposit.id,
+        metadata: { amountToman: deposit.amountToman, payments: candidates.map((p) => p.id) }
+      });
+      return { outcome: "AMBIGUOUS", deposit };
+    }
+    const payment = candidates[0];
+    if (!this.settle) throw new Error("card deposit service has no settlement hook");
+    await this.settle(payment, deposit.reference);
+    const matched = await this.repos.cardDeposits.markMatched(deposit.id, payment.id);
+    return { outcome: "MATCHED", deposit: matched ?? deposit };
+  }
+  /** Review mode: the buyer pastes the tracking number from their banking app. */
+  async submitProof(user, paymentId, input) {
+    const config2 = await this.settings.get();
+    const payment = await this.repos.payments.findById(paymentId);
+    if (!payment || payment.userId !== user.id) {
+      throw AppError.notFound("PAYMENT_NOT_FOUND", "Payment not found");
+    }
+    if (payment.provider !== "CARD_TO_CARD") {
+      throw new AppError("PAYMENT_NOT_PAYABLE", 409, "This invoice is not a card transfer");
+    }
+    if (payment.status === "NEEDS_REVIEW") {
+      return { paymentId, status: payment.status, queued: true };
+    }
+    if (payment.status !== "PENDING") {
+      throw new AppError("PAYMENT_ALREADY_SETTLED", 409, "Payment is already settled", {
+        status: payment.status
+      });
+    }
+    if (payment.expiresAt.getTime() <= this.clock.now().getTime()) {
+      await this.repos.payments.transition(payment.id, "PENDING", "EXPIRED");
+      throw new AppError("PAYMENT_ALREADY_SETTLED", 409, "Payment window elapsed");
+    }
+    const queued = config2["payment.card_mode"] === "review";
+    if (!queued) {
+      throw new AppError(
+        "CARD_REVIEW_DISABLED",
+        409,
+        "Card transfers are confirmed automatically in this mode"
+      );
+    }
+    const updated = await this.repos.payments.transition(payment.id, "PENDING", "NEEDS_REVIEW", {
+      reference: input.trackingNumber
+    });
+    if (!updated) throw new AppError("PAYMENT_ALREADY_SETTLED", 409, "Payment changed");
+    await this.repos.audit.append({
+      actorId: user.id,
+      action: "payment.proof_submitted",
+      entity: "payment",
+      entityId: payment.id,
+      metadata: { trackingNumber: input.trackingNumber }
+    });
+    for (const staff of await this.staff()) {
+      await this.notifier.emit({
+        userId: staff.id,
+        kind: "PAYMENT_NEEDS_REVIEW",
+        params: { amount: payment.amountToman, tracking: input.trackingNumber },
+        payload: { paymentId: payment.id }
+      });
+    }
+    return { paymentId, status: "NEEDS_REVIEW", queued: true };
+  }
+  /** Admin: deposits of any status (the panel filters with `?status=`). */
+  async listDeposits(status, limit = 50, offset = 0) {
+    const result = await this.repos.cardDeposits.list(status, limit, offset);
+    return { items: result.items.map(toDepositView), total: result.total };
+  }
+  /** Admin: the unmatched queue, newest first. */
+  async listUnmatched(limit = 50, offset = 0) {
+    const result = await this.repos.cardDeposits.list("UNMATCHED", limit, offset);
+    return { items: result.items.map(toDepositView), total: result.total };
+  }
+  /** Admin: attach a stubborn deposit to an invoice by hand. */
+  async attachDeposit(actor, depositId, paymentId) {
+    const deposit = await this.repos.cardDeposits.findById(depositId);
+    if (!deposit) throw AppError.notFound("DEPOSIT_NOT_FOUND", "Deposit not found");
+    if (deposit.status === "MATCHED") {
+      throw new AppError("DEPOSIT_ALREADY_MATCHED", 409, "Deposit is already matched", {
+        paymentId: deposit.paymentId
+      });
+    }
+    const payment = await this.repos.payments.findById(paymentId);
+    if (!payment) throw AppError.notFound("PAYMENT_NOT_FOUND", "Payment not found");
+    if (payment.status !== "PENDING" && payment.status !== "NEEDS_REVIEW") {
+      throw new AppError("PAYMENT_ALREADY_SETTLED", 409, "Payment is already settled", {
+        status: payment.status
+      });
+    }
+    if (!this.settle) throw new Error("card deposit service has no settlement hook");
+    await this.settle(payment, deposit.reference);
+    const matched = await this.repos.cardDeposits.markMatched(deposit.id, payment.id);
+    await this.repos.audit.append({
+      actorId: actor.id,
+      action: "payment.deposit_attached",
+      entity: "card_deposit",
+      entityId: deposit.id,
+      metadata: { paymentId: payment.id, amountToman: deposit.amountToman }
+    });
+    return { deposit: toDepositView(matched ?? deposit), paymentId: payment.id };
+  }
+  /** Dashboard tile: how much money is sitting unmatched right now. */
+  async unmatchedSummary() {
+    const { items, total } = await this.listUnmatched(200, 0);
+    return { count: total, totalToman: items.reduce((sum, item) => sum + item.amountToman, 0) };
+  }
+  /** Every ADMIN and OWNER — the people who can act on a stuck transfer. */
+  async staff() {
+    const admins = await this.repos.users.search({
+      text: null,
+      role: "ADMIN",
+      status: "ACTIVE",
+      limit: 20,
+      offset: 0
+    });
+    const owners = await this.repos.users.search({
+      text: null,
+      role: "OWNER",
+      status: "ACTIVE",
+      limit: 20,
+      offset: 0
+    });
+    return [...admins.items, ...owners.items];
   }
 };
 
@@ -59569,7 +59873,15 @@ async function buildApp(options) {
     callbackUrl: config2.PAYMENT_CALLBACK_URL,
     baseUrl: config2.ZARINPAL_BASE_URL
   }) : new SandboxGatewayProvider();
-  const cardToCard = new CardToCardProvider(repos2.paymentCards);
+  const cardToCard = new CardToCardProvider(repos2.paymentCards, async () => {
+    const config3 = await settings2.get();
+    const [card] = await repos2.paymentCards.list(true);
+    return {
+      cardNumber: config3["payment.card_number"],
+      holderName: config3["payment.card_holder"],
+      bankName: card?.bankName ?? null
+    };
+  });
   const payments2 = new PaymentService(
     repos2,
     settings2,
@@ -59577,6 +59889,8 @@ async function buildApp(options) {
     { gateway, cardToCard },
     notifications2
   );
+  const cardDeposits2 = new CardDepositService(repos2, settings2, clock, notifications2);
+  cardDeposits2.attachSettlement((payment, reference) => payments2.settleDeposit(payment, reference));
   const reputation = new ReputationService(repos2, settings2, clock, notifications2);
   const profile = new ProfileService(repos2, reputation);
   const ownerResponse = new OwnerResponseService(repos2, clock, notifications2);
@@ -59628,7 +59942,8 @@ async function buildApp(options) {
     stats,
     nodes,
     tradeMedian,
-    ownerResponse
+    ownerResponse,
+    cardDeposits: cardDeposits2
   };
   const requireAuth = authenticate(auth);
   const app2 = (0, import_fastify.default)({
@@ -59706,7 +60021,10 @@ async function buildApp(options) {
       maxLitres: effective["order.max_litres"],
       maxActiveReservations: effective["reservation.max_active_per_user"],
       maxMessageLength: effective["chat.max_message_length"],
-      quickReplies: effective["chat.quick_replies"]
+      quickReplies: effective["chat.quick_replies"],
+      // G-11: the app shows the tracking-number box only in review mode. Never the card number —
+      // that one arrives with the invoice, after the buyer chose a plan.
+      cardMode: effective["payment.card_mode"]
     };
   });
   app2.post("/v1/auth/otp/request", async (request, reply) => {
@@ -59933,6 +60251,39 @@ async function buildApp(options) {
     const body = parseInput(gatewayCallbackSchema, request.body ?? {});
     return payments2.handleGatewayCallback(currentUser(request), id, body);
   });
+  app2.post("/v1/payments/card/deposits", async (request, reply) => {
+    const secret = config2.CARD_WEBHOOK_SECRET;
+    if (!secret) {
+      throw new AppError(
+        "CARD_WEBHOOK_DISABLED",
+        503,
+        "The deposit webhook is not configured on this server"
+      );
+    }
+    const rawBody = request.body;
+    const body = typeof rawBody === "string" ? rawBody : JSON.stringify(request.body ?? {});
+    const signature = request.headers["x-benzin-signature"];
+    if (!verifyDepositSignature(
+      body,
+      Array.isArray(signature) ? signature[0] : signature,
+      secret
+    )) {
+      throw new AppError("CARD_WEBHOOK_UNAUTHORIZED", 401, "Invalid webhook signature");
+    }
+    const parsed = parseInput(cardDepositSchema, JSON.parse(body || "{}"));
+    const result = await cardDeposits2.handleDeposit({
+      amountToman: parsed.amountToman,
+      reference: parsed.reference,
+      paidAt: parsed.paidAt ? new Date(parsed.paidAt) : clock.now(),
+      senderName: parsed.senderName ?? null
+    });
+    return reply.status(200).send(result);
+  });
+  app2.post("/v1/payments/:id/card-proof", { preHandler: requireAuth }, async (request) => {
+    const { id } = request.params;
+    const body = parseInput(cardProofSchema, request.body ?? {});
+    return cardDeposits2.submitProof(currentUser(request), id, body);
+  });
   app2.get(
     "/v1/me/reputation",
     { preHandler: requireAuth },
@@ -60043,6 +60394,23 @@ async function buildApp(options) {
       const { id } = request.params;
       const body = parseInput(rejectPaymentSchema, request.body);
       return payments2.rejectPayment(currentUser(request), id, body.reason);
+    }
+  );
+  app2.get(
+    "/v1/admin/card-deposits",
+    { preHandler: [requireAuth, requireRole("ADMIN", "OWNER")] },
+    async (request) => {
+      const query2 = parseInput(depositListSchema, request.query);
+      return cardDeposits2.listDeposits(query2.status ?? null, query2.limit, query2.offset);
+    }
+  );
+  app2.post(
+    "/v1/admin/card-deposits/:id/attach",
+    { preHandler: [requireAuth, requireRole("ADMIN", "OWNER")] },
+    async (request) => {
+      const { id } = request.params;
+      const body = parseInput(attachDepositSchema, request.body ?? {});
+      return cardDeposits2.attachDeposit(currentUser(request), id, body.paymentId);
     }
   );
   app2.get(
@@ -60241,6 +60609,12 @@ var envSchema = external_exports.object({
   ZARINPAL_MERCHANT_ID: external_exports.string().min(8).optional(),
   ZARINPAL_BASE_URL: external_exports.string().url().default("https://payment.zarinpal.com"),
   PAYMENT_CALLBACK_URL: external_exports.string().url().default("https://app.benzin.ir/payments/callback"),
+  /**
+   * G-11 — shared secret for the deposit webhook (`x-benzin-signature: sha256=<hmac>`).
+   * Empty in development: the route then refuses every call, which is the safe default — an
+   * unauthenticated money endpoint must never be open by accident.
+   */
+  CARD_WEBHOOK_SECRET: external_exports.string().min(16).optional(),
   /** Reported on the admin status screen (task E8-08). */
   APP_VERSION: external_exports.string().default("0.1.0"),
   /**
@@ -60516,6 +60890,11 @@ var MemoryPaymentRepository = class {
     const payment = [...this.byId.values()].find((candidate) => candidate.authority === authority);
     return payment ? clone2(payment) : null;
   }
+  async findPayableByAmount(provider, amountToman, now) {
+    return [...this.byId.values()].filter(
+      (payment) => payment.provider === provider && payment.status === "PENDING" && payment.uniqueAmountToman === amountToman && payment.expiresAt.getTime() > now.getTime()
+    ).map(clone2);
+  }
   async findByUniqueAmount(amountToman) {
     const payment = [...this.byId.values()].find(
       (candidate) => candidate.uniqueAmountToman === amountToman
@@ -60561,6 +60940,54 @@ var MemoryPaymentRepository = class {
       }
     }
     return summary;
+  }
+};
+var MemoryCardDepositRepository = class {
+  byId = /* @__PURE__ */ new Map();
+  byReference = /* @__PURE__ */ new Map();
+  async record(input) {
+    const existingId = this.byReference.get(input.reference);
+    if (existingId) {
+      const existing = this.byId.get(existingId);
+      return { deposit: clone2(existing), created: false };
+    }
+    const deposit = {
+      id: randomUUID3(),
+      reference: input.reference,
+      amountToman: input.amountToman,
+      senderName: input.senderName,
+      paidAt: input.paidAt,
+      receivedAt: /* @__PURE__ */ new Date(),
+      status: "UNMATCHED",
+      paymentId: null,
+      note: input.note
+    };
+    this.byId.set(deposit.id, clone2(deposit));
+    this.byReference.set(deposit.reference, deposit.id);
+    return { deposit: clone2(deposit), created: true };
+  }
+  async findById(id) {
+    const deposit = this.byId.get(id);
+    return deposit ? clone2(deposit) : null;
+  }
+  async markMatched(id, paymentId) {
+    const deposit = this.byId.get(id);
+    if (!deposit) return null;
+    deposit.status = "MATCHED";
+    deposit.paymentId = paymentId;
+    return clone2(deposit);
+  }
+  async list(status, limit, offset) {
+    const matches = [...this.byId.values()].filter((deposit) => status === null || deposit.status === status).sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime());
+    return {
+      items: matches.slice(offset, offset + limit).map(clone2),
+      total: matches.length
+    };
+  }
+  async countUnmatchedSince(since) {
+    return [...this.byId.values()].filter(
+      (deposit) => deposit.status === "UNMATCHED" && deposit.receivedAt.getTime() >= since.getTime()
+    ).length;
   }
 };
 var MemoryPaymentCardRepository = class {
@@ -61254,6 +61681,7 @@ function createMemoryRepositories() {
     subscriptions: new MemorySubscriptionRepository(),
     payments: new MemoryPaymentRepository(),
     paymentCards: new MemoryPaymentCardRepository(),
+    cardDeposits: new MemoryCardDepositRepository(),
     providerSettings: new MemoryProviderSettingsRepository(),
     otps: new MemoryOtpRepository(),
     refreshTokens: new MemoryRefreshTokenRepository(),
@@ -67936,6 +68364,7 @@ function drizzle(...params) {
 var schema_exports = {};
 __export(schema_exports, {
   auditLogs: () => auditLogs,
+  cardDeposits: () => cardDeposits,
   conversations: () => conversations,
   deliveryMethod: () => deliveryMethod,
   devices: () => devices,
@@ -68325,6 +68754,21 @@ var paymentCards = pgTable("payment_cards", {
   dailyLimit: integer("daily_limit"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
 });
+var cardDeposits = pgTable(
+  "card_deposits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reference: text("reference").notNull().unique(),
+    amountToman: bigint("amount_toman", { mode: "number" }).notNull(),
+    senderName: text("sender_name"),
+    paidAt: timestamp("paid_at", { withTimezone: true }).notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    status: text("status").notNull().default("UNMATCHED"),
+    paymentId: uuid("payment_id").references(() => payments.id, { onDelete: "set null" }),
+    note: text("note")
+  },
+  (t) => [check("card_deposits_status", sql`${t.status} in ('MATCHED','UNMATCHED','IGNORED')`)]
+);
 var providerSettings = pgTable(
   "provider_settings",
   {
@@ -69673,6 +70117,17 @@ var PgPaymentRepository = class {
     );
     return row ? toPayment(row) : null;
   }
+  async findPayableByAmount(provider, amountToman, now) {
+    const rows = await query(
+      this.db,
+      `SELECT ${PAYMENT_COLUMNS} FROM payments
+        WHERE unique_amount = $1 AND provider = $2::payment_method
+          AND status = 'PENDING' AND expires_at > $3
+        ORDER BY created_at`,
+      [amountToman, provider, now]
+    );
+    return rows.map(toPayment);
+  }
   async findByUniqueAmount(amountToman) {
     const row = await queryOne(
       this.db,
@@ -69763,6 +70218,82 @@ var toCard = (row) => ({
   dailyLimit: row.daily_limit === null ? null : Number(row.daily_limit),
   createdAt: row.created_at
 });
+var DEPOSIT_COLUMNS = `id, reference, amount_toman, sender_name, paid_at, received_at, status,
+         payment_id, note`;
+var toDeposit = (row) => ({
+  id: row.id,
+  reference: row.reference,
+  amountToman: num(row.amount_toman),
+  senderName: row.sender_name,
+  paidAt: row.paid_at,
+  receivedAt: row.received_at,
+  status: row.status,
+  paymentId: row.payment_id,
+  note: row.note
+});
+var PgCardDepositRepository = class {
+  constructor(db) {
+    this.db = db;
+  }
+  async record(input) {
+    const inserted = await queryOne(
+      this.db,
+      `INSERT INTO card_deposits (reference, amount_toman, sender_name, paid_at, note)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (reference) DO NOTHING
+       RETURNING ${DEPOSIT_COLUMNS}`,
+      [input.reference, input.amountToman, input.senderName, input.paidAt, input.note]
+    );
+    if (inserted) return { deposit: toDeposit(inserted), created: true };
+    const existing = await queryOne(
+      this.db,
+      `SELECT ${DEPOSIT_COLUMNS} FROM card_deposits WHERE reference = $1`,
+      [input.reference]
+    );
+    if (!existing) throw new Error("card deposit vanished while recording");
+    return { deposit: toDeposit(existing), created: false };
+  }
+  async findById(id) {
+    const row = await queryOne(
+      this.db,
+      `SELECT ${DEPOSIT_COLUMNS} FROM card_deposits WHERE id = $1`,
+      [id]
+    );
+    return row ? toDeposit(row) : null;
+  }
+  async markMatched(id, paymentId) {
+    const row = await queryOne(
+      this.db,
+      `UPDATE card_deposits SET status = 'MATCHED', payment_id = $2
+        WHERE id = $1 RETURNING ${DEPOSIT_COLUMNS}`,
+      [id, paymentId]
+    );
+    return row ? toDeposit(row) : null;
+  }
+  async list(status, limit, offset) {
+    const rows = await query(
+      this.db,
+      `SELECT ${DEPOSIT_COLUMNS} FROM card_deposits
+        WHERE ($1::text IS NULL OR status = $1)
+        ORDER BY received_at DESC LIMIT $2 OFFSET $3`,
+      [status, limit, offset]
+    );
+    const total = await scalar(
+      this.db,
+      `SELECT count(*)::int AS value FROM card_deposits WHERE ($1::text IS NULL OR status = $1)`,
+      [status]
+    );
+    return { items: rows.map(toDeposit), total };
+  }
+  async countUnmatchedSince(since) {
+    return scalar(
+      this.db,
+      `SELECT count(*)::int AS value FROM card_deposits
+        WHERE status = 'UNMATCHED' AND received_at >= $1`,
+      [since]
+    );
+  }
+};
 var PgPaymentCardRepository = class {
   constructor(db) {
     this.db = db;
@@ -70278,6 +70809,7 @@ function createPostgresRepositories(databaseUrl) {
     subscriptions: new PgSubscriptionRepository(pool),
     payments: new PgPaymentRepository(pool),
     paymentCards: new PgPaymentCardRepository(pool),
+    cardDeposits: new PgCardDepositRepository(pool),
     providerSettings: new PgProviderSettingsRepository(pool),
     messages: new PgMessageRepository(pool),
     notifications: new PgNotificationRepository(pool),
