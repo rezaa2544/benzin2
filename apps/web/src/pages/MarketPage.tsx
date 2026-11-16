@@ -592,6 +592,8 @@ export function MarketPage({
                 distanceKm={order.distance?.distanceKm}
                 etaMinutes={etaOf(order)}
                 expiresAt={order.expiresAt}
+                ownerResponseLabel={order.owner?.labelFa}
+                ownerResponseRate={order.owner?.ratePercent ?? null}
                 onOpen={() => navigate(`/market/${order.id}`)}
               />
             ))}
@@ -613,6 +615,8 @@ export function MarketPage({
             distanceKm={order.distance?.distanceKm}
             etaMinutes={etaOf(order)}
             expiresAt={order.expiresAt}
+            ownerResponseLabel={order.owner?.labelFa}
+            ownerResponseRate={order.owner?.ratePercent ?? null}
             onOpen={() => navigate(`/market/${order.id}`)}
           />
         ))}

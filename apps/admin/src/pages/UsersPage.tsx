@@ -4,7 +4,7 @@ import type { ApiClient } from '../lib/api.js';
 import { fmtDate, fmtDateTime, fmtNumber, statusFa } from '../lib/format.js';
 import { canEditUser } from '../lib/permissions.js';
 import { useResource } from '../lib/useResource.js';
-import type { Paged, UserDetail, UserRow } from '../lib/types.js';
+import type { ListingPause, Paged, UserDetail, UserRow } from '../lib/types.js';
 import { Badge, DataTable, Field, Modal, Notice, Pagination } from '../components/ui.js';
 import type { SessionUser } from '../lib/session.js';
 import fa from '../i18n/fa.json';
@@ -125,6 +125,36 @@ export function UsersPage({
                   header: fa.users.suspendUntil,
                   render: (row) => (row.suspendedUntil ? fmtDateTime(row.suspendedUntil) : '—'),
                 },
+                {
+                  // G-10: the same badge the buyers see, so support and the market agree.
+                  key: 'response',
+                  header: fa.users.response,
+                  render: (row) =>
+                    row.response.received === 0 ? (
+                      <span className="text-muted">—</span>
+                    ) : (
+                      <span title={fa.users.responseHint}>
+                        {row.response.ratePercent === null
+                          ? '—'
+                          : `٪${fmtNumber(row.response.ratePercent)}`}
+                        <span className="ms-1 text-xs text-muted">
+                          ({fmtNumber(row.response.answered)}/{fmtNumber(row.response.received)})
+                        </span>
+                      </span>
+                    ),
+                },
+                {
+                  key: 'delisted',
+                  header: fa.users.delisted,
+                  render: (row) =>
+                    row.delistedUntil ? (
+                      <span className="inline-flex rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+                        {fmtDateTime(row.delistedUntil)}
+                      </span>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    ),
+                },
               ]}
             />
             <Pagination
@@ -137,6 +167,8 @@ export function UsersPage({
         )}
       </div>
 
+      <PauseQueue api={api} onReleased={() => list.reload()} />
+
       {selected ? (
         <UserSheet
           api={api}
@@ -147,6 +179,85 @@ export function UsersPage({
         />
       ) : null}
     </section>
+  );
+}
+
+/**
+ * G-10 — the review queue for listing pauses.
+ *
+ * Support sees *why* someone is out of the market and can put them back with one click; the pause
+ * itself expires on its own, so nothing here can turn into a quiet ban.
+ */
+function PauseQueue({
+  api,
+  onReleased,
+}: {
+  api: ApiClient;
+  onReleased: () => void;
+}): JSX.Element {
+  const queue = useResource<{ items: ListingPause[]; total: number }>(
+    () => api.get<{ items: ListingPause[]; total: number }>('/v1/admin/listing-pauses'),
+    [],
+  );
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const release = async (id: string): Promise<void> => {
+    setBusy(id);
+    setError(null);
+    setMessage(null);
+    try {
+      await api.post(`/v1/admin/users/${id}/relist`, {});
+      setMessage(fa.users.relist);
+      queue.reload();
+      onReleased();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : fa.app.error);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="card space-y-2">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-bold">{fa.users.pauseQueue}</h2>
+        <span className="chip">{fmtNumber(queue.data?.total ?? 0)}</span>
+      </div>
+      <p className="text-xs text-muted">{fa.users.pauseNote}</p>
+      {message ? <Notice tone="success">{message}</Notice> : null}
+      {error ? <Notice tone="error">{error}</Notice> : null}
+      {queue.error ? <Notice tone="error">{queue.error.message}</Notice> : null}
+      {queue.loading && !queue.data ? <Notice>{fa.app.loading}</Notice> : null}
+      {queue.data && queue.data.items.length === 0 ? <Notice>{fa.app.empty}</Notice> : null}
+      {queue.data && queue.data.items.length > 0 ? (
+        <ul className="space-y-2">
+          {queue.data.items.map((row) => (
+            <li
+              key={row.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line p-2"
+            >
+              <div className="text-xs">
+                <p className="font-bold tnum">{row.phone}</p>
+                <p className="text-muted">{row.reasonFa}</p>
+                <p className="text-muted">
+                  {fa.users.delistedUntil}: {fmtDateTime(row.until)}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy === row.id}
+                onClick={() => void release(row.id)}
+              >
+                {fa.users.relist}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

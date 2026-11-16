@@ -29,6 +29,11 @@ export const NOTIFICATION_KINDS = [
   'SUBSCRIPTION_EXPIRED',
   'DISPUTE_RESOLVED',
   'ACCOUNT_ROLE_CHANGED',
+  // G-10: an owner who lets three requests in a row die gets a 24-hour listing pause. It is a
+  // pause on the listings, never a mark on the person — the copy says so, and the pause expires by
+  // itself.
+  'LISTINGS_PAUSED',
+  'LISTINGS_RESUMED',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
@@ -142,6 +147,17 @@ export const NOTIFICATION_TEMPLATES: Record<NotificationKind, NotificationTempla
     bodyFa:
       'نقش حساب شما به «{role}» تغییر یافت. اگر این تغییر را انجام نداده‌اید با پشتیبانی تماس بگیرید.',
     smsFa: null,
+  },
+  LISTINGS_PAUSED: {
+    titleFa: 'آگهی‌ها موقتاً از بازار برداشته شد',
+    bodyFa:
+      'سه درخواست پیاپی بی‌پاسخ ماند، بنابراین آگهی‌های شما تا {hours} ساعت در بازار دیده نمی‌شوند. با پاسخ دادن به درخواست بعدی، نرخ پاسخ‌دهی‌تان بالا می‌رود؛ نیازی به کار دیگری نیست.',
+    smsFa: null,
+  },
+  LISTINGS_RESUMED: {
+    titleFa: 'آگهی‌های شما به بازار برگشت',
+    bodyFa: 'دورهٔ توقف نمایش آگهی‌ها تمام شد و سفارش‌های باز شما دوباره در بازار دیده می‌شوند.',
+    smsFa: 'آگهی‌های شما دوباره در بازار نمایش داده می‌شود. بنزین',
   },
   ACCOUNT_RESTORED: {
     titleFa: 'تعلیق حساب برداشته شد',

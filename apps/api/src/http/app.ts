@@ -61,6 +61,7 @@ import {
   ZarinpalGatewayProvider,
 } from '../modules/payment-providers.js';
 import { PaymentService } from '../modules/payment-service.js';
+import { OwnerResponseService } from '../modules/owner-response-service.js';
 import { ReputationService } from '../modules/reputation-service.js';
 import { ReservationService } from '../modules/reservations-service.js';
 import { SettingsService } from '../modules/settings-service.js';
@@ -159,8 +160,17 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
   );
   const reputation = new ReputationService(repos, settings, clock, notifications);
   const profile = new ProfileService(repos, reputation);
+  // G-10: the answer rate is a badge, not a penalty — it never writes to the reputation ledger.
+  const ownerResponse = new OwnerResponseService(repos, clock, notifications);
   const orders = new OrderService(repos, settings, clock, distance, locations, notifications);
-  const reservations = new ReservationService(repos, settings, clock, notifications, reputation);
+  const reservations = new ReservationService(
+    repos,
+    settings,
+    clock,
+    notifications,
+    reputation,
+    ownerResponse,
+  );
   // The socket hub is attached to the Fastify server below; the service publishes
   // through this indirection so construction order stays acyclic.
   const events: ChatEventPublisher = { publish: (event) => hub.publisher.publish(event) };
@@ -183,7 +193,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     staleSeconds: config.NODE_STALE_SECONDS,
   });
   // The scheduler reports every sweep it runs, so the panel can show a real work report.
-  const scheduler = createScheduler(reservations, orders, reputation, payments, clock, sweepLock, {
+  const scheduler = createScheduler(reservations, orders, reputation, payments, clock, sweepLock, ownerResponse, {
     onTick: (result, at) => {
       const detail = { ...result } as Record<string, number>;
       const count = Object.values(detail).reduce((total, value) => total + value, 0);
@@ -205,6 +215,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     stats,
     nodes,
     tradeMedian,
+    ownerResponse,
   };
   const requireAuth = authenticate(auth);
 
@@ -591,6 +602,11 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     reputation.summary(currentUser(request).id),
   );
 
+  // G-10: the seller's own answer-rate card. Read-only — silence is shown, not punished.
+  app.get('/v1/me/response', { preHandler: requireAuth }, async (request) =>
+    ownerResponse.me(currentUser(request).id),
+  );
+
   app.get('/v1/users/:id/reputation', { preHandler: requireAuth }, async (request) => {
     const { id } = request.params as { id: string };
     return reputation.publicProfile(id);
@@ -764,6 +780,18 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     const { id } = request.params as { id: string };
     const body = parseInput(adminUpdateUserSchema, request.body ?? {});
     return admin.updateUser(currentUser(request), id, body);
+  });
+
+  // ------------------------------------------------- admin: listing pauses (G-10)
+  /** Who is out of the market right now, why, and until when — the review queue for support. */
+  app.get('/v1/admin/listing-pauses', { preHandler: [...staffOnly] }, async () =>
+    admin.listingPauses(),
+  );
+
+  /** Early release: support puts a seller back in the market before the 24 hours are up. */
+  app.post('/v1/admin/users/:id/relist', { preHandler: [...staffOnly] }, async (request) => {
+    const { id } = request.params as { id: string };
+    return admin.relist(currentUser(request), id);
   });
 
   // ------------------------------------------------------ admin: orders (E8-03)

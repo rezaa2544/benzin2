@@ -59,6 +59,32 @@ export interface OrderView {
   expiresAt: string;
   createdAt: string;
   distance?: RouteEstimate;
+  /**
+   * G-10 — the seller's answer-rate badge, as the API computed it. `ratePercent === null` while
+   * they never received a request; the copy (`labelFa`) is written on the server so the app never
+   * rounds a number itself.
+   */
+  owner?: {
+    id: string;
+    ratePercent: number | null;
+    labelFa: string;
+    answered: number;
+    received: number;
+  };
+}
+
+/**
+ * G-10 — `GET /v1/me/response`. Everything is pre-computed by the API, including the Persian
+ * label, so the percentage on screen is the same number the market sorted by.
+ */
+export interface ResponseSummary {
+  ownerId: string;
+  ratePercent: number | null;
+  answered: number;
+  received: number;
+  labelFa: string;
+  unansweredStreak: number;
+  delistedUntil: string | null;
 }
 
 export interface OrderList {

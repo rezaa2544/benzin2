@@ -1,12 +1,18 @@
 import { useCallback, useState } from 'react';
-import { formatJalaliDate, formatJalaliDateTime, toPersianDigits } from '@benzin/shared';
+import { formatJalaliDate, formatJalaliDateTime, formatJalaliTime, toPersianDigits } from '@benzin/shared';
 import type { ApiClient } from '../lib/api.js';
 import { errorMessage } from '../lib/api.js';
-import type { DeviceView, PublicUser, ReputationSummary, SubscriptionView } from '../lib/types.js';
+import type {
+  DeviceView,
+  PublicUser,
+  ReputationSummary,
+  ResponseSummary,
+  SubscriptionView,
+} from '../lib/types.js';
 import { validateDisplayName } from '../lib/profile.js';
 import { navigate } from '../lib/router.js';
 import { useResource } from '../lib/useResource.js';
-import { t } from '../lib/i18n.js';
+import { t, tf } from '../lib/i18n.js';
 import { ConfirmSheet } from '../components/ConfirmSheet.js';
 import { Notice, PageTitle, Skeleton } from './parts.js';
 
@@ -35,14 +41,21 @@ export function ProfilePage({ api, user, onUser, onLogout }: ProfilePageProps): 
   const [savingName, setSavingName] = useState(false);
 
   const load = useCallback(async () => {
-    const [reputation, devices, subscription] = await Promise.all([
+    const [reputation, response, devices, subscription] = await Promise.all([
       api.get<ReputationSummary>('/v1/me/reputation'),
+      // G-10: the answer rate answers «why are my listings quiet?» before support has to.
+      api.get<ResponseSummary>('/v1/me/response').catch(() => null),
       api.get<{ items: DeviceView[] }>('/v1/me/devices').catch(() => ({ items: [] })),
       api
         .get<{ subscription: SubscriptionView | null }>('/v1/me/subscription')
         .catch(() => ({ subscription: null })),
     ]);
-    return { reputation, devices: devices.items, subscription: subscription.subscription };
+    return {
+      reputation,
+      devices: devices.items,
+      subscription: subscription.subscription,
+      response,
+    };
   }, [api]);
 
   const { data, loading, error: loadError } = useResource(load, [api]);
@@ -179,6 +192,55 @@ export function ProfilePage({ api, user, onUser, onLogout }: ProfilePageProps): 
               </dd>
             </dl>
           </div>
+
+          {data.response ? (
+            <div className="card mb-3" data-testid="response-card">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="text-base font-bold">{t('profile.responseTitle')}</h2>
+                <span
+                  className={`chip ${
+                    (data.response.ratePercent ?? 0) >= 80 && data.response.received >= 3
+                      ? 'bg-brandSoft text-brand'
+                      : ''
+                  }`}
+                >
+                  {data.response.labelFa}
+                </span>
+              </div>
+              {data.response.ratePercent === null ? (
+                <p className="text-sm text-muted">{t('profile.responseEmpty')}</p>
+              ) : (
+                <>
+                  <p className="mb-1 text-2xl font-bold tnum">
+                    {tf('profile.responseRate', {
+                      rate: toPersianDigits(data.response.ratePercent),
+                    })}
+                  </p>
+                  <p className="text-xs text-muted">
+                    {tf('profile.responseCounts', {
+                      answered: toPersianDigits(data.response.answered),
+                      received: toPersianDigits(data.response.received),
+                    })}
+                  </p>
+                </>
+              )}
+              {data.response.unansweredStreak > 0 ? (
+                <p className="mt-2 text-xs text-danger">
+                  {tf('profile.responseStreak', {
+                    count: toPersianDigits(data.response.unansweredStreak),
+                  })}
+                </p>
+              ) : null}
+              {data.response.delistedUntil ? (
+                <Notice tone="warning">
+                  {tf('profile.responsePaused', {
+                    until: formatJalaliTime(data.response.delistedUntil),
+                  })}
+                </Notice>
+              ) : null}
+              <p className="mt-2 text-xs text-muted">{t('profile.responseNoPenalty')}</p>
+            </div>
+          ) : null}
 
           <button
             type="button"

@@ -138,6 +138,10 @@ export class PgOrderRepository implements OrderRepository {
 
     parts.push(`o.expires_at > ${param(input.now)}`);
     parts.push(`o.side = ${param(input.side)}`);
+    // G-10: a paused owner is filtered here, before paging, so a page never comes back short.
+    if (input.excludeOwnerIds && input.excludeOwnerIds.length > 0) {
+      parts.push(`o.owner_id <> ALL(${param([...input.excludeOwnerIds])}::uuid[])`);
+    }
     if (input.zoneId !== null) parts.push(`o.zone_id = ${param(input.zoneId)}`);
     if (input.province !== null) parts.push(`o.province = ${param(input.province)}`);
     if (input.county !== null) parts.push(`o.county = ${param(input.county)}`);
@@ -172,9 +176,9 @@ export class PgOrderRepository implements OrderRepository {
 
     const rows = await query<OrderRow>(
       this.db,
-      `SELECT ${ORDER_FIELDS}, ${distance} AS distance_m FROM orders o ${where} ORDER BY ${this.orderBy(
-        input.sort,
-      )} LIMIT ${limit} OFFSET ${offset}`,
+      `SELECT ${ORDER_FIELDS}, ${distance} AS distance_m FROM orders o
+         LEFT JOIN users o_owner ON o_owner.id = o.owner_id
+         ${where} ORDER BY ${this.orderBy(input.sort, input.now)} LIMIT ${limit} OFFSET ${offset}`,
       values,
     );
     const total = await scalar(
@@ -185,9 +189,14 @@ export class PgOrderRepository implements OrderRepository {
     return { items: rows.map(toOrder), total };
   }
 
-  private orderBy(sort: OrderSearchQuery['sort']): string {
+  private orderBy(sort: OrderSearchQuery['sort'], now?: Date): string {
     // "price" is the all-in price of one litre (rate + pump fee), which is what a buyer compares.
-    if (sort === 'price') return `${PRICE_PER_LITRE_SQL} ASC, o.created_at DESC`;
+    if (sort === 'price') {
+      // G-10: price first, then the seller who answers. Read from the projection maintained by
+      // `OwnerResponseService`, so the sort stays a single integer comparison per row.
+      void now;
+      return `${PRICE_PER_LITRE_SQL} ASC, COALESCE(o_owner.response_rate_permille, -1) DESC, o.created_at DESC`;
+    }
     if (sort === 'newest') return 'o.created_at DESC';
     return 'distance_m ASC NULLS LAST, o.created_at DESC';
   }
@@ -456,6 +465,27 @@ export class PgReservationRepository implements ReservationRepository {
       [id],
     );
     return row ? toReservation(row) : null;
+  }
+
+  /**
+   * G-10: one owner's 30-day answer rate in a single aggregate. A request the buyer cancelled
+   * before the owner ever decided is left out — that silence is not the seller's.
+   */
+  async countForOwnerWindow(
+    ownerId: string,
+    since: Date,
+  ): Promise<{ received: number; answered: number }> {
+    const row = await queryOne<{ received: number; answered: number }>(
+      this.db,
+      `SELECT
+         count(*) FILTER (WHERE NOT (r.status = 'CANCELLED_BY_TAKER' AND r.decided_at IS NULL))::int AS received,
+         count(*) FILTER (WHERE r.decided_at IS NOT NULL)::int AS answered
+       FROM reservations r
+       JOIN orders o ON o.id = r.order_id
+       WHERE o.owner_id = $1 AND r.created_at >= $2`,
+      [ownerId, since],
+    );
+    return { received: Number(row?.received ?? 0), answered: Number(row?.answered ?? 0) };
   }
 
   async findActiveByOrder(orderId: string): Promise<Reservation | null> {

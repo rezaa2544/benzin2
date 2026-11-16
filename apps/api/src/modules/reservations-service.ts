@@ -10,8 +10,10 @@ import {
 import type { Clock, Order, Reservation, User } from '../domain/entities.js';
 import {
   NOOP_NOTIFIER,
+  NOOP_OWNER_RESPONSE,
   NOOP_REPUTATION,
   type NotificationEmitter,
+  type OwnerResponseTracker,
   type ReputationRecorder,
   type Repositories,
 } from '../ports.js';
@@ -71,6 +73,8 @@ export class ReservationService {
     private readonly clock: Clock,
     private readonly notifier: NotificationEmitter = NOOP_NOTIFIER,
     private readonly reputation: ReputationRecorder = NOOP_REPUTATION,
+    /** G-10: silence is measured here; the service decides what it costs (a listing pause). */
+    private readonly ownerResponse: OwnerResponseTracker = NOOP_OWNER_RESPONSE,
   ) {}
 
   /** Sends one Persian notification; a notifier failure must never fail the trade. */
@@ -195,6 +199,8 @@ export class ReservationService {
     const updatedOrder = await this.repos.orders.transition(order.id, order.status, orderNext);
     if (!updatedOrder) throw AppError.conflict('CONFLICT', 'Order changed while accepting');
 
+    // G-10: answering resets the silence streak. Failure here must never fail the trade.
+    await this.ownerResponse.recordAnswer(order.ownerId);
     await this.repos.audit.append({
       actorId: actor.id,
       action: 'reservation.confirmed',
@@ -222,6 +228,8 @@ export class ReservationService {
     });
     if (!updated) throw AppError.conflict('CONFLICT', 'Reservation changed while rejecting');
     await this.repos.orders.transition(order.id, 'RESERVED', 'OPEN');
+    // A «no» is still an answer — only silence counts against the seller (G-10).
+    await this.ownerResponse.recordAnswer(order.ownerId);
     await this.repos.audit.append({
       actorId: actor.id,
       action: 'reservation.rejected',
@@ -647,6 +655,8 @@ export class ReservationService {
     );
     if (!expired) return;
     await this.repos.orders.transition(order.id, 'RESERVED', 'OPEN');
+    // G-10: the request died unanswered. Three in a row pause the seller's listings for a day.
+    await this.ownerResponse.recordMiss(order.ownerId);
     await this.notify(
       reservation.takerId,
       'RESERVATION_EXPIRED',

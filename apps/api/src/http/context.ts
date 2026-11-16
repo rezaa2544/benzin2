@@ -14,6 +14,7 @@ import type { ReservationService } from '../modules/reservations-service.js';
 import type { SettingsService } from '../modules/settings-service.js';
 import type { StatsService } from '../modules/stats-service.js';
 import type { NodesService } from '../modules/nodes-service.js';
+import type { OwnerResponseService } from '../modules/owner-response-service.js';
 import type { TradeMedianService } from '../modules/stats-service.js';
 
 export interface AppServices {
@@ -32,6 +33,8 @@ export interface AppServices {
   nodes: NodesService;
   /** 72-hour median of closed trades (task G-08). */
   tradeMedian: TradeMedianService;
+  /** Seller answer rate and listing pauses (task G-10). */
+  ownerResponse: OwnerResponseService;
 }
 
 declare module 'fastify' {

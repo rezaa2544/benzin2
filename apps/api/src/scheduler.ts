@@ -2,6 +2,7 @@ import type { Clock } from './domain/entities.js';
 import type { OrderService } from './modules/orders-service.js';
 import type { PaymentService } from './modules/payment-service.js';
 import type { ReputationService } from './modules/reputation-service.js';
+import type { OwnerResponseService } from './modules/owner-response-service.js';
 import type { ReservationService } from './modules/reservations-service.js';
 import { createProcessSweepLock, type SweepLock } from './modules/sweep-lock.js';
 
@@ -11,6 +12,10 @@ export interface TickResult {
   autoCompletedTrades: number;
   liftedSuspensions: number;
   reconciledPayments: number;
+  /** G-10: listing pauses that lapsed on their own — the seller is back in the market. */
+  liftedListingPauses: number;
+  /** G-10: 30-day answer windows recomputed because they had aged past a day. */
+  refreshedResponseWindows: number;
 }
 
 export interface Scheduler {
@@ -38,6 +43,8 @@ export function createScheduler(
   payments: PaymentService,
   _clock: Clock,
   lock: SweepLock = createProcessSweepLock(),
+  /** G-10: silence has its own clock — pauses lapse and windows age whether or not anyone calls. */
+  ownerResponse: OwnerResponseService | null = null,
   /**
    * Observation hook for the node monitor (task G-28): how many rows each sweep touched, so the
    * panel can show a work report per node instead of just "the scheduler is alive".
@@ -57,6 +64,8 @@ export function createScheduler(
       liftedSuspensions: await reputation.liftDueSuspensions(),
       reconciledPayments:
         reconciled.expiredPayments + reconciled.healedPayments + reconciled.expiredSubscriptions,
+      liftedListingPauses: ownerResponse ? await ownerResponse.liftDuePauses() : 0,
+      refreshedResponseWindows: ownerResponse ? await ownerResponse.refreshStale() : 0,
     };
     last = { at: _clock.now(), result };
     options.onTick?.(result, last.at);

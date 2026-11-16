@@ -15,6 +15,7 @@ import { wireEstimate, type DistanceService, type RouteEstimateWire } from './di
 import { DistanceService as Distance } from './distance-service.js';
 import { LocationService } from './location-service.js';
 import { KeyedLock } from './keyed-lock.js';
+import { responseLabelFa } from './owner-response-service.js';
 import type { SettingsService } from './settings-service.js';
 
 export interface OrderView {
@@ -45,6 +46,17 @@ export interface OrderView {
   createdAt: string;
   /** Present only when the caller supplied an origin and the order has a point (G-07). */
   distance?: RouteEstimateWire;
+  /**
+   * G-10 — who is selling: the answer-rate badge the card shows. Never a score, never a penalty;
+   * a seller with no history reads «تازه‌کار» and that is the whole story.
+   */
+  owner: {
+    id: string;
+    ratePercent: number | null;
+    labelFa: string;
+    answered: number;
+    received: number;
+  };
 }
 
 export function toOrderView(order: Order): OrderView {
@@ -74,6 +86,15 @@ export function toOrderView(order: Order): OrderView {
     deliveryMethod: order.deliveryMethod,
     expiresAt: order.expiresAt.toISOString(),
     createdAt: order.createdAt.toISOString(),
+    // G-10: the real badge is filled in by `decorate`, which has the owner rows; this default keeps
+    // `toOrderView` a pure function of the order for callers that do not need it.
+    owner: {
+      id: order.ownerId,
+      ratePercent: null,
+      labelFa: responseLabelFa(0, null),
+      answered: 0,
+      received: 0,
+    },
   };
 }
 
@@ -92,7 +113,7 @@ export class OrderService {
   constructor(
     private readonly repos: Pick<
       Repositories,
-      'orders' | 'audit' | 'zones' | 'reservations' | 'subscriptions' | 'plans'
+      'orders' | 'audit' | 'zones' | 'reservations' | 'subscriptions' | 'plans' | 'users'
     >,
     private readonly settings: SettingsService,
     private readonly clock: Clock,
@@ -209,6 +230,8 @@ export class OrderService {
       (query.minLitres !== undefined || query.maxLitres !== undefined)
         ? { min: query.minLitres ?? 1, max: query.maxLitres ?? 1000 }
         : null;
+    // G-10: the market hides owners taking their 24-hour break. The list is tiny by design.
+    const paused = await this.repos.users.listDelisted(this.clock.now(), 500);
     const { items, total } = await this.repos.orders.search({
       province: query.province ?? null,
       county: query.county ?? null,
@@ -216,6 +239,8 @@ export class OrderService {
       side: query.side,
       tier: query.tier ?? null,
       now: this.clock.now(),
+      excludeOwnerIds: paused.map((user) => user.id),
+      responseSince: new Date(this.clock.now().getTime() - 30 * 24 * 3_600_000),
       limit: query.limit,
       offset,
       sort: query.sort,
@@ -243,6 +268,7 @@ export class OrderService {
         radiusKm: null,
         litresExact: null,
         litresBetween: { min: Math.max(1, exact - margin), max: exact + margin },
+        excludeOwnerIds: paused.map((user) => user.id),
       });
       return {
         items: [],
@@ -273,9 +299,26 @@ export class OrderService {
     orders: readonly Order[],
     origin: { lat: number; lng: number } | null,
   ): Promise<OrderView[]> {
+    // G-10: one lookup for the whole page — the badge must never cost a query per card.
+    const owners = await this.repos.users.findByIds(orders.map((order) => order.ownerId));
+    const byId = new Map(owners.map((owner) => [owner.id, owner]));
     return Promise.all(
       orders.map(async (order) => {
-        const view = toOrderView(order);
+        const owner = byId.get(order.ownerId) ?? null;
+        const ratePercent =
+          owner === null || owner.responseReceived === 0
+            ? null
+            : Math.round((owner.responseAnswered * 1000) / owner.responseReceived) / 10;
+        const view: OrderView = {
+          ...toOrderView(order),
+          owner: {
+            id: order.ownerId,
+            ratePercent,
+            labelFa: responseLabelFa(owner?.responseReceived ?? 0, ratePercent),
+            answered: owner?.responseAnswered ?? 0,
+            received: owner?.responseReceived ?? 0,
+          },
+        };
         if (!origin || order.lat === null || order.lng === null) return view;
         return {
           ...view,

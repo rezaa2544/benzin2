@@ -61,6 +61,8 @@ export const ERROR_CODES = [
   'DELIVERY_CODE_INVALID',
   'DELIVERY_CODE_LOCKED',
   'DELIVERY_CODE_BUYER_ONLY',
+  /** G-10: admin tried to relist a seller whose listings were never paused. */
+  'NOT_DELISTED',
   'INTERNAL_ERROR',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

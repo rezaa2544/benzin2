@@ -94,6 +94,16 @@ export const users = pgTable(
     reputation: integer('reputation').notNull().default(0),
     /** Trust suspension window (task E6-01); null when the account is unrestricted. */
     suspendedUntil: timestamp('suspended_until', { withTimezone: true }),
+    /**
+     * G-10 — answer rate over the last 30 days, stored as a projection so the market can sort on
+     * it and the card can show it without recounting reservations. Nothing here is a penalty.
+     */
+    responseAnswered: integer('response_answered').notNull().default(0),
+    responseReceived: integer('response_received').notNull().default(0),
+    responseRatePermille: integer('response_rate_permille'),
+    responseRefreshedAt: timestamp('response_refreshed_at', { withTimezone: true }),
+    unansweredStreak: integer('unanswered_streak').notNull().default(0),
+    delistedUntil: timestamp('delisted_until', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),

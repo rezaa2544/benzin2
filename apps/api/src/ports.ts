@@ -49,6 +49,8 @@ export interface UserSearchQuery {
 
 export interface UserRepository {
   findById(id: string): Promise<User | null>;
+  /** G-10: batch lookup for the listing badges — one query per page, never one per card. */
+  findByIds(ids: readonly string[]): Promise<User[]>;
   /** Suspended accounts whose window elapsed — the scheduler restores them (E6-01). */
   listSuspendedDue(now: Date, limit: number): Promise<User[]>;
   findByPhone(phone: string): Promise<User | null>;
@@ -58,6 +60,12 @@ export interface UserRepository {
   search(query: UserSearchQuery): Promise<{ items: User[]; total: number }>;
   /** Dashboard tile (task E8-08): counts grouped by status. */
   countByStatus(): Promise<Record<UserStatus, number>>;
+  /** G-10: owners whose listings are paused right now, for the admin review screen. */
+  listDelisted(now: Date, limit: number): Promise<User[]>;
+  /** G-10: pauses whose 24 hours are over — the scheduler puts them back in the market. */
+  listDelistDue(now: Date, limit: number): Promise<User[]>;
+  /** G-10: owners whose 30-day window is older than `before` — refreshed by the scheduler. */
+  listResponseStale(before: Date, limit: number): Promise<User[]>;
 }
 
 export interface OtpChallenge {
@@ -139,6 +147,13 @@ export interface OrderSearchQuery {
   /** G-05: exact lot (with +-10% fallback handled by the service) or an inclusive between. */
   litresExact: number | null;
   litresBetween: { min: number; max: number } | null;
+  /**
+   * G-10: owners paused out of the market are filtered in the query itself (not after paging), so
+   * the page never comes back short.
+   */
+  excludeOwnerIds?: readonly string[];
+  /** G-10: start of the answer-rate window used by the price sort's tiebreak. */
+  responseSince?: Date;
 }
 
 /**
@@ -222,6 +237,17 @@ export interface NewReservation {
 
 export interface ReservationRepository {
   findById(id: string): Promise<Reservation | null>;
+  /**
+   * G-10: one owner's 30-day answer rate, straight from the reservations.
+   *
+   * `received` counts the requests that actually reached the owner's desk (a buyer who cancels
+   * before any decision never gets counted against the seller); `answered` counts the ones the
+   * owner decided, either way.
+   */
+  countForOwnerWindow(
+    ownerId: string,
+    since: Date,
+  ): Promise<{ received: number; answered: number }>;
   findActiveByOrder(orderId: string): Promise<Reservation | null>;
   findActiveByTaker(takerId: string): Promise<Reservation[]>;
   countActiveByTaker(takerId: string): Promise<number>;
@@ -465,6 +491,22 @@ export interface ReputationRecorder {
     metadata?: Record<string, unknown>;
   }): Promise<unknown>;
 }
+
+/**
+ * G-10: the reservation lifecycle reports how the owner answered. Kept as a tiny port (like
+ * `ReputationRecorder`) so `ReservationService` does not grow a second dependency cycle.
+ */
+export interface OwnerResponseTracker {
+  /** The owner accepted or rejected a request — the streak resets. */
+  recordAnswer(ownerId: string): Promise<unknown>;
+  /** A request died unanswered — the streak grows and may pause the listings. */
+  recordMiss(ownerId: string): Promise<unknown>;
+}
+
+export const NOOP_OWNER_RESPONSE: OwnerResponseTracker = {
+  recordAnswer: async () => undefined,
+  recordMiss: async () => undefined,
+};
 
 export const NOOP_REPUTATION: ReputationRecorder = {
   record: async () => undefined,

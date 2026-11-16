@@ -12,6 +12,7 @@ import {
 import type { AuditEntry, Clock, Order, ProviderSetting, User } from '../domain/entities.js';
 import type { NotificationEmitter, Repositories, SmsSender } from '../ports.js';
 import type { ReputationService } from './reputation-service.js';
+import { ratePercentOf, responseLabelFa } from './owner-response-service.js';
 import type { SettingsService } from './settings-service.js';
 
 /**
@@ -28,6 +29,16 @@ export interface AdminUserRow {
   status: UserStatus;
   suspendedUntil: string | null;
   createdAt: string;
+  /** G-10: the answer-rate badge as support sees it — answered/received plus the 30-day rate. */
+  response: {
+    answered: number;
+    received: number;
+    ratePercent: number | null;
+    labelFa: string;
+    unansweredStreak: number;
+  };
+  /** G-10: set while the seller's listings are hidden from the market. */
+  delistedUntil: string | null;
 }
 
 export interface AdminUserDetail extends AdminUserRow {
@@ -137,6 +148,14 @@ const toUserRow = (user: User): AdminUserRow => ({
   status: user.status,
   suspendedUntil: user.suspendedUntil?.toISOString() ?? null,
   createdAt: user.createdAt.toISOString(),
+  response: {
+    answered: user.responseAnswered,
+    received: user.responseReceived,
+    ratePercent: ratePercentOf(user),
+    labelFa: responseLabelFa(user.responseReceived, ratePercentOf(user)),
+    unansweredStreak: user.unansweredStreak,
+  },
+  delistedUntil: user.delistedUntil?.toISOString() ?? null,
 });
 
 const toAuditRow = (entry: AuditEntry): AdminAuditRow => ({
@@ -317,6 +336,46 @@ export class AdminService {
     if (roleChanged && input.role) {
       await this.notify(saved.id, 'ACCOUNT_ROLE_CHANGED', { role: USER_ROLE_FA[input.role] });
     }
+    return toUserRow(saved);
+  }
+
+  /**
+   * G-10 — the review queue for listing pauses.
+   *
+   * Support reviews *pauses*, never scores: the row shows how many requests the seller answered,
+   * how long they are out of the market, and which audit entries caused it. Putting them back is
+   * one call (`relist`), so the pause can never become a hidden ban.
+   */
+  async listingPauses(): Promise<{
+    items: (AdminUserRow & { until: string; reasonFa: string })[];
+    total: number;
+  }> {
+    const now = this.clock.now();
+    const paused = await this.repos.users.listDelisted(now, 200);
+    const items = paused
+      .filter((user) => user.delistedUntil !== null && user.delistedUntil.getTime() > now.getTime())
+      .map((user) => ({
+        ...toUserRow(user),
+        until: user.delistedUntil!.toISOString(),
+        reasonFa: `سه درخواست پیاپی بی‌پاسخ (${user.unansweredStreak} درخواست) — نمایش تا پایان دوره متوقف است`,
+      }));
+    return { items, total: items.length };
+  }
+
+  /** G-10: early release from a pause, recorded in the audit log like every other moderation act. */
+  async relist(actor: User, userId: string): Promise<AdminUserRow> {
+    const user = await this.repos.users.findById(userId);
+    if (!user) throw AppError.notFound('USER_NOT_FOUND', 'User not found');
+    if (user.delistedUntil === null) {
+      throw new AppError('NOT_DELISTED', 409, 'This seller is not paused right now', {
+        userId,
+      });
+    }
+    user.delistedUntil = null;
+    user.unansweredStreak = 0;
+    const saved = await this.repos.users.save(user);
+    await this.audit(actor, 'owner.relisted', 'user', userId, { automatic: false, by: actor.id });
+    await this.notify(saved.id, 'LISTINGS_RESUMED', {});
     return toUserRow(saved);
   }
 

@@ -172,7 +172,11 @@ const search = await step('GET /v1/orders (side=SELL, sort=distance)', async () 
   expect(status === 200, `status ${status}`);
   expect(Array.isArray(payload?.items), 'items missing');
   expect(payload.items.some((item) => item.id === order.id), 'fresh listing not in search results');
-  return `${payload.items.length} listing(s), total ${payload.total}`;
+  // G-10: every card carries the seller's answer-rate badge; a fresh seller reads «تازه‌کار».
+  const mine = payload.items.find((item) => item.id === order.id);
+  expect(mine?.owner, 'G-10 owner badge missing from the listing');
+  expect(typeof mine.owner.labelFa === 'string' && mine.owner.labelFa.length > 0, 'badge copy');
+  return `${payload.items.length} listing(s), total ${payload.total}, نشان «${mine.owner.labelFa}»`;
 });
 
 const reservation = await step('POST /v1/orders/:id/reservations', async () => {
@@ -283,6 +287,24 @@ await step('GET /v1/stats/market/median counts the closed trade (G-08)', async (
   expect(payload.sufficient === false, 'one trade is not enough');
   expect(payload.medianRateToman === null, 'median stays null below the threshold');
   return `${payload.trades} معامله در ناحیه، آستانه ${payload.requiredTrades}`;
+});
+
+await step('GET /v1/me/response (G-10, seller answer rate)', async () => {
+  const { status, payload } = await call('GET', '/v1/me/response', { token: owner.token });
+  expect(status === 200, `status ${status}: ${JSON.stringify(payload)}`);
+  // The owner answered this smoke run's single request, so the rate is a full 100%.
+  expect(payload.received >= 1, `received ${payload.received}`);
+  expect(payload.answered >= 1, `answered ${payload.answered}`);
+  expect(payload.ratePercent === null || payload.ratePercent >= 0, 'rate is a number');
+  expect(payload.delistedUntil === null, 'an answering seller is never paused');
+  return `${payload.answered}/${payload.received} پاسخ — ${payload.labelFa}`;
+});
+
+await step('GET /v1/admin/listing-pauses (G-10 review queue)', async () => {
+  const { status, payload } = await call('GET', '/v1/admin/listing-pauses', { token: owner.token });
+  expect(status === 200, `status ${status}: ${JSON.stringify(payload)}`);
+  expect(Array.isArray(payload.items), 'items missing');
+  return `${payload.total} seller(s) out of the market`;
 });
 
 await step('GET /v1/notifications', async () => {

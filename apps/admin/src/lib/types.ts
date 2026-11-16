@@ -18,6 +18,22 @@ export interface UserRow {
   status: UserStatus;
   suspendedUntil: string | null;
   createdAt: string;
+  /** G-10: answered/received over the last 30 days plus the badge the buyers see. */
+  response: {
+    answered: number;
+    received: number;
+    ratePercent: number | null;
+    labelFa: string;
+    unansweredStreak: number;
+  };
+  /** G-10: set while this seller's listings are hidden from the market. */
+  delistedUntil: string | null;
+}
+
+/** G-10: one row of the listing-pause review queue. */
+export interface ListingPause extends UserRow {
+  until: string;
+  reasonFa: string;
 }
 
 export interface UserDetail extends UserRow {

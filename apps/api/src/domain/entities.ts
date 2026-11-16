@@ -24,6 +24,23 @@ export interface User {
   /** Set while a trust-score suspension is in force; cleared by the scheduler (E6-01). */
   suspendedUntil: Date | null;
   readonly createdAt: Date;
+  /**
+   * G-10 — how well this seller answers the requests they receive.
+   *
+   * The rate is a *badge*, never a punishment: nothing here subtracts points from anyone. The
+   * numbers are a rolling 30-day window recomputed by `OwnerResponseService`; `delistedUntil` is
+   * the only enforcement, and it hides listings for at most a day.
+   */
+  responseAnswered: number;
+  responseReceived: number;
+  /** 0..1000 (per-mille) so ordering in SQL stays integer; null until the first request. */
+  responseRatePermille: number | null;
+  /** When the window was last recomputed — the scheduler refreshes stale ones daily. */
+  responseRefreshedAt: Date | null;
+  /** Consecutive requests the owner let expire without answering. */
+  unansweredStreak: number;
+  /** While in the future, this owner's listings are hidden from the market (G-10). */
+  delistedUntil: Date | null;
 }
 
 export interface Order {

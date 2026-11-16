@@ -22,6 +22,9 @@ export interface OrderCardProps {
   etaMinutes?: number;
   score?: number;
   expiresAt?: string | null;
+  /** G-10: server-written badge copy, e.g. «۹۲٪ پاسخ‌دهی» or «تازه‌کار». */
+  ownerResponseLabel?: string;
+  ownerResponseRate?: number | null;
   onOpen?: () => void;
 }
 
@@ -43,6 +46,8 @@ export function OrderCard({
   distanceKm,
   etaMinutes,
   expiresAt,
+  ownerResponseLabel,
+  ownerResponseRate,
   onOpen,
 }: OrderCardProps): JSX.Element {
   const view = orderCardView({ side, status, litres, rateToman, zoneName, ownerName, score });
@@ -89,6 +94,21 @@ export function OrderCard({
             ) : null}
             {ownerName ? <span>{ownerName}</span> : null}
             {score !== undefined ? <TierBadge score={score} /> : null}
+            {ownerResponseLabel ? (
+              // G-10: the answer rate is a badge, never a score — a newcomer reads «تازه‌کار»,
+              // not «امتیاز ۰».
+              <span
+                className={`chip ${
+                  ownerResponseRate !== null && ownerResponseRate !== undefined && ownerResponseRate >= 80
+                    ? 'bg-brandSoft text-brand'
+                    : ''
+                }`}
+                title={t('market.ownerRateTitle')}
+                data-testid="owner-response"
+              >
+                {ownerResponseLabel}
+              </span>
+            ) : null}
             {expiresAt ? (
               <span className="inline-flex items-center gap-1 tnum">
                 <Icon name="timer" size={14} />

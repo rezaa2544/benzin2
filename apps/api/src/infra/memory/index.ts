@@ -67,6 +67,38 @@ export class MemoryUserRepository implements UserRepository {
     return user ? clone(user) : null;
   }
 
+  async findByIds(ids: readonly string[]): Promise<User[]> {
+    return ids.flatMap((id) => {
+      const user = this.byId.get(id);
+      return user ? [clone(user)] : [];
+    });
+  }
+
+  async listDelisted(now: Date, limit: number): Promise<User[]> {
+    return [...this.byId.values()]
+      .filter((user) => user.delistedUntil !== null && user.delistedUntil.getTime() > now.getTime())
+      .sort((a, b) => a.delistedUntil!.getTime() - b.delistedUntil!.getTime())
+      .slice(0, limit)
+      .map(clone);
+  }
+
+  async listDelistDue(now: Date, limit: number): Promise<User[]> {
+    return [...this.byId.values()]
+      .filter((user) => user.delistedUntil !== null && user.delistedUntil.getTime() <= now.getTime())
+      .slice(0, limit)
+      .map(clone);
+  }
+
+  async listResponseStale(before: Date, limit: number): Promise<User[]> {
+    return [...this.byId.values()]
+      .filter(
+        (user) =>
+          user.responseRefreshedAt === null || user.responseRefreshedAt.getTime() <= before.getTime(),
+      )
+      .slice(0, limit)
+      .map(clone);
+  }
+
   async findByPhone(phone: string): Promise<User | null> {
     const id = this.byPhone.get(phone);
     return id ? this.findById(id) : null;
@@ -81,6 +113,12 @@ export class MemoryUserRepository implements UserRepository {
       status: 'ACTIVE',
       suspendedUntil: null,
       createdAt: new Date(),
+      responseAnswered: 0,
+      responseReceived: 0,
+      responseRatePermille: null,
+      responseRefreshedAt: null,
+      unansweredStreak: 0,
+      delistedUntil: null,
     };
     this.byId.set(user.id, clone(user));
     this.byPhone.set(user.phone, user.id);
@@ -253,6 +291,16 @@ export class MemoryOrderRepository implements OrderRepository {
     this.reservations = reservations;
   }
 
+  /**
+   * G-10: the market hides a paused owner's listings and breaks price ties by answer rate, which
+   * are both user facts. Postgres joins `users`; here the factory hands the store over.
+   */
+  private users: MemoryUserRepository | null = null;
+
+  attachUsers(users: MemoryUserRepository): void {
+    this.users = users;
+  }
+
   async create(input: NewOrder): Promise<Order> {
     const now = new Date();
     const order: Order = {
@@ -285,9 +333,12 @@ export class MemoryOrderRepository implements OrderRepository {
   }
 
   async search(query: OrderSearchQuery): Promise<{ items: Order[]; total: number }> {
+    // G-10: a paused owner drops out of the market, but their own «سفارش‌های من» still works.
+    const paused = new Set(query.excludeOwnerIds ?? []);
     const matches = [...this.byId.values()].filter(
       (order) =>
         order.status === 'OPEN' &&
+        !paused.has(order.ownerId) &&
         (query.zoneId === null || order.zoneId === query.zoneId) &&
         (query.province === null || order.province === query.province) &&
         (query.county === null || order.county === query.county) &&
@@ -309,6 +360,15 @@ export class MemoryOrderRepository implements OrderRepository {
         ? withDistance.filter((entry) => entry.km <= query.radiusKm!)
         : withDistance;
 
+    // G-10: price first, then who answers — the rate is fetched once per owner, not per compare.
+    const rate = new Map<string, number>();
+    if (query.sort === 'price' && this.users) {
+      for (const { order } of filtered) {
+        if (rate.has(order.ownerId)) continue;
+        const owner = await this.users.findById(order.ownerId);
+        rate.set(order.ownerId, owner?.responseRatePermille ?? -1);
+      }
+    }
     filtered.sort((a, b) => {
       if (query.sort === 'price') {
         // All-in price of one litre: a sell listing carries its tier's pump fee (G-05).
@@ -317,7 +377,10 @@ export class MemoryOrderRepository implements OrderRepository {
           rateToman: number;
           tier: keyof typeof TIER_RATE_TOMAN;
         }): number => order.rateToman + (order.side === 'SELL' ? TIER_RATE_TOMAN[order.tier] : 0);
-        return allIn(a.order) - allIn(b.order);
+        const byPrice = allIn(a.order) - allIn(b.order);
+        if (byPrice !== 0) return byPrice;
+        // Tie on the all-in price: the seller who answers wins (G-10). Unknown rates sort last.
+        return (rate.get(b.order.ownerId) ?? -1) - (rate.get(a.order.ownerId) ?? -1);
       }
       if (query.sort === 'newest') return b.order.createdAt.getTime() - a.order.createdAt.getTime();
       return a.km - b.km;
@@ -470,6 +533,30 @@ export class MemoryOrderRepository implements OrderRepository {
 
 export class MemoryReservationRepository implements ReservationRepository {
   private readonly byId = new Map<string, Reservation>();
+  /** G-10: the answer window needs the order's owner; Postgres joins, here the factory hands it over. */
+  private orders: MemoryOrderRepository | null = null;
+
+  attachOrders(orders: MemoryOrderRepository): void {
+    this.orders = orders;
+  }
+
+  async countForOwnerWindow(
+    ownerId: string,
+    since: Date,
+  ): Promise<{ received: number; answered: number }> {
+    let received = 0;
+    let answered = 0;
+    for (const reservation of this.byId.values()) {
+      if (reservation.createdAt.getTime() < since.getTime()) continue;
+      const order = this.orders ? await this.orders.findById(reservation.orderId) : null;
+      if (!order || order.ownerId !== ownerId) continue;
+      // A buyer who changed their mind before the owner ever saw it is not the owner's miss.
+      if (reservation.status === 'CANCELLED_BY_TAKER' && reservation.decidedAt === null) continue;
+      received += 1;
+      if (reservation.decidedAt !== null) answered += 1;
+    }
+    return { received, answered };
+  }
 
   private isActive(reservation: Reservation): boolean {
     return ACTIVE_RESERVATION_STATUSES.includes(reservation.status);
@@ -688,9 +775,12 @@ export class MemoryProviderSettingsRepository implements ProviderSettingsReposit
 export function createMemoryRepositories(): Repositories {
   const orders = new MemoryOrderRepository();
   const reservations = new MemoryReservationRepository();
+  const users = new MemoryUserRepository();
   orders.attachReservations(reservations);
+  orders.attachUsers(users);
+  reservations.attachOrders(orders);
   return {
-    users: new MemoryUserRepository(),
+    users,
     conversations: new MemoryConversationRepository(orders, reservations),
     messages: new MemoryMessageRepository(),
     notifications: new MemoryNotificationRepository(),

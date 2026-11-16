@@ -127,8 +127,12 @@ describe('node monitor (G-28)', () => {
       nodes.json() as { nodes: { jobs: { recent: { kind: string; count: number; detail: Record<string, number> }[] } }[] }
     ).nodes[0]!.jobs.recent[0]!;
     expect(job.kind).toBe('expiry-sweep');
-    expect(job.count).toBe(1);
     expect(job.detail.expiredOrders).toBe(1);
+    // G-10 added two sweeps of its own (lapsed listing pauses, aged answer windows), so the total
+    // is the sum of the report rather than a fixed 1 — the panel shows exactly that sum.
+    expect(job.count).toBe(
+      Object.values(job.detail).reduce((total, value) => total + value, 0),
+    );
     await ctx.close();
   });
 

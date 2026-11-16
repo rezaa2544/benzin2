@@ -25,7 +25,9 @@ import type {
 } from '../../../ports.js';
 import { Conditions, query, queryOne, scalar, type Db } from './pg-common.js';
 
-const USER_COLUMNS = `id, phone, display_name, role, status, suspended_until, created_at`;
+const USER_COLUMNS = `id, phone, display_name, role, status, suspended_until, created_at,
+  response_answered, response_received, response_rate_permille, response_refreshed_at,
+  unanswered_streak, delisted_until`;
 
 type UserRow = {
   id: string;
@@ -35,6 +37,12 @@ type UserRow = {
   status: UserStatus;
   suspended_until: Date | null;
   created_at: Date;
+  response_answered: number;
+  response_received: number;
+  response_rate_permille: number | null;
+  response_refreshed_at: Date | null;
+  unanswered_streak: number;
+  delisted_until: Date | null;
 };
 
 const toUser = (row: UserRow): User => ({
@@ -45,6 +53,12 @@ const toUser = (row: UserRow): User => ({
   status: row.status,
   suspendedUntil: row.suspended_until,
   createdAt: row.created_at,
+  responseAnswered: Number(row.response_answered ?? 0),
+  responseReceived: Number(row.response_received ?? 0),
+  responseRatePermille: row.response_rate_permille === null ? null : Number(row.response_rate_permille),
+  responseRefreshedAt: row.response_refreshed_at,
+  unansweredStreak: Number(row.unanswered_streak ?? 0),
+  delistedUntil: row.delisted_until,
 });
 
 export class PgUserRepository implements UserRepository {
@@ -57,6 +71,51 @@ export class PgUserRepository implements UserRepository {
       [id],
     );
     return row ? toUser(row) : null;
+  }
+
+  async findByIds(ids: readonly string[]): Promise<User[]> {
+    if (ids.length === 0) return [];
+    const rows = await query<UserRow>(
+      this.db,
+      `SELECT ${USER_COLUMNS} FROM users WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`,
+      [ids],
+    );
+    return rows.map(toUser);
+  }
+
+  /** G-10: owners paused out of the market right now. */
+  async listDelisted(now: Date, limit: number): Promise<User[]> {
+    const rows = await query<UserRow>(
+      this.db,
+      `SELECT ${USER_COLUMNS} FROM users
+        WHERE deleted_at IS NULL AND delisted_until IS NOT NULL AND delisted_until > $1
+        ORDER BY delisted_until LIMIT $2`,
+      [now, limit],
+    );
+    return rows.map(toUser);
+  }
+
+  async listDelistDue(now: Date, limit: number): Promise<User[]> {
+    const rows = await query<UserRow>(
+      this.db,
+      `SELECT ${USER_COLUMNS} FROM users
+        WHERE deleted_at IS NULL AND delisted_until IS NOT NULL AND delisted_until <= $1
+        ORDER BY delisted_until LIMIT $2`,
+      [now, limit],
+    );
+    return rows.map(toUser);
+  }
+
+  async listResponseStale(before: Date, limit: number): Promise<User[]> {
+    const rows = await query<UserRow>(
+      this.db,
+      `SELECT ${USER_COLUMNS} FROM users
+        WHERE deleted_at IS NULL
+          AND (response_refreshed_at IS NULL OR response_refreshed_at <= $1)
+        ORDER BY response_refreshed_at NULLS FIRST LIMIT $2`,
+      [before, limit],
+    );
+    return rows.map(toUser);
   }
 
   async listSuspendedDue(now: Date, limit: number): Promise<User[]> {
@@ -92,9 +151,24 @@ export class PgUserRepository implements UserRepository {
   async save(user: User): Promise<User> {
     const row = await queryOne<UserRow>(
       this.db,
-      `UPDATE users SET display_name = $2, role = $3, status = $4, suspended_until = $5, updated_at = now()
+      `UPDATE users SET display_name = $2, role = $3, status = $4, suspended_until = $5,
+         response_answered = $6, response_received = $7, response_rate_permille = $8,
+         response_refreshed_at = $9, unanswered_streak = $10, delisted_until = $11,
+         updated_at = now()
         WHERE id = $1 RETURNING ${USER_COLUMNS}`,
-      [user.id, user.displayName, user.role, user.status, user.suspendedUntil],
+      [
+        user.id,
+        user.displayName,
+        user.role,
+        user.status,
+        user.suspendedUntil,
+        user.responseAnswered,
+        user.responseReceived,
+        user.responseRatePermille,
+        user.responseRefreshedAt,
+        user.unansweredStreak,
+        user.delistedUntil,
+      ],
     );
     if (!row) throw new Error(`user ${user.id} not found`);
     return toUser(row);
