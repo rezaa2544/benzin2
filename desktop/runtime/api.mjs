@@ -4234,7 +4234,7 @@ var require_server = __commonJS({
     var https = __require("node:https");
     var http2 = __require("node:http2");
     var dns = __require("node:dns");
-    var os = __require("node:os");
+    var os3 = __require("node:os");
     var { kState, kOptions, kServerBindings, kHttp2ServerSessions } = require_symbols2();
     var { FSTWRN003 } = require_warnings();
     var { onListenHookRunner } = require_hooks();
@@ -4496,7 +4496,7 @@ var require_server = __commonJS({
     }
     function getAddresses(address) {
       if (address.address === "0.0.0.0") {
-        return Object.values(os.networkInterfaces()).flatMap((iface) => {
+        return Object.values(os3.networkInterfaces()).flatMap((iface) => {
           return iface.filter((iface2) => iface2.family === "IPv4");
         }).sort((iface) => {
           return iface.internal ? -1 : 1;
@@ -7230,7 +7230,7 @@ var require_rfdc = __commonJS({
         }
       }
       let handler = null;
-      return opts.proto ? cloneProto : clone7;
+      return opts.proto ? cloneProto : clone8;
       function cloneArray(a, fn) {
         const keys = Object.keys(a);
         const a2 = new Array(keys.length);
@@ -7249,11 +7249,11 @@ var require_rfdc = __commonJS({
         }
         return a2;
       }
-      function clone7(o) {
+      function clone8(o) {
         if (typeof o !== "object" || o === null) return o;
-        if (Array.isArray(o)) return cloneArray(o, clone7);
+        if (Array.isArray(o)) return cloneArray(o, clone8);
         if (o.constructor !== Object && (handler = constructorHandlers.get(o.constructor))) {
-          return handler(o, clone7);
+          return handler(o, clone8);
         }
         const o2 = {};
         for (const k in o) {
@@ -7262,11 +7262,11 @@ var require_rfdc = __commonJS({
           if (typeof cur !== "object" || cur === null) {
             o2[k] = cur;
           } else if (cur.constructor !== Object && (handler = constructorHandlers.get(cur.constructor))) {
-            o2[k] = handler(cur, clone7);
+            o2[k] = handler(cur, clone8);
           } else if (ArrayBuffer.isView(cur)) {
             o2[k] = copyBuffer(cur);
           } else {
-            o2[k] = clone7(cur);
+            o2[k] = clone8(cur);
           }
         }
         return o2;
@@ -7306,7 +7306,7 @@ var require_rfdc = __commonJS({
         }
       }
       let handler = null;
-      return opts.proto ? cloneProto : clone7;
+      return opts.proto ? cloneProto : clone8;
       function cloneArray(a, fn) {
         const keys = Object.keys(a);
         const a2 = new Array(keys.length);
@@ -7330,11 +7330,11 @@ var require_rfdc = __commonJS({
         }
         return a2;
       }
-      function clone7(o) {
+      function clone8(o) {
         if (typeof o !== "object" || o === null) return o;
-        if (Array.isArray(o)) return cloneArray(o, clone7);
+        if (Array.isArray(o)) return cloneArray(o, clone8);
         if (o.constructor !== Object && (handler = constructorHandlers.get(o.constructor))) {
-          return handler(o, clone7);
+          return handler(o, clone8);
         }
         const o2 = {};
         refs.push(o);
@@ -7345,7 +7345,7 @@ var require_rfdc = __commonJS({
           if (typeof cur !== "object" || cur === null) {
             o2[k] = cur;
           } else if (cur.constructor !== Object && (handler = constructorHandlers.get(cur.constructor))) {
-            o2[k] = handler(cur, clone7);
+            o2[k] = handler(cur, clone8);
           } else if (ArrayBuffer.isView(cur)) {
             o2[k] = copyBuffer(cur);
           } else {
@@ -7353,7 +7353,7 @@ var require_rfdc = __commonJS({
             if (i !== -1) {
               o2[k] = refsNew[i];
             } else {
-              o2[k] = clone7(cur);
+              o2[k] = clone8(cur);
             }
           }
         }
@@ -11818,7 +11818,7 @@ var require_multistream = __commonJS({
         minLevel: 0,
         lastId: 0,
         streams: [],
-        clone: clone7,
+        clone: clone8,
         [metadata]: true,
         streamLevels
       };
@@ -11922,7 +11922,7 @@ var require_multistream = __commonJS({
           stream.end();
         }
       }
-      function clone7(level) {
+      function clone8(level) {
         const streams = new Array(this.streams.length);
         for (let i = 0; i < streams.length; i++) {
           streams[i] = {
@@ -11939,7 +11939,7 @@ var require_multistream = __commonJS({
           end,
           minLevel: level,
           streams,
-          clone: clone7,
+          clone: clone8,
           [metadata]: true,
           streamLevels
         };
@@ -11965,7 +11965,7 @@ var require_multistream = __commonJS({
 var require_pino = __commonJS({
   "../node_modules/.pnpm/pino@10.4.0/node_modules/pino/pino.js"(exports, module) {
     "use strict";
-    var os = __require("node:os");
+    var os3 = __require("node:os");
     var stdSerializers = require_pino_std_serializers();
     var caller = require_caller();
     var redaction = require_redaction();
@@ -12013,7 +12013,7 @@ var require_pino = __commonJS({
     } = symbols;
     var { epochTime, nullTime } = time2;
     var { pid } = process;
-    var hostname = os.hostname();
+    var hostname = os3.hostname();
     var defaultErrorSerializer = stdSerializers.err;
     var defaultOptions = {
       level: "info",
@@ -27372,7 +27372,7 @@ var require_validator = __commonJS({
     var { _ } = Ajv;
     var fastUri = require_fast_uri2();
     var ajvFormats = require_dist();
-    var clone7 = require_rfdc()({ proto: true });
+    var clone8 = require_rfdc()({ proto: true });
     function escapeRefForAjv(ref) {
       const hashIndex = ref.indexOf("#");
       if (hashIndex === -1) return ref;
@@ -27425,7 +27425,7 @@ var require_validator = __commonJS({
           schemaKey = schemaName + schema.$id;
         }
         if (this.ajv.refs[schemaKey] === void 0 && this.ajv.schemas[schemaKey] === void 0) {
-          const ajvSchema = clone7(schema);
+          const ajvSchema = clone8(schema);
           const shouldEscapeRef = refResolver && ((ref) => hasLiteralRefTarget(ref, schemaName, refResolver));
           this.convertSchemaToAjvFormat(ajvSchema, shouldEscapeRef);
           this.ajv.addSchema(ajvSchema, schemaKey);
@@ -37792,7 +37792,7 @@ var require_deepmerge = __commonJS({
         const il = value.length;
         const result = new Array(il);
         for (i; i < il; ++i) {
-          result[i] = clone7(value[i]);
+          result[i] = clone8(value[i]);
         }
         return result;
       }
@@ -37804,7 +37804,7 @@ var require_deepmerge = __commonJS({
         const targetKeys = getKeys(target);
         let i, il, key;
         for (i = 0, il = targetKeys.length; i < il; ++i) {
-          isNotPrototypeKey(key = targetKeys[i]) && (result[key] = clone7(target[key]));
+          isNotPrototypeKey(key = targetKeys[i]) && (result[key] = clone8(target[key]));
         }
         return result;
       }
@@ -37814,10 +37814,10 @@ var require_deepmerge = __commonJS({
         let i = 0;
         const result = new Array(tl + sl);
         for (i; i < tl; ++i) {
-          result[i] = clone7(target[i]);
+          result[i] = clone8(target[i]);
         }
         for (i = 0; i < sl; ++i) {
-          result[i + tl] = clone7(source[i]);
+          result[i + tl] = clone8(source[i]);
         }
         return result;
       }
@@ -37837,8 +37837,8 @@ var require_deepmerge = __commonJS({
       function isPrimitive(value) {
         return typeof value !== "object" || value === null;
       }
-      const mergeArray = options && typeof options.mergeArray === "function" ? options.mergeArray({ clone: clone7, deepmerge: _deepmerge, getKeys, isMergeableObject }) : concatArrays;
-      function clone7(entry) {
+      const mergeArray = options && typeof options.mergeArray === "function" ? options.mergeArray({ clone: clone8, deepmerge: _deepmerge, getKeys, isMergeableObject }) : concatArrays;
+      function clone8(entry) {
         return isMergeableObject(entry) ? Array.isArray(entry) ? cloneArray(entry) : cloneObject(entry) : entry;
       }
       function mergeObject(target, source) {
@@ -37847,7 +37847,7 @@ var require_deepmerge = __commonJS({
         const sourceKeys = getKeys(source);
         let i, il, key;
         for (i = 0, il = targetKeys.length; i < il; ++i) {
-          isNotPrototypeKey(key = targetKeys[i]) && sourceKeys.indexOf(key) === -1 && (result[key] = clone7(target[key]));
+          isNotPrototypeKey(key = targetKeys[i]) && sourceKeys.indexOf(key) === -1 && (result[key] = clone8(target[key]));
         }
         for (i = 0, il = sourceKeys.length; i < il; ++i) {
           if (!isNotPrototypeKey(key = sourceKeys[i])) {
@@ -37865,25 +37865,25 @@ var require_deepmerge = __commonJS({
             if (onlyDefinedProperties && typeof source[key] === "undefined") {
               continue;
             }
-            result[key] = clone7(source[key]);
+            result[key] = clone8(source[key]);
           }
         }
         return result;
       }
       function _deepmerge(target, source) {
         if (onlyDefinedProperties && typeof source === "undefined") {
-          return clone7(target);
+          return clone8(target);
         }
         const sourceIsArray = Array.isArray(source);
         const targetIsArray = Array.isArray(target);
         if (isPrimitive(source)) {
           return source;
         } else if (!isMergeableObject(target)) {
-          return clone7(source);
+          return clone8(source);
         } else if (sourceIsArray && targetIsArray) {
           return mergeArray(target, source);
         } else if (sourceIsArray !== targetIsArray) {
-          return clone7(source);
+          return clone8(source);
         } else {
           return mergeObject(target, source);
         }
@@ -37893,7 +37893,7 @@ var require_deepmerge = __commonJS({
           case 0:
             return {};
           case 1:
-            return clone7(arguments[0]);
+            return clone8(arguments[0]);
           case 2:
             return _deepmerge(arguments[0], arguments[1]);
         }
@@ -50024,6 +50024,7 @@ var require_lib3 = __commonJS({
 var import_cors = __toESM(require_cors(), 1);
 var import_helmet = __toESM(require_helmet2(), 1);
 var import_fastify = __toESM(require_fastify(), 1);
+import os2 from "node:os";
 
 // ../node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/external.js
 var external_exports = {};
@@ -55318,6 +55319,43 @@ var createOwnerSchema = external_exports.object({
   phone: iranMobileSchema,
   displayName: external_exports.string().trim().min(2).max(60).default("\u0645\u0627\u0644\u06A9 \u0628\u0646\u0632\u06CC\u0646")
 }).strict();
+var nodeHeartbeatSchema = external_exports.object({
+  nodeId: external_exports.string().trim().min(3).max(64).regex(/^[A-Za-z0-9._-]+$/, { message: "NODE_ID_INVALID" }),
+  name: external_exports.string().trim().min(1).max(64).optional(),
+  role: external_exports.enum(["primary", "helper"]).optional(),
+  version: external_exports.string().trim().max(40).nullish(),
+  region: external_exports.string().trim().max(64).nullish(),
+  resources: external_exports.object({
+    cpuPct: external_exports.number().min(0).max(100).optional(),
+    cores: external_exports.number().int().min(0).max(1024).optional(),
+    memUsedPct: external_exports.number().min(0).max(100).optional(),
+    memRssMb: external_exports.number().min(0).optional(),
+    diskFreeGb: external_exports.number().min(0).optional(),
+    diskTotalGb: external_exports.number().min(0).optional(),
+    loadAvg: external_exports.number().min(0).optional(),
+    eventLoopLagMs: external_exports.number().min(0).nullish()
+  }).strict().nullish(),
+  traffic: external_exports.object({
+    requests: external_exports.number().int().min(0).optional(),
+    errors: external_exports.number().int().min(0).optional(),
+    requestsPerMin: external_exports.number().min(0).optional(),
+    avgLatencyMs: external_exports.number().min(0).optional(),
+    lastRequestAt: external_exports.string().datetime().nullish()
+  }).strict().nullish(),
+  jobs: external_exports.object({
+    total: external_exports.number().min(0).optional(),
+    last30Min: external_exports.number().min(0).optional(),
+    lastJobAt: external_exports.string().datetime().nullish(),
+    recent: external_exports.array(external_exports.object({
+      kind: external_exports.string().trim().min(1).max(40),
+      count: external_exports.number().min(0),
+      at: external_exports.string().datetime(),
+      detail: external_exports.record(external_exports.number()).optional()
+    }).strict()).max(20).optional()
+  }).strict().nullish(),
+  uptimeSeconds: external_exports.number().int().min(0).optional(),
+  active: external_exports.boolean().optional()
+}).strict();
 
 // ../packages/shared/dist/state-machine.js
 var ALL_ACTORS = ["OWNER", "TAKER", "SYSTEM", "ADMIN"];
@@ -58474,6 +58512,306 @@ var StatsService = class {
   }
 };
 
+// ../apps/api/src/modules/host-telemetry.ts
+import { statfs } from "node:fs/promises";
+import os from "node:os";
+import { monitorEventLoopDelay } from "node:perf_hooks";
+var round = (value, digits = 1) => {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+};
+var sampleCpuTimes = () => {
+  let idle = 0;
+  let total = 0;
+  for (const cpu of os.cpus()) {
+    const { user, nice, sys, irq, idle: cpuIdle } = cpu.times;
+    idle += cpuIdle;
+    total += user + nice + sys + irq + cpuIdle;
+  }
+  return { idle, total };
+};
+function createHostTelemetry() {
+  let previous = sampleCpuTimes();
+  const lag = monitorEventLoopDelay({ resolution: 20 });
+  lag.enable();
+  return {
+    async resources() {
+      const current = sampleCpuTimes();
+      const totalDelta = current.total - previous.total;
+      const idleDelta = current.idle - previous.idle;
+      const cpuPct = totalDelta > 0 ? (1 - idleDelta / totalDelta) * 100 : 0;
+      previous = current;
+      const totalMem = os.totalmem();
+      const freeMem = os.freemem();
+      let diskTotalGb = 0;
+      let diskFreeGb = 0;
+      try {
+        const stats = await statfs(process.cwd());
+        diskTotalGb = stats.bsize * stats.blocks / 1024 ** 3;
+        diskFreeGb = stats.bsize * stats.bavail / 1024 ** 3;
+      } catch {
+      }
+      const lagMs = Number.isFinite(lag.mean) ? lag.mean / 1e6 : null;
+      lag.reset();
+      return {
+        cpuPct: round(Math.max(0, Math.min(100, cpuPct))),
+        cores: os.cpus().length,
+        memUsedPct: totalMem > 0 ? round((totalMem - freeMem) / totalMem * 100) : 0,
+        memRssMb: round(process.memoryUsage().rss / 1024 ** 2),
+        diskFreeGb: round(diskFreeGb, 2),
+        diskTotalGb: round(diskTotalGb, 2),
+        loadAvg: round(os.loadavg()[0] ?? 0, 2),
+        eventLoopLagMs: lagMs === null ? null : round(lagMs, 2)
+      };
+    }
+  };
+}
+
+// ../apps/api/src/modules/nodes-service.ts
+var STATE_FA = {
+  active: "\u0641\u0639\u0627\u0644",
+  standby: "\u0622\u0645\u0627\u062F\u0647\u200C\u0628\u0647\u200C\u06A9\u0627\u0631",
+  offline: "\u0622\u0641\u0644\u0627\u06CC\u0646"
+};
+var DUTIES_FA = {
+  primary: "\u0633\u0631\u0648\u0631 \u0627\u0635\u0644\u06CC \u2014 \u06A9\u0627\u0631\u0647\u0627 \u0631\u0627 \u0627\u0646\u062C\u0627\u0645 \u0645\u06CC\u200C\u062F\u0647\u062F",
+  "taking-over": "\u062C\u0627\u06CC \u0633\u0631\u0648\u0631 \u0627\u0635\u0644\u06CC \u0631\u0627 \u06AF\u0631\u0641\u062A\u0647",
+  standby: "\u0628\u06CC\u200C\u06A9\u0627\u0631 \u0648 \u0622\u0645\u0627\u062F\u0647 \u2014 \u0645\u0646\u062A\u0638\u0631 \u0642\u0637\u0639 \u0633\u0631\u0648\u0631 \u0627\u0635\u0644\u06CC",
+  offline: "\u0628\u062F\u0648\u0646 \u06AF\u0632\u0627\u0631\u0634"
+};
+var FAILOVER_REASON_FA = {
+  "primary-healthy": "\u0633\u0631\u0648\u0631 \u0627\u0635\u0644\u06CC \u0633\u0627\u0644\u0645 \u0627\u0633\u062A\u061B \u06AF\u0631\u0647\u0654 \u06A9\u0645\u06A9\u06CC \u0648\u0627\u0631\u062F \u06A9\u0627\u0631 \u0646\u0645\u06CC\u200C\u0634\u0648\u062F",
+  "primary-stale": "\u0633\u0631\u0648\u0631 \u0627\u0635\u0644\u06CC \u0627\u0632 \u06A9\u0627\u0631 \u0627\u0641\u062A\u0627\u062F\u0647\u061B \u06AF\u0631\u0647\u0654 \u06A9\u0645\u06A9\u06CC \u06A9\u0627\u0631\u0647\u0627 \u0631\u0627 \u0628\u0631\u0645\u06CC\u200C\u062F\u0627\u0631\u062F",
+  "primary-missing": "\u0647\u06CC\u0686 \u0633\u0631\u0648\u0631 \u0627\u0635\u0644\u06CC\u200C\u0627\u06CC \u062B\u0628\u062A \u0646\u0634\u062F\u0647\u061B \u06AF\u0631\u0647\u0654 \u06A9\u0645\u06A9\u06CC \u06A9\u0627\u0631\u0647\u0627 \u0631\u0627 \u0628\u0631\u0645\u06CC\u200C\u062F\u0627\u0631\u062F"
+};
+var emptyTraffic = () => ({
+  requests: 0,
+  errors: 0,
+  requestsPerMin: 0,
+  avgLatencyMs: 0,
+  lastRequestAt: null
+});
+var emptyJobs = () => ({ total: 0, last30Min: 0, lastJobAt: null, recent: [] });
+var round2 = (value, digits = 1) => {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+};
+var WINDOW_MS = 6e4;
+var MAX_WINDOW_SAMPLES = 2e3;
+var MAX_RECENT_JOBS = 12;
+var NodesService = class {
+  constructor(repos2, clock, options) {
+    this.repos = repos2;
+    this.clock = clock;
+    this.options = options;
+    this.telemetry = options.telemetry ?? createHostTelemetry();
+    this.staleSeconds = options.staleSeconds ?? 90;
+    this.active = options.role === "primary";
+  }
+  telemetry;
+  staleSeconds;
+  startedAt = Date.now();
+  /** Lifetime counters of this process; the panel also shows a one-minute rate. */
+  requests = 0;
+  errors = 0;
+  window = [];
+  jobTotal = 0;
+  recentJobs = [];
+  active = false;
+  get nodeId() {
+    return this.options.nodeId;
+  }
+  get role() {
+    return this.options.role;
+  }
+  /** A helper flips this on when it takes over, so the panel can say who is doing the work. */
+  setActiveLocal(active) {
+    this.active = active;
+  }
+  isActiveLocal() {
+    return this.active;
+  }
+  /** Called from the response hook; `durationMs` is the whole request, DB included. */
+  recordRequest(input) {
+    const at = this.clock.now().getTime();
+    const isError = input.statusCode >= 500;
+    this.requests += 1;
+    if (isError) this.errors += 1;
+    this.window.push({ at, ms: input.durationMs, error: isError });
+    if (this.window.length > MAX_WINDOW_SAMPLES) this.window.splice(0, this.window.length - MAX_WINDOW_SAMPLES);
+  }
+  /** Called by the scheduler after every sweep so the panel can show a work report. */
+  recordJob(kind, count, detail) {
+    const at = this.clock.now().toISOString();
+    this.jobTotal += count;
+    this.recentJobs.unshift({ kind, count, at, ...detail ? { detail } : {} });
+    if (this.recentJobs.length > MAX_RECENT_JOBS) this.recentJobs.length = MAX_RECENT_JOBS;
+  }
+  windowSnapshot() {
+    const now = this.clock.now().getTime();
+    const fresh = this.window.filter((sample) => now - sample.at <= WINDOW_MS);
+    if (fresh.length === 0) return { requestsPerMin: 0, avgLatencyMs: 0 };
+    const sum = fresh.reduce((total, sample) => total + sample.ms, 0);
+    return {
+      // The window is one minute wide, so the count *is* the per-minute rate.
+      requestsPerMin: fresh.length,
+      avgLatencyMs: round2(sum / fresh.length)
+    };
+  }
+  ownTraffic() {
+    const { requestsPerMin, avgLatencyMs } = this.windowSnapshot();
+    const lastSample = this.window[this.window.length - 1];
+    return {
+      requests: this.requests,
+      errors: this.errors,
+      requestsPerMin,
+      avgLatencyMs,
+      lastRequestAt: lastSample ? new Date(lastSample.at).toISOString() : null
+    };
+  }
+  ownJobs() {
+    const now = this.clock.now().getTime();
+    const last30 = this.recentJobs.filter((job) => now - Date.parse(job.at) <= 30 * 6e4);
+    return {
+      total: this.jobTotal,
+      last30Min: last30.reduce((total, job) => total + job.count, 0),
+      lastJobAt: this.recentJobs[0]?.at ?? null,
+      recent: [...this.recentJobs]
+    };
+  }
+  /** Snapshot of this process, as it is about to be written to the heartbeat table. */
+  async selfRecord() {
+    let resources = null;
+    try {
+      resources = await this.telemetry.resources();
+    } catch {
+      resources = null;
+    }
+    return {
+      nodeId: this.options.nodeId,
+      name: this.options.name,
+      role: this.options.role,
+      version: this.options.version,
+      region: this.options.region ?? null,
+      resources,
+      traffic: this.ownTraffic(),
+      jobs: this.ownJobs(),
+      uptimeSeconds: Math.round((Date.now() - this.startedAt) / 1e3),
+      active: this.active,
+      lastSeenAt: this.clock.now()
+    };
+  }
+  /** Writes this process's heartbeat; the entrypoint calls it on a timer. */
+  async publishSelf() {
+    const record = await this.selfRecord();
+    await this.repos.nodes.save(record);
+    return record;
+  }
+  /** Heartbeat from an external agent (the owner's PC running `scripts/helper-node.mjs`). */
+  async ingest(input) {
+    const now = this.clock.now();
+    const record = {
+      nodeId: input.nodeId,
+      name: input.name?.trim() || input.nodeId,
+      role: input.role ?? "helper",
+      version: input.version ?? null,
+      region: input.region ?? null,
+      resources: input.resources ? {
+        cpuPct: input.resources.cpuPct ?? 0,
+        cores: input.resources.cores ?? 0,
+        memUsedPct: input.resources.memUsedPct ?? 0,
+        memRssMb: input.resources.memRssMb ?? 0,
+        diskFreeGb: input.resources.diskFreeGb ?? 0,
+        diskTotalGb: input.resources.diskTotalGb ?? 0,
+        loadAvg: input.resources.loadAvg ?? 0,
+        eventLoopLagMs: input.resources.eventLoopLagMs ?? null
+      } : null,
+      traffic: { ...emptyTraffic(), ...input.traffic ?? {} },
+      jobs: { ...emptyJobs(), ...input.jobs ?? {}, recent: input.jobs?.recent ?? [] },
+      uptimeSeconds: input.uptimeSeconds ?? 0,
+      active: input.active ?? false,
+      lastSeenAt: now
+    };
+    await this.repos.nodes.save(record);
+    return this.toView(record, now, false);
+  }
+  toView(record, now, self) {
+    const ageSeconds = Math.max(0, Math.round((now.getTime() - record.lastSeenAt.getTime()) / 1e3));
+    const state = ageSeconds > this.staleSeconds ? "offline" : record.active ? "active" : "standby";
+    const duties = state === "offline" ? "offline" : record.role === "primary" ? "primary" : record.active ? "taking-over" : "standby";
+    return {
+      ...record,
+      state,
+      stateFa: STATE_FA[state],
+      heartbeatAgeSeconds: ageSeconds,
+      self,
+      duties,
+      dutiesFa: DUTIES_FA[duties]
+    };
+  }
+  async listNodes() {
+    const now = this.clock.now();
+    const records = await this.repos.nodes.list();
+    if (!records.some((record) => record.nodeId === this.options.nodeId)) {
+      records.push(await this.selfRecord());
+    }
+    return records.map((record) => this.toView(record, now, record.nodeId === this.options.nodeId)).sort((a, b) => {
+      if (a.self !== b.self) return a.self ? -1 : 1;
+      if (a.state !== b.state) return a.state === "offline" ? 1 : -1;
+      return a.name.localeCompare(b.name, "fa");
+    });
+  }
+  /**
+   * Should a helper take the sweeps over? True when no *primary* has reported inside the stale
+   * window. Called by helper processes on a short poll.
+   */
+  async failover() {
+    const now = this.clock.now();
+    const records = await this.repos.nodes.list();
+    const primaries = records.filter((record) => record.role === "primary");
+    if (primaries.length === 0) {
+      return {
+        shouldTakeOver: true,
+        reason: "primary-missing",
+        reasonFa: FAILOVER_REASON_FA["primary-missing"]
+      };
+    }
+    const healthy = primaries.some(
+      (record) => now.getTime() - record.lastSeenAt.getTime() <= this.staleSeconds * 1e3
+    );
+    const reason = healthy ? "primary-healthy" : "primary-stale";
+    return {
+      shouldTakeOver: !healthy,
+      reason,
+      reasonFa: FAILOVER_REASON_FA[reason]
+    };
+  }
+  /** Convenience for the helper loop: publish, then ask whether to start sweeping. */
+  async shouldTakeOver() {
+    const decision = await this.failover();
+    return decision.shouldTakeOver;
+  }
+  async overview() {
+    const nodes = await this.listNodes();
+    const decision = await this.failover();
+    const primaryRecord = nodes.find((node) => node.role === "primary" && node.state !== "offline");
+    const activeNode = nodes.find((node) => node.state === "active");
+    return {
+      generatedAt: this.clock.now().toISOString(),
+      staleAfterSeconds: this.staleSeconds,
+      selfNodeId: this.options.nodeId,
+      activeNodeId: activeNode?.nodeId ?? null,
+      primary: primaryRecord ? {
+        nodeId: primaryRecord.nodeId,
+        healthy: primaryRecord.state !== "offline",
+        lastSeenAt: primaryRecord.lastSeenAt.toISOString()
+      } : null,
+      failover: decision,
+      nodes
+    };
+  }
+};
+
 // ../apps/api/src/modules/sweep-lock.ts
 function createProcessSweepLock() {
   const held = /* @__PURE__ */ new Set();
@@ -58518,7 +58856,7 @@ function createPostgresSweepLock(pool, options = {}) {
 
 // ../apps/api/src/scheduler.ts
 var SWEEP_LOCK_NAME = "expiry";
-function createScheduler(reservations2, orders2, reputation, payments2, _clock, lock = createProcessSweepLock()) {
+function createScheduler(reservations2, orders2, reputation, payments2, _clock, lock = createProcessSweepLock(), options = {}) {
   let last = null;
   const sweep = async () => {
     const reconciled = await payments2.reconcile();
@@ -58531,6 +58869,7 @@ function createScheduler(reservations2, orders2, reputation, payments2, _clock, 
       reconciledPayments: reconciled.expiredPayments + reconciled.healedPayments + reconciled.expiredSubscriptions
     };
     last = { at: _clock.now(), result };
+    options.onTick?.(result, last.at);
     return result;
   };
   const tick = async () => lock.withLock(SWEEP_LOCK_NAME, sweep);
@@ -58725,6 +59064,7 @@ function requireRole(...roles) {
 }
 
 // ../apps/api/src/http/app.ts
+var hostSlug = () => (os2.hostname() || "local").toLowerCase().replace(/[^a-z0-9.-]+/g, "-").slice(0, 40);
 var toPublicUser = (user) => ({
   id: user.id,
   phone: user.phone,
@@ -58783,8 +59123,22 @@ async function buildApp(options) {
     mode: config2.DATABASE_URL ? "postgres" : "memory",
     version: config2.APP_VERSION
   });
-  const scheduler2 = createScheduler(reservations2, orders2, reputation, payments2, clock, sweepLock2);
-  const services = {
+  const nodes = new NodesService(repos2, clock, {
+    nodeId: options.node?.nodeId ?? config2.NODE_ID ?? `${config2.NODE_ROLE}-${hostSlug()}`,
+    name: options.node?.name ?? config2.NODE_NAME ?? `\u0628\u0646\u0632\u06CC\u0646 \u2014 ${config2.NODE_ROLE === "helper" ? "\u06A9\u0645\u06A9\u06CC" : "\u0627\u0635\u0644\u06CC"}`,
+    role: options.node?.role ?? config2.NODE_ROLE,
+    version: config2.APP_VERSION,
+    region: options.node?.region ?? config2.NODE_REGION ?? null,
+    staleSeconds: config2.NODE_STALE_SECONDS
+  });
+  const scheduler2 = createScheduler(reservations2, orders2, reputation, payments2, clock, sweepLock2, {
+    onTick: (result, at) => {
+      const detail = { ...result };
+      const count = Object.values(detail).reduce((total, value) => total + value, 0);
+      nodes.recordJob("expiry-sweep", count, detail);
+    }
+  });
+  const services2 = {
     auth,
     chat,
     notifications: notifications2,
@@ -58795,7 +59149,8 @@ async function buildApp(options) {
     settings: settings2,
     profile,
     admin,
-    stats
+    stats,
+    nodes
   };
   const requireAuth = authenticate(auth);
   const app2 = (0, import_fastify.default)({
@@ -58808,6 +59163,17 @@ async function buildApp(options) {
     origin: config2.CORS_ORIGINS,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+  });
+  const requestStartedAt = /* @__PURE__ */ new WeakMap();
+  app2.addHook("onRequest", async (request) => {
+    requestStartedAt.set(request, process.hrtime.bigint());
+  });
+  app2.addHook("onResponse", async (request, reply) => {
+    const startedAt = requestStartedAt.get(request);
+    nodes.recordRequest({
+      statusCode: reply.statusCode,
+      durationMs: startedAt ? Number(process.hrtime.bigint() - startedAt) / 1e6 : 0
+    });
   });
   app2.setErrorHandler((rawError, request, reply) => {
     const error = rawError;
@@ -59268,6 +59634,33 @@ async function buildApp(options) {
     return { ran: result !== null, result };
   });
   app2.get("/v1/admin/status", { preHandler: [...staffOnly] }, async () => admin.systemStatus());
+  app2.get("/v1/admin/nodes", { preHandler: [...staffOnly] }, async () => nodes.overview());
+  const nodeTokenGuard = async (request) => {
+    if (!config2.NODE_TOKEN) {
+      throw new AppError(
+        "NODE_AGENT_DISABLED",
+        503,
+        "NODE_TOKEN \u062A\u0646\u0638\u06CC\u0645 \u0646\u0634\u062F\u0647\u061B \u067E\u0630\u06CC\u0631\u0634 \u06AF\u0631\u0647\u0654 \u062E\u0627\u0631\u062C\u06CC \u062E\u0627\u0645\u0648\u0634 \u0627\u0633\u062A"
+      );
+    }
+    if (request.headers["x-node-token"] !== config2.NODE_TOKEN) {
+      throw new AppError("NODE_TOKEN_INVALID", 401, "\u062A\u0648\u06A9\u0646 \u06AF\u0631\u0647 \u0646\u0627\u0645\u0639\u062A\u0628\u0631 \u0627\u0633\u062A");
+    }
+  };
+  app2.get("/v1/nodes/failover", { preHandler: [nodeTokenGuard] }, async (request) => {
+    const query2 = request.query;
+    const decision = await nodes.failover();
+    return {
+      nodeId: query2?.nodeId ?? null,
+      staleAfterSeconds: config2.NODE_STALE_SECONDS,
+      serverTime: clock.now().toISOString(),
+      ...decision
+    };
+  });
+  app2.post("/v1/nodes/heartbeat", { preHandler: [nodeTokenGuard] }, async (request) => {
+    const body = parseInput(nodeHeartbeatSchema, request.body ?? {});
+    return nodes.ingest(body);
+  });
   app2.get("/v1/admin/providers", { preHandler: [...staffOnly] }, async () => admin.listProviders());
   app2.put("/v1/admin/providers", { preHandler: [...staffOnly] }, async (request) => {
     const body = parseInput(providerSettingSchema, request.body);
@@ -59290,7 +59683,7 @@ async function buildApp(options) {
     const body = parseInput(zoneUpsertSchema, request.body);
     return admin.saveZone(currentUser(request), { ...body, boundary: [...body.boundary] });
   });
-  return { app: app2, services, chatSocket, scheduler: scheduler2 };
+  return { app: app2, services: services2, chatSocket, scheduler: scheduler2 };
 }
 
 // ../apps/api/src/config.ts
@@ -59349,6 +59742,21 @@ var envSchema = external_exports.object({
   PAYMENT_CALLBACK_URL: external_exports.string().url().default("https://app.benzin.ir/payments/callback"),
   /** Reported on the admin status screen (task E8-08). */
   APP_VERSION: external_exports.string().default("0.1.0"),
+  /**
+   * Node identity for the live node monitor (task G-28). `helper` means "park my sweeps until the
+   * primary stops reporting": this is how the owner's own machine stands by without interfering.
+   */
+  NODE_ROLE: external_exports.enum(["primary", "helper"]).default("primary"),
+  /** Stable id for the heartbeat row; defaults to `<role>-<hostname>` at boot. */
+  NODE_ID: external_exports.string().min(3).max(64).optional(),
+  NODE_NAME: external_exports.string().min(1).max(64).optional(),
+  NODE_REGION: external_exports.string().min(1).max(64).optional(),
+  /** Shared secret for `POST /v1/nodes/heartbeat`; unset disables external agents. */
+  NODE_TOKEN: external_exports.string().min(8).optional(),
+  NODE_HEARTBEAT_MS: external_exports.coerce.number().int().min(1e3).max(3e5).default(1e4),
+  /** No heartbeat from any primary for this long → a helper takes the sweeps over. */
+  NODE_STALE_SECONDS: external_exports.coerce.number().int().min(15).max(3600).default(90),
+  NODE_FAILOVER_POLL_MS: external_exports.coerce.number().int().min(1e3).max(12e4).default(15e3),
   LOG_LEVEL: external_exports.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info")
 });
 function loadConfig(env = process.env) {
@@ -59815,14 +60223,30 @@ var MemoryZoneRepository = class {
   }
 };
 
-// ../apps/api/src/infra/memory/index.ts
+// ../apps/api/src/infra/memory/nodes.ts
 var clone6 = (value) => structuredClone(value);
+var MemoryNodeRepository = class {
+  byId = /* @__PURE__ */ new Map();
+  async save(record) {
+    this.byId.set(record.nodeId, clone6(record));
+  }
+  async list() {
+    return [...this.byId.values()].map(clone6);
+  }
+  async get(nodeId) {
+    const record = this.byId.get(nodeId);
+    return record ? clone6(record) : null;
+  }
+};
+
+// ../apps/api/src/infra/memory/index.ts
+var clone7 = (value) => structuredClone(value);
 var MemoryUserRepository = class {
   byId = /* @__PURE__ */ new Map();
   byPhone = /* @__PURE__ */ new Map();
   async findById(id) {
     const user = this.byId.get(id);
-    return user ? clone6(user) : null;
+    return user ? clone7(user) : null;
   }
   async findByPhone(phone) {
     const id = this.byPhone.get(phone);
@@ -59838,17 +60262,17 @@ var MemoryUserRepository = class {
       suspendedUntil: null,
       createdAt: /* @__PURE__ */ new Date()
     };
-    this.byId.set(user.id, clone6(user));
+    this.byId.set(user.id, clone7(user));
     this.byPhone.set(user.phone, user.id);
     return user;
   }
   async save(user) {
-    this.byId.set(user.id, clone6(user));
+    this.byId.set(user.id, clone7(user));
     this.byPhone.set(user.phone, user.id);
-    return clone6(user);
+    return clone7(user);
   }
   async list(limit) {
-    return [...this.byId.values()].slice(0, limit).map(clone6);
+    return [...this.byId.values()].slice(0, limit).map(clone7);
   }
   async search(query2) {
     const text2 = query2.text?.trim() ?? "";
@@ -59856,7 +60280,7 @@ var MemoryUserRepository = class {
       (user) => text2.length === 0 || user.phone.includes(text2) || (user.displayName ?? "").includes(text2)
     ).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     return {
-      items: matches.slice(query2.offset, query2.offset + query2.limit).map(clone6),
+      items: matches.slice(query2.offset, query2.offset + query2.limit).map(clone7),
       total: matches.length
     };
   }
@@ -59868,17 +60292,17 @@ var MemoryUserRepository = class {
   async listSuspendedDue(now, limit) {
     return [...this.byId.values()].filter(
       (user) => user.status === "SUSPENDED" && user.suspendedUntil !== null && user.suspendedUntil.getTime() <= now.getTime()
-    ).slice(0, limit).map(clone6);
+    ).slice(0, limit).map(clone7);
   }
 };
 var MemoryOtpRepository = class {
   byPhone = /* @__PURE__ */ new Map();
   async findLatest(phone) {
     const challenge = this.byPhone.get(phone);
-    return challenge ? clone6(challenge) : null;
+    return challenge ? clone7(challenge) : null;
   }
   async save(challenge) {
-    this.byPhone.set(challenge.phone, clone6(challenge));
+    this.byPhone.set(challenge.phone, clone7(challenge));
   }
 };
 var MemoryRefreshTokenRepository = class {
@@ -59895,12 +60319,12 @@ var MemoryRefreshTokenRepository = class {
       replacedBy: null,
       createdAt: /* @__PURE__ */ new Date()
     };
-    this.byId.set(record.id, clone6(record));
-    return clone6(record);
+    this.byId.set(record.id, clone7(record));
+    return clone7(record);
   }
   async findByHash(tokenHash) {
     for (const record of this.byId.values()) {
-      if (record.tokenHash === tokenHash) return clone6(record);
+      if (record.tokenHash === tokenHash) return clone7(record);
     }
     return null;
   }
@@ -59944,7 +60368,7 @@ var MemoryDeviceRepository = class {
           appVersion: input.appVersion ?? device.appVersion,
           lastSeenAt: at
         };
-        this.byId.set(id, clone6(updated));
+        this.byId.set(id, clone7(updated));
         return updated;
       }
     }
@@ -59958,11 +60382,11 @@ var MemoryDeviceRepository = class {
       lastSeenAt: at,
       createdAt: at
     };
-    this.byId.set(created.id, clone6(created));
+    this.byId.set(created.id, clone7(created));
     return created;
   }
   async listByUser(userId) {
-    return [...this.byId.values()].filter((d) => d.userId === userId).map(clone6);
+    return [...this.byId.values()].filter((d) => d.userId === userId).map(clone7);
   }
 };
 var MemoryOrderRepository = class {
@@ -59989,12 +60413,12 @@ var MemoryOrderRepository = class {
       createdAt: now,
       updatedAt: now
     };
-    this.byId.set(order.id, clone6(order));
+    this.byId.set(order.id, clone7(order));
     return order;
   }
   async findById(id) {
     const order = this.byId.get(id);
-    return order ? clone6(order) : null;
+    return order ? clone7(order) : null;
   }
   async search(query2) {
     const matches = [...this.byId.values()].filter(
@@ -60014,12 +60438,12 @@ var MemoryOrderRepository = class {
       return a.km - b.km;
     });
     return {
-      items: filtered.slice(query2.offset, query2.offset + query2.limit).map((e) => clone6(e.order)),
+      items: filtered.slice(query2.offset, query2.offset + query2.limit).map((e) => clone7(e.order)),
       total: filtered.length
     };
   }
   async listByOwner(ownerId, limit) {
-    return [...this.byId.values()].filter((order) => order.ownerId === ownerId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit).map(clone6);
+    return [...this.byId.values()].filter((order) => order.ownerId === ownerId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit).map(clone7);
   }
   async countOpenByOwner(ownerId, now) {
     return [...this.byId.values()].filter(
@@ -60030,18 +60454,18 @@ var MemoryOrderRepository = class {
     const current = this.byId.get(id);
     if (!current || current.status !== expected) return null;
     const updated = { ...current, status: next, updatedAt: patch?.updatedAt ?? /* @__PURE__ */ new Date() };
-    this.byId.set(id, clone6(updated));
-    return clone6(updated);
+    this.byId.set(id, clone7(updated));
+    return clone7(updated);
   }
   async listExpired(now, limit) {
-    return [...this.byId.values()].filter((order) => order.status === "OPEN" && order.expiresAt.getTime() <= now.getTime()).slice(0, limit).map(clone6);
+    return [...this.byId.values()].filter((order) => order.status === "OPEN" && order.expiresAt.getTime() <= now.getTime()).slice(0, limit).map(clone7);
   }
   async update(id, patch, at) {
     const current = this.byId.get(id);
     if (!current) return null;
     const updated = { ...current, ...patch, updatedAt: at };
-    this.byId.set(id, clone6(updated));
-    return clone6(updated);
+    this.byId.set(id, clone7(updated));
+    return clone7(updated);
   }
   async listAll(query2) {
     const text2 = query2.text?.trim() ?? "";
@@ -60049,7 +60473,7 @@ var MemoryOrderRepository = class {
       (order) => text2.length === 0 || order.id.includes(text2) || (order.stationName ?? "").includes(text2)
     ).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     return {
-      items: matches.slice(query2.offset, query2.offset + query2.limit).map(clone6),
+      items: matches.slice(query2.offset, query2.offset + query2.limit).map(clone7),
       total: matches.length
     };
   }
@@ -60068,10 +60492,10 @@ var MemoryOrderRepository = class {
     return counts;
   }
   async listSince(zoneId, since, limit) {
-    return [...this.byId.values()].filter((order) => order.zoneId === zoneId && order.createdAt.getTime() >= since.getTime()).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit).map(clone6);
+    return [...this.byId.values()].filter((order) => order.zoneId === zoneId && order.createdAt.getTime() >= since.getTime()).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit).map(clone7);
   }
   async listByPlace(query2) {
-    return [...this.byId.values()].filter((order) => order.createdAt.getTime() >= query2.since.getTime()).filter((order) => query2.province === null ? true : order.province === query2.province).filter((order) => query2.county === null ? true : order.county === query2.county).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, query2.limit).map(clone6);
+    return [...this.byId.values()].filter((order) => order.createdAt.getTime() >= query2.since.getTime()).filter((order) => query2.province === null ? true : order.province === query2.province).filter((order) => query2.county === null ? true : order.county === query2.county).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, query2.limit).map(clone7);
   }
 };
 var MemoryReservationRepository = class {
@@ -60081,22 +60505,22 @@ var MemoryReservationRepository = class {
   }
   async findById(id) {
     const reservation = this.byId.get(id);
-    return reservation ? clone6(reservation) : null;
+    return reservation ? clone7(reservation) : null;
   }
   async findActiveByOrder(orderId) {
     for (const reservation of this.byId.values()) {
-      if (reservation.orderId === orderId && this.isActive(reservation)) return clone6(reservation);
+      if (reservation.orderId === orderId && this.isActive(reservation)) return clone7(reservation);
     }
     return null;
   }
   async findActiveByTaker(takerId) {
-    return [...this.byId.values()].filter((reservation) => reservation.takerId === takerId && this.isActive(reservation)).map(clone6);
+    return [...this.byId.values()].filter((reservation) => reservation.takerId === takerId && this.isActive(reservation)).map(clone7);
   }
   async countActiveByTaker(takerId) {
     return (await this.findActiveByTaker(takerId)).length;
   }
   async listByTaker(takerId, limit) {
-    return [...this.byId.values()].filter((reservation) => reservation.takerId === takerId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit).map(clone6);
+    return [...this.byId.values()].filter((reservation) => reservation.takerId === takerId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit).map(clone7);
   }
   async createExclusive(input) {
     if (await this.findActiveByOrder(input.orderId)) return null;
@@ -60112,15 +60536,15 @@ var MemoryReservationRepository = class {
       cancelReason: null,
       extensionCount: 0
     };
-    this.byId.set(reservation.id, clone6(reservation));
-    return clone6(reservation);
+    this.byId.set(reservation.id, clone7(reservation));
+    return clone7(reservation);
   }
   async transition(id, expected, next, patch) {
     const current = this.byId.get(id);
     if (!current || current.status !== expected) return null;
     const updated = { ...current, ...patch, status: next };
-    this.byId.set(id, clone6(updated));
-    return clone6(updated);
+    this.byId.set(id, clone7(updated));
+    return clone7(updated);
   }
   async extend(id, expectedExpiresAt, newExpiresAt) {
     const current = this.byId.get(id);
@@ -60131,30 +60555,30 @@ var MemoryReservationRepository = class {
       expiresAt: newExpiresAt,
       extensionCount: current.extensionCount + 1
     };
-    this.byId.set(id, clone6(updated));
-    return clone6(updated);
+    this.byId.set(id, clone7(updated));
+    return clone7(updated);
   }
   async listExpiredPending(now, limit) {
-    return [...this.byId.values()].filter((r) => r.status === "PENDING_OWNER" && r.expiresAt.getTime() <= now.getTime()).slice(0, limit).map(clone6);
+    return [...this.byId.values()].filter((r) => r.status === "PENDING_OWNER" && r.expiresAt.getTime() <= now.getTime()).slice(0, limit).map(clone7);
   }
   async listByOrder(orderId, limit) {
-    return [...this.byId.values()].filter((reservation) => reservation.orderId === orderId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit).map(clone6);
+    return [...this.byId.values()].filter((reservation) => reservation.orderId === orderId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit).map(clone7);
   }
   async countActive() {
     return [...this.byId.values()].filter((reservation) => this.isActive(reservation)).length;
   }
   async listAll(limit) {
-    return [...this.byId.values()].slice(0, limit).map(clone6);
+    return [...this.byId.values()].slice(0, limit).map(clone7);
   }
 };
 var MemorySettingsRepository = class {
   byKey = /* @__PURE__ */ new Map();
   async findAll() {
-    return [...this.byKey.values()].map(clone6);
+    return [...this.byKey.values()].map(clone7);
   }
   async set(key, value, updatedBy) {
     const record = { key, value, updatedAt: /* @__PURE__ */ new Date(), updatedBy };
-    this.byKey.set(key, clone6(record));
+    this.byKey.set(key, clone7(record));
     return record;
   }
 };
@@ -60163,15 +60587,15 @@ var MemoryAuditRepository = class {
   async append(entry) {
     const stored = { ...entry, id: randomUUID6(), createdAt: /* @__PURE__ */ new Date() };
     this.entries.unshift(stored);
-    return clone6(stored);
+    return clone7(stored);
   }
   async list(limit) {
-    return this.entries.slice(0, limit).map(clone6);
+    return this.entries.slice(0, limit).map(clone7);
   }
   async query(input) {
     const matches = this.entries.filter((entry) => input.action === null || entry.action.startsWith(input.action)).filter((entry) => input.actorId === null || entry.actorId === input.actorId).filter((entry) => input.entity === null || entry.entity === input.entity);
     return {
-      items: matches.slice(input.offset, input.offset + input.limit).map(clone6),
+      items: matches.slice(input.offset, input.offset + input.limit).map(clone7),
       total: matches.length
     };
   }
@@ -60179,13 +60603,13 @@ var MemoryAuditRepository = class {
 var MemoryProviderSettingsRepository = class {
   byId = /* @__PURE__ */ new Map();
   async list() {
-    return [...this.byId.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.provider.localeCompare(b.provider)).map(clone6);
+    return [...this.byId.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.provider.localeCompare(b.provider)).map(clone7);
   }
   async findBy(kind, provider) {
     const found = [...this.byId.values()].find(
       (setting) => setting.kind === kind && setting.provider === provider
     );
-    return found ? clone6(found) : null;
+    return found ? clone7(found) : null;
   }
   async upsert(input, at) {
     const existing = await this.findBy(input.kind, input.provider);
@@ -60198,8 +60622,8 @@ var MemoryProviderSettingsRepository = class {
       updatedBy: input.updatedBy,
       updatedAt: at
     };
-    this.byId.set(stored.id, clone6(stored));
-    return clone6(stored);
+    this.byId.set(stored.id, clone7(stored));
+    return clone7(stored);
   }
 };
 function createMemoryRepositories() {
@@ -60223,7 +60647,8 @@ function createMemoryRepositories() {
     reservations: reservations2,
     settings: new MemorySettingsRepository(),
     zones: new MemoryZoneRepository(),
-    audit: new MemoryAuditRepository()
+    audit: new MemoryAuditRepository(),
+    nodes: new MemoryNodeRepository()
   };
 }
 function haversineKm(a, b) {
@@ -66900,6 +67325,7 @@ __export(schema_exports, {
   deliveryMethod: () => deliveryMethod,
   devices: () => devices,
   messages: () => messages,
+  nodeHeartbeats: () => nodeHeartbeats,
   notificationChannel: () => notificationChannel,
   notifications: () => notifications,
   orderItems: () => orderItems,
@@ -67323,6 +67749,24 @@ var auditLogs = pgTable(
     index("audit_logs_entity_idx").on(t.entity, t.entityId, t.createdAt),
     index("audit_logs_actor_idx").on(t.actorId, t.createdAt)
   ]
+);
+var nodeHeartbeats = pgTable(
+  "node_heartbeats",
+  {
+    nodeId: text("node_id").primaryKey(),
+    name: text("name").notNull(),
+    role: text("role").notNull().default("primary"),
+    version: text("version"),
+    region: text("region"),
+    resources: jsonb("resources"),
+    traffic: jsonb("traffic").notNull().default({}),
+    jobs: jsonb("jobs").notNull().default({}),
+    uptimeSeconds: integer("uptime_seconds").notNull().default(0),
+    /** The node says it is sweeping right now (or parked and waiting, for a helper). */
+    active: boolean("active").notNull().default(false),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (t) => [index("node_heartbeats_last_seen_idx").on(t.lastSeenAt)]
 );
 
 // ../apps/api/src/infra/db/repositories/pg-identity.ts
@@ -68975,6 +69419,70 @@ var PgZoneRepository = class {
   }
 };
 
+// ../apps/api/src/infra/db/repositories/pg-nodes.ts
+var COLUMNS = `node_id, name, role, version, region, resources, traffic, jobs, uptime_seconds, active, last_seen_at`;
+var toRecord2 = (row) => ({
+  nodeId: row.node_id,
+  name: row.name,
+  role: row.role === "primary" ? "primary" : "helper",
+  version: row.version,
+  region: row.region,
+  resources: row.resources,
+  traffic: row.traffic,
+  jobs: { ...row.jobs, recent: row.jobs?.recent ?? [] },
+  uptimeSeconds: row.uptime_seconds,
+  active: row.active,
+  lastSeenAt: row.last_seen_at
+});
+var PgNodeRepository = class {
+  constructor(db) {
+    this.db = db;
+  }
+  async save(record) {
+    await query(
+      this.db,
+      `INSERT INTO node_heartbeats (${COLUMNS})
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11)
+       ON CONFLICT (node_id) DO UPDATE SET
+         name = EXCLUDED.name,
+         role = EXCLUDED.role,
+         version = EXCLUDED.version,
+         region = EXCLUDED.region,
+         resources = EXCLUDED.resources,
+         traffic = EXCLUDED.traffic,
+         jobs = EXCLUDED.jobs,
+         uptime_seconds = EXCLUDED.uptime_seconds,
+         active = EXCLUDED.active,
+         last_seen_at = EXCLUDED.last_seen_at`,
+      [
+        record.nodeId,
+        record.name,
+        record.role,
+        record.version,
+        record.region,
+        record.resources ? JSON.stringify(record.resources) : null,
+        JSON.stringify(record.traffic),
+        JSON.stringify(record.jobs),
+        record.uptimeSeconds,
+        record.active,
+        record.lastSeenAt
+      ]
+    );
+  }
+  async list() {
+    const rows = await query(this.db, `SELECT ${COLUMNS} FROM node_heartbeats`);
+    return rows.map(toRecord2);
+  }
+  async get(nodeId) {
+    const row = await queryOne(
+      this.db,
+      `SELECT ${COLUMNS} FROM node_heartbeats WHERE node_id = $1`,
+      [nodeId]
+    );
+    return row ? toRecord2(row) : null;
+  }
+};
+
 // ../apps/api/src/infra/db/repositories/index.ts
 function createPostgresRepositories(databaseUrl) {
   const pool = new Pool({
@@ -69003,7 +69511,8 @@ function createPostgresRepositories(databaseUrl) {
     reservations: new PgReservationRepository(pool),
     settings: new PgSettingsRepository(pool),
     zones: new PgZoneRepository(db),
-    audit: new PgAuditRepository(pool)
+    audit: new PgAuditRepository(pool),
+    nodes: new PgNodeRepository(pool)
   };
   return {
     pool,
@@ -69575,21 +70084,59 @@ if (config.NODE_ENV !== "production") {
   }
 }
 var sweepLock = postgres ? createPostgresSweepLock(postgres.pool, { logger: { warn: (message) => console.warn(message) } }) : createProcessSweepLock();
-var { app, scheduler } = await buildApp({
+var { app, services, scheduler } = await buildApp({
   config,
   repos,
   sms,
   clock: systemClock,
   sweepLock
 });
-var stopScheduler = scheduler.start(config.SCHEDULER_INTERVAL_MS);
+var stopScheduler = null;
+var startSweeping = (why) => {
+  if (stopScheduler) return;
+  stopScheduler = scheduler.start(config.SCHEDULER_INTERVAL_MS);
+  services.nodes.setActiveLocal(true);
+  app.log.warn(`[g-28] ${why}: this node is now running the expiry sweeps`);
+};
+var stopSweeping = (why) => {
+  if (!stopScheduler) return;
+  stopScheduler();
+  stopScheduler = null;
+  services.nodes.setActiveLocal(false);
+  app.log.warn(`[g-28] ${why}: this node is parked and will not sweep`);
+};
+var publishHeartbeat = () => {
+  void services.nodes.publishSelf().catch((error) => {
+    console.error("[g-28] heartbeat failed", error);
+  });
+};
+if (config.NODE_ROLE === "primary") {
+  startSweeping("primary role");
+  publishHeartbeat();
+} else {
+  const supervise = async () => {
+    try {
+      const decision = await services.nodes.failover();
+      if (decision.shouldTakeOver) startSweeping(`primary unreachable (${decision.reason})`);
+      else stopSweeping("primary is healthy");
+    } catch (error) {
+      console.error("[g-28] failover check failed", error);
+    }
+    publishHeartbeat();
+  };
+  void supervise();
+  setInterval(() => void supervise(), config.NODE_FAILOVER_POLL_MS).unref();
+}
+var heartbeatTimer = setInterval(publishHeartbeat, config.NODE_HEARTBEAT_MS);
+heartbeatTimer.unref();
 app.log.warn(
   postgres ? "Storage: Postgres adapter (task G-01)" : "Running with in-memory repositories \u2014 data is lost on restart (development only)"
 );
 await app.listen({ port: config.API_PORT, host: config.API_HOST });
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
-    stopScheduler();
+    clearInterval(heartbeatTimer);
+    stopScheduler?.();
     void app.close().then(() => postgres?.close()).then(() => process.exit(0));
   });
 }
