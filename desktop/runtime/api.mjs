@@ -1474,7 +1474,7 @@ var require_helmet = __commonJS({
 var require_helmet2 = __commonJS({
   "../node_modules/.pnpm/@fastify+helmet@12.0.1/node_modules/@fastify/helmet/index.js"(exports, module) {
     "use strict";
-    var { randomBytes: randomBytes2 } = __require("node:crypto");
+    var { randomBytes: randomBytes3 } = __require("node:crypto");
     var fp = require_plugin();
     var helmet2 = require_helmet();
     async function fastifyHelmet(fastify, options) {
@@ -1526,8 +1526,8 @@ var require_helmet2 = __commonJS({
     async function replyDecorators(request, reply, configuration, enableCSP) {
       if (enableCSP) {
         reply.cspNonce = {
-          script: randomBytes2(16).toString("hex"),
-          style: randomBytes2(16).toString("hex")
+          script: randomBytes3(16).toString("hex"),
+          style: randomBytes3(16).toString("hex")
         };
       }
       reply.helmet = function(opts) {
@@ -43236,7 +43236,7 @@ var require_websocket = __commonJS({
     var net = __require("net");
     var querystring = __require("querystring");
     var tls = __require("tls");
-    var { randomBytes: randomBytes2, createHash: createHash2 } = __require("crypto");
+    var { randomBytes: randomBytes3, createHash: createHash2 } = __require("crypto");
     var { Duplex, Readable } = __require("stream");
     var { URL: URL2 } = __require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -43790,7 +43790,7 @@ var require_websocket = __commonJS({
         }
       }
       const defaultPort = isSecure ? 443 : 80;
-      const key = randomBytes2(16).toString("base64");
+      const key = randomBytes3(16).toString("base64");
       const request = isSecure ? https.request : http.request;
       const protocolSet = /* @__PURE__ */ new Set();
       let perMessageDeflate;
@@ -45880,7 +45880,7 @@ var require_utils4 = __commonJS({
     var nodeCrypto = __require("crypto");
     module.exports = {
       postgresMd5PasswordHash,
-      randomBytes: randomBytes2,
+      randomBytes: randomBytes3,
       deriveKey,
       sha256: sha2562,
       hashByName,
@@ -45890,7 +45890,7 @@ var require_utils4 = __commonJS({
     var webCrypto = nodeCrypto.webcrypto || globalThis.crypto;
     var subtleCrypto = webCrypto.subtle;
     var textEncoder = new TextEncoder();
-    function randomBytes2(length) {
+    function randomBytes3(length) {
       return webCrypto.getRandomValues(Buffer.alloc(length));
     }
     async function md5(string) {
@@ -55121,6 +55121,9 @@ var createOrderSchema = external_exports.object({
   location: external_exports.object({ lat: external_exports.number().min(-90).max(90), lng: external_exports.number().min(-180).max(180) }).strict().optional(),
   deliveryMethod: external_exports.enum(DELIVERY_METHODS).default("FUEL_CARD")
 }).strict().refine((value) => value.province === void 0 && value.county === void 0 ? true : Boolean(value.province && value.county && isValidPlace(value.province, value.county)), { message: "province and county must be a real pair", path: ["county"] });
+var completeReservationSchema = external_exports.object({
+  code: external_exports.string().trim().transform((value) => toAsciiDigits(value).replace(/\s/g, "")).refine((value) => /^\d{4}$/.test(value), { message: "code must be four digits" }).optional()
+}).strict();
 var updateOrderSchema = external_exports.object({
   litres: litresSchema.optional(),
   rateToman: external_exports.number().int().positive().optional(),
@@ -55318,6 +55321,10 @@ var providerTestSchema = external_exports.object({ phone: iranMobileSchema }).st
 var createOwnerSchema = external_exports.object({
   phone: iranMobileSchema,
   displayName: external_exports.string().trim().min(2).max(60).default("\u0645\u0627\u0644\u06A9 \u0628\u0646\u0632\u06CC\u0646")
+}).strict();
+var tradeMedianQuerySchema = external_exports.object({
+  province: external_exports.string().trim().min(1).max(60).optional(),
+  county: external_exports.string().trim().min(1).max(60).optional()
 }).strict();
 var nodeHeartbeatSchema = external_exports.object({
   nodeId: external_exports.string().trim().min(3).max(64).regex(/^[A-Za-z0-9._-]+$/, { message: "NODE_ID_INVALID" }),
@@ -57822,6 +57829,10 @@ var ReputationService = class {
 };
 
 // ../apps/api/src/modules/reservations-service.ts
+import { randomBytes as randomBytes2 } from "node:crypto";
+var DELIVERY_CODE_LENGTH = 4;
+var DELIVERY_CODE_ATTEMPTS = 3;
+var DELIVERY_CODE_LOCK_MS = 10 * 6e4;
 var toReservationView = (reservation) => ({
   id: reservation.id,
   orderId: reservation.orderId,
@@ -57832,7 +57843,10 @@ var toReservationView = (reservation) => ({
   decidedAt: reservation.decidedAt?.toISOString() ?? null,
   completedAt: reservation.completedAt?.toISOString() ?? null,
   cancelReason: reservation.cancelReason,
-  extensionCount: reservation.extensionCount
+  extensionCount: reservation.extensionCount,
+  deliveryCodeIssued: reservation.deliveryCode !== null,
+  deliveryAttempts: Math.min(reservation.deliveryAttempts, DELIVERY_CODE_ATTEMPTS),
+  deliveryLockedUntil: reservation.deliveryLockedUntil?.toISOString() ?? null
 });
 var ReservationService = class {
   constructor(repos2, settings2, clock, notifier = NOOP_NOTIFIER, reputation = NOOP_REPUTATION) {
@@ -57939,10 +57953,11 @@ var ReservationService = class {
       throw new AppError("RESERVATION_NOT_ACTIVE", 409, "Reservation expired");
     }
     const next = nextReservationStatus(reservation.status, "CONFIRM", "OWNER");
-    const updated = await this.repos.reservations.transition(id, reservation.status, next, {
+    const confirmed = await this.repos.reservations.transition(id, reservation.status, next, {
       decidedAt: now
     });
-    if (!updated) throw AppError.conflict("CONFLICT", "Reservation changed while accepting");
+    if (!confirmed) throw AppError.conflict("CONFLICT", "Reservation changed while accepting");
+    const updated = await this.issueDeliveryCode(confirmed);
     const orderNext = nextOrderStatus(order.status, "CONFIRM", "OWNER");
     const updatedOrder = await this.repos.orders.transition(order.id, order.status, orderNext);
     if (!updatedOrder) throw AppError.conflict("CONFLICT", "Order changed while accepting");
@@ -58030,12 +58045,126 @@ var ReservationService = class {
     );
     return toReservationView(updated);
   }
-  async complete(actor, id) {
+  /**
+   * G-09 — mints the four-digit hand-over code.
+   *
+   * Random, but not from `Math.random`: the code is a small shared secret, so it comes from the
+   * platform CSPRNG. A lead-zero code is fine (it is stored and compared as text).
+   */
+  newDeliveryCode() {
+    const bytes = randomBytes2(4);
+    const value = bytes.readUInt32BE(0) % 10 ** DELIVERY_CODE_LENGTH;
+    return value.toString().padStart(DELIVERY_CODE_LENGTH, "0");
+  }
+  /** Idempotent: a reservation that already has a code keeps it (a re-accept cannot rotate it). */
+  async issueDeliveryCode(reservation) {
+    if (reservation.deliveryCode) return reservation;
+    const updated = await this.repos.reservations.updateDelivery(reservation.id, {
+      deliveryCode: this.newDeliveryCode(),
+      deliveryAttempts: 0,
+      deliveryLockedUntil: null
+    });
+    return updated ?? reservation;
+  }
+  /**
+   * G-09 — the buyer's view of the code. Only the taker may read it: the seller is the one who has
+   * to type it, so handing them the value would defeat the whole point.
+   *
+   * Reservations confirmed before this feature shipped have no code yet; one is minted on the first
+   * read, which keeps old trades closeable without a backfill.
+   */
+  async deliveryCode(actor, id) {
+    const { reservation, order } = await this.load(id);
+    if (reservation.takerId !== actor.id) {
+      throw AppError.forbidden(
+        "DELIVERY_CODE_BUYER_ONLY",
+        "Only the buyer can see the hand-over code"
+      );
+    }
+    if (reservation.status !== "CONFIRMED" && reservation.status !== "COMPLETED") {
+      throw new AppError("RESERVATION_NOT_ACTIVE", 409, "The trade has not been matched yet", {
+        status: reservation.status
+      });
+    }
+    const issued = await this.issueDeliveryCode(reservation);
+    const now = this.clock.now();
+    const locked = issued.deliveryLockedUntil;
+    return {
+      reservationId: issued.id,
+      orderId: order.id,
+      code: issued.deliveryCode ?? "",
+      expiresAt: issued.expiresAt.toISOString(),
+      attemptsRemaining: Math.max(
+        0,
+        DELIVERY_CODE_ATTEMPTS - (locked && locked.getTime() > now.getTime() ? 0 : issued.deliveryAttempts)
+      ),
+      lockedUntil: locked && locked.getTime() > now.getTime() ? locked.toISOString() : null
+    };
+  }
+  /**
+   * G-09 — checks one typed code. A wrong code only bumps the counter (the reservation does not
+   * move); the third wrong code arms the ten-minute lock. Every rejection is audited, because a
+   * stream of failures on one trade is exactly what a fraud investigation needs to see.
+   */
+  async verifyDeliveryCode(reservation, actor, code) {
+    const now = this.clock.now();
+    const locked = reservation.deliveryLockedUntil;
+    if (locked && locked.getTime() > now.getTime()) {
+      throw new AppError(
+        "DELIVERY_CODE_LOCKED",
+        429,
+        "Too many wrong codes \u2014 try again later",
+        { lockedUntil: locked.toISOString() }
+      );
+    }
+    if (!code) {
+      throw new AppError("DELIVERY_CODE_REQUIRED", 422, "The hand-over code is required", {
+        attemptsRemaining: DELIVERY_CODE_ATTEMPTS - reservation.deliveryAttempts
+      });
+    }
+    const expected = reservation.deliveryCode ?? (await this.issueDeliveryCode(reservation)).deliveryCode;
+    if (code === expected) {
+      if (reservation.deliveryAttempts > 0 || locked) {
+        await this.repos.reservations.updateDelivery(reservation.id, {
+          deliveryAttempts: 0,
+          deliveryLockedUntil: null
+        });
+      }
+      return;
+    }
+    const attempts = reservation.deliveryAttempts + 1;
+    const limitReached = attempts >= DELIVERY_CODE_ATTEMPTS;
+    const lockedUntil = limitReached ? new Date(now.getTime() + DELIVERY_CODE_LOCK_MS) : null;
+    await this.repos.reservations.updateDelivery(reservation.id, {
+      deliveryAttempts: attempts,
+      deliveryLockedUntil: lockedUntil
+    });
+    await this.repos.audit.append({
+      actorId: actor.id,
+      action: limitReached ? "delivery.code_locked" : "delivery.code_rejected",
+      entity: "reservation",
+      entityId: reservation.id,
+      metadata: { attempts, lockedUntil: lockedUntil?.toISOString() ?? null }
+    });
+    throw new AppError(
+      limitReached ? "DELIVERY_CODE_LOCKED" : "DELIVERY_CODE_INVALID",
+      limitReached ? 429 : 422,
+      limitReached ? "Too many wrong codes \u2014 try again later" : "Wrong hand-over code",
+      {
+        attemptsRemaining: Math.max(0, DELIVERY_CODE_ATTEMPTS - attempts),
+        ...lockedUntil ? { lockedUntil: lockedUntil.toISOString() } : {}
+      }
+    );
+  }
+  async complete(actor, id, code) {
     const { reservation, order } = await this.load(id);
     if (reservation.takerId !== actor.id && order.ownerId !== actor.id) {
       throw AppError.forbidden("NOT_RESERVATION_PARTY", "Not a party");
     }
     const actorKind = reservation.takerId === actor.id ? "TAKER" : "OWNER";
+    if (actorKind === "OWNER" && reservation.status === "CONFIRMED") {
+      await this.verifyDeliveryCode(reservation, actor, code);
+    }
     const next = nextReservationStatus(reservation.status, "COMPLETE", actorKind);
     const now = this.clock.now();
     const updated = await this.repos.reservations.transition(id, reservation.status, next, {
@@ -58048,7 +58177,7 @@ var ReservationService = class {
       action: "reservation.completed",
       entity: "reservation",
       entityId: id,
-      metadata: { by: actorKind }
+      metadata: { by: actorKind, codeVerified: actorKind === "OWNER" }
     });
     for (const userId of [order.ownerId, reservation.takerId]) {
       await this.reputation.record({
@@ -58509,6 +58638,74 @@ var StatsService = class {
       overallSampleSize: place.length,
       generatedAt: now.toISOString()
     };
+  }
+};
+var TRADE_MEDIAN_WINDOW_HOURS = 72;
+var TRADE_MEDIAN_MIN_TRADES = 5;
+var MAX_REGION_ROWS = 40;
+var MAX_TRADE_SAMPLE = 5e3;
+var placeLabel = (province, county) => county && province ? `${county}\u060C ${province}` : county ?? province ?? "\u06A9\u0644 \u06A9\u0634\u0648\u0631";
+var medianOf = (values) => {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  const value = sorted.length % 2 === 0 ? ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2 : sorted[middle];
+  return Math.round(value ?? 0);
+};
+var TradeMedianService = class {
+  constructor(repos2, clock) {
+    this.repos = repos2;
+    this.clock = clock;
+  }
+  async median(input = {}) {
+    const province = input.province ?? null;
+    const county = province === null ? null : input.county ?? null;
+    const since = new Date(this.clock.now().getTime() - TRADE_MEDIAN_WINDOW_HOURS * 36e5);
+    const trades2 = await this.repos.orders.listCompletedTrades({ since, limit: MAX_TRADE_SAMPLE });
+    const inScope = trades2.filter(
+      (trade) => (province === null || trade.province === province) && (county === null || trade.county === county)
+    );
+    const medianRateToman = this.medianOfTrades(inScope.map((trade) => trade.rateToman));
+    const sufficient = inScope.length >= TRADE_MEDIAN_MIN_TRADES;
+    const buckets = /* @__PURE__ */ new Map();
+    for (const trade of trades2) {
+      const key = `${trade.province ?? ""}|${trade.county ?? ""}`;
+      const bucket = buckets.get(key) ?? {
+        province: trade.province,
+        county: trade.county,
+        rates: []
+      };
+      bucket.rates.push(trade.rateToman);
+      buckets.set(key, bucket);
+    }
+    const byRegion = [...buckets.values()].map((bucket) => {
+      const median2 = this.medianOfTrades(bucket.rates);
+      const enough = bucket.rates.length >= TRADE_MEDIAN_MIN_TRADES;
+      return {
+        province: bucket.province,
+        county: bucket.county,
+        labelFa: placeLabel(bucket.province, bucket.county),
+        trades: bucket.rates.length,
+        // Same rule as the headline: below the threshold there is no number, only a count.
+        medianRateToman: enough ? median2 : null,
+        sufficient: enough
+      };
+    }).sort((a, b) => b.trades - a.trades || a.labelFa.localeCompare(b.labelFa, "fa")).slice(0, MAX_REGION_ROWS);
+    return {
+      windowHours: TRADE_MEDIAN_WINDOW_HOURS,
+      requiredTrades: TRADE_MEDIAN_MIN_TRADES,
+      scope: { province, county },
+      labelFa: placeLabel(province, county),
+      trades: inScope.length,
+      medianRateToman: sufficient ? medianRateToman : null,
+      sufficient,
+      messageFa: sufficient ? `\u0645\u06CC\u0627\u0646\u0647\u0654 ${toPersianDigits(TRADE_MEDIAN_WINDOW_HOURS)} \u0633\u0627\u0639\u062A \u06AF\u0630\u0634\u062A\u0647 \u0628\u0631 \u067E\u0627\u06CC\u0647\u0654 ${toPersianDigits(inScope.length)} \u0645\u0639\u0627\u0645\u0644\u0647\u0654 \u0627\u0646\u062C\u0627\u0645\u200C\u0634\u062F\u0647` : `\u062F\u0627\u062F\u0647\u0654 \u06A9\u0627\u0641\u06CC \u0646\u06CC\u0633\u062A \u2014 \u0628\u0631\u0627\u06CC \u0627\u06CC\u0646 \u0646\u0627\u062D\u06CC\u0647 \u06A9\u0645\u062A\u0631 \u0627\u0632 ${toPersianDigits(TRADE_MEDIAN_MIN_TRADES)} \u0645\u0639\u0627\u0645\u0644\u0647\u0654 \u0627\u0646\u062C\u0627\u0645\u200C\u0634\u062F\u0647 \u062B\u0628\u062A \u0634\u062F\u0647 \u0627\u0633\u062A`,
+      byRegion,
+      generatedAt: this.clock.now().toISOString()
+    };
+  }
+  medianOfTrades(values) {
+    return medianOf(values);
   }
 };
 
@@ -59118,6 +59315,7 @@ async function buildApp(options) {
   const hub = { publisher: NOOP_CHAT_EVENTS };
   const chat = new ChatService(repos2, settings2, clock, notifications2, events);
   const stats = new StatsService(repos2, settings2, clock);
+  const tradeMedian = new TradeMedianService(repos2, clock);
   const admin = new AdminService(repos2, settings2, clock, notifications2, reputation, sms2, {
     nodeEnv: config2.NODE_ENV,
     mode: config2.DATABASE_URL ? "postgres" : "memory",
@@ -59150,7 +59348,8 @@ async function buildApp(options) {
     profile,
     admin,
     stats,
-    nodes
+    nodes,
+    tradeMedian
   };
   const requireAuth = authenticate(auth);
   const app2 = (0, import_fastify.default)({
@@ -59337,6 +59536,10 @@ async function buildApp(options) {
     const query2 = parseInput(marketStatsSchema, request.query);
     return stats.market(query2);
   });
+  app2.get("/v1/stats/market/median", { preHandler: requireAuth }, async (request) => {
+    const query2 = parseInput(tradeMedianQuerySchema, request.query ?? {});
+    return tradeMedian.median(query2);
+  });
   app2.post("/v1/orders/:id/reservations", { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params;
     const created = await reservations2.request(currentUser(request), id);
@@ -59368,7 +59571,12 @@ async function buildApp(options) {
   });
   app2.post("/v1/reservations/:id/complete", { preHandler: requireAuth }, async (request) => {
     const { id } = request.params;
-    return reservations2.complete(currentUser(request), id);
+    const body = request.body === void 0 ? {} : parseInput(completeReservationSchema, request.body);
+    return reservations2.complete(currentUser(request), id, body.code);
+  });
+  app2.get("/v1/reservations/:id/delivery-code", { preHandler: requireAuth }, async (request) => {
+    const { id } = request.params;
+    return reservations2.deliveryCode(currentUser(request), id);
   });
   app2.get("/v1/reservations/:id/contact", { preHandler: requireAuth }, async (request) => {
     const { id } = request.params;
@@ -60391,6 +60599,15 @@ var MemoryDeviceRepository = class {
 };
 var MemoryOrderRepository = class {
   byId = /* @__PURE__ */ new Map();
+  /**
+   * Closed trades need both tables (task G-08): the price and place live on the order, the
+   * completion timestamp on the reservation. Postgres joins them; here the factory hands the
+   * reservation store over, which keeps the port free of a second repository argument.
+   */
+  reservations = null;
+  attachReservations(reservations2) {
+    this.reservations = reservations2;
+  }
   async create(input) {
     const now = /* @__PURE__ */ new Date();
     const order = {
@@ -60497,6 +60714,32 @@ var MemoryOrderRepository = class {
   async listByPlace(query2) {
     return [...this.byId.values()].filter((order) => order.createdAt.getTime() >= query2.since.getTime()).filter((order) => query2.province === null ? true : order.province === query2.province).filter((order) => query2.county === null ? true : order.county === query2.county).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, query2.limit).map(clone7);
   }
+  async listCompletedTrades(query2) {
+    if (!this.reservations) return [];
+    const closed = await this.reservations.listByStatusSince(
+      ["COMPLETED", "AUTO_COMPLETED"],
+      query2.since,
+      query2.limit
+    );
+    const trades2 = [];
+    for (const reservation of closed) {
+      const order = this.byId.get(reservation.orderId);
+      if (!order) continue;
+      if (query2.province && order.province !== query2.province) continue;
+      if (query2.county && order.county !== query2.county) continue;
+      trades2.push({
+        orderId: order.id,
+        reservationId: reservation.id,
+        rateToman: order.rateToman,
+        litres: order.litres,
+        province: order.province,
+        county: order.county,
+        completedAt: reservation.completedAt ?? reservation.decidedAt ?? reservation.createdAt
+      });
+      if (trades2.length >= query2.limit) break;
+    }
+    return trades2.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
+  }
 };
 var MemoryReservationRepository = class {
   byId = /* @__PURE__ */ new Map();
@@ -60534,7 +60777,10 @@ var MemoryReservationRepository = class {
       decidedAt: null,
       completedAt: null,
       cancelReason: null,
-      extensionCount: 0
+      extensionCount: 0,
+      deliveryCode: null,
+      deliveryAttempts: 0,
+      deliveryLockedUntil: null
     };
     this.byId.set(reservation.id, clone7(reservation));
     return clone7(reservation);
@@ -60543,6 +60789,13 @@ var MemoryReservationRepository = class {
     const current = this.byId.get(id);
     if (!current || current.status !== expected) return null;
     const updated = { ...current, ...patch, status: next };
+    this.byId.set(id, clone7(updated));
+    return clone7(updated);
+  }
+  async updateDelivery(id, patch) {
+    const current = this.byId.get(id);
+    if (!current) return null;
+    const updated = { ...current, ...patch };
     this.byId.set(id, clone7(updated));
     return clone7(updated);
   }
@@ -60557,6 +60810,11 @@ var MemoryReservationRepository = class {
     };
     this.byId.set(id, clone7(updated));
     return clone7(updated);
+  }
+  /** Reservations in one of `statuses` closed since `since` (task G-08). */
+  async listByStatusSince(statuses, since, limit) {
+    const timeOf = (reservation) => (reservation.completedAt ?? reservation.decidedAt ?? reservation.createdAt).getTime();
+    return [...this.byId.values()].filter((reservation) => statuses.includes(reservation.status)).filter((reservation) => timeOf(reservation) >= since.getTime()).sort((a, b) => timeOf(b) - timeOf(a)).slice(0, limit).map(clone7);
   }
   async listExpiredPending(now, limit) {
     return [...this.byId.values()].filter((r) => r.status === "PENDING_OWNER" && r.expiresAt.getTime() <= now.getTime()).slice(0, limit).map(clone7);
@@ -60629,6 +60887,7 @@ var MemoryProviderSettingsRepository = class {
 function createMemoryRepositories() {
   const orders2 = new MemoryOrderRepository();
   const reservations2 = new MemoryReservationRepository();
+  orders2.attachReservations(reservations2);
   return {
     users: new MemoryUserRepository(),
     conversations: new MemoryConversationRepository(orders2, reservations2),
@@ -67534,7 +67793,13 @@ var reservations = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** G-04: one 10-minute extension per reservation (migration `0006`). */
+    extensionCount: integer("extension_count").notNull().default(0),
+    /** G-09: the four-digit hand-over code and its wrong-attempt lock (migration `0008`). */
+    deliveryCode: text("delivery_code"),
+    deliveryAttempts: integer("delivery_attempts").notNull().default(0),
+    deliveryLockedUntil: timestamp("delivery_locked_until", { withTimezone: true })
   },
   (t) => [
     // The database half of the concurrency guarantee tested in apps/api/test/reservations.test.ts.
@@ -68466,11 +68731,50 @@ var PgOrderRepository = class {
     for (const row of rows) result[row.key] = Number(row.total);
     return result;
   }
+  /**
+   * Closed trades (task G-08). A trade is a *completed reservation*, so the join is the source of
+   * truth: `completed_at` is what the 72-hour window measures, and `rate_toman` on the order is
+   * the price per litre that actually changed hands.
+   */
+  async listCompletedTrades(input) {
+    const params = [input.since];
+    const filters = ["r.status IN ('COMPLETED', 'AUTO_COMPLETED')"];
+    if (input.province) {
+      params.push(input.province);
+      filters.push(`o.province = $${params.length}`);
+    }
+    if (input.county) {
+      params.push(input.county);
+      filters.push(`o.county = $${params.length}`);
+    }
+    params.push(input.limit);
+    const rows = await query(
+      this.db,
+      `SELECT r.order_id, r.id AS reservation_id, o.rate_toman, o.litres, o.province, o.county,
+              COALESCE(r.completed_at, r.decided_at) AS completed_at
+         FROM reservations r
+         JOIN orders o ON o.id = r.order_id
+        WHERE COALESCE(r.completed_at, r.decided_at) >= $1
+          AND ${filters.join(" AND ")}
+        ORDER BY completed_at DESC
+        LIMIT $${params.length}`,
+      params
+    );
+    return rows.map((row) => ({
+      orderId: row.order_id,
+      reservationId: row.reservation_id,
+      rateToman: Number(row.rate_toman),
+      litres: Number(row.litres),
+      province: row.province,
+      county: row.county,
+      completedAt: row.completed_at
+    }));
+  }
 };
 var PRICE_PER_LITRE_SQL = `(o.rate_toman + CASE WHEN o.side = 'SELL' THEN (CASE o.tier::text ${Object.entries(
   TIER_RATE_TOMAN
 ).map(([tier, fee]) => `WHEN '${tier}' THEN ${fee}`).join(" ")} ELSE 0 END) ELSE 0 END))`;
-var RESERVATION_COLUMNS = `id, order_id, taker_id, status, cancel_reason, expires_at, decided_at, completed_at, created_at, extension_count`;
+var RESERVATION_COLUMNS = `id, order_id, taker_id, status, cancel_reason, expires_at, decided_at, completed_at, created_at, extension_count, delivery_code, delivery_attempts, delivery_locked_until`;
 var toReservation = (row) => ({
   id: row.id,
   orderId: row.order_id,
@@ -68481,7 +68785,10 @@ var toReservation = (row) => ({
   decidedAt: row.decided_at,
   completedAt: row.completed_at,
   cancelReason: row.cancel_reason,
-  extensionCount: row.extension_count ?? 0
+  extensionCount: row.extension_count ?? 0,
+  deliveryCode: row.delivery_code,
+  deliveryAttempts: row.delivery_attempts ?? 0,
+  deliveryLockedUntil: row.delivery_locked_until
 });
 var PgReservationRepository = class {
   constructor(db) {
@@ -68542,6 +68849,24 @@ var PgReservationRepository = class {
        ON CONFLICT DO NOTHING
        RETURNING ${RESERVATION_COLUMNS}`,
       [input.id, input.orderId, input.takerId, input.expiresAt]
+    );
+    return row ? toReservation(row) : null;
+  }
+  async updateDelivery(id, patch) {
+    const row = await queryOne(
+      this.db,
+      `UPDATE reservations
+          SET delivery_code = COALESCE($2, delivery_code),
+              delivery_attempts = COALESCE($3, delivery_attempts),
+              delivery_locked_until = $4
+        WHERE id = $1
+        RETURNING ${RESERVATION_COLUMNS}`,
+      [
+        id,
+        patch.deliveryCode ?? null,
+        patch.deliveryAttempts ?? null,
+        patch.deliveryLockedUntil ?? null
+      ]
     );
     return row ? toReservation(row) : null;
   }
