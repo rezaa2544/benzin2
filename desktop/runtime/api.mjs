@@ -54844,7 +54844,12 @@ var NOTIFICATION_KINDS = [
   "PAYMENT_FAILED",
   "SUBSCRIPTION_EXPIRED",
   "DISPUTE_RESOLVED",
-  "ACCOUNT_ROLE_CHANGED"
+  "ACCOUNT_ROLE_CHANGED",
+  // G-10: an owner who lets three requests in a row die gets a 24-hour listing pause. It is a
+  // pause on the listings, never a mark on the person — the copy says so, and the pause expires by
+  // itself.
+  "LISTINGS_PAUSED",
+  "LISTINGS_RESUMED"
 ];
 var NOTIFICATION_TEMPLATES = {
   RESERVATION_REQUESTED: {
@@ -54942,6 +54947,16 @@ var NOTIFICATION_TEMPLATES = {
     titleFa: "\u0646\u0642\u0634 \u062D\u0633\u0627\u0628 \u0634\u0645\u0627 \u062A\u063A\u06CC\u06CC\u0631 \u06A9\u0631\u062F",
     bodyFa: "\u0646\u0642\u0634 \u062D\u0633\u0627\u0628 \u0634\u0645\u0627 \u0628\u0647 \xAB{role}\xBB \u062A\u063A\u06CC\u06CC\u0631 \u06CC\u0627\u0641\u062A. \u0627\u06AF\u0631 \u0627\u06CC\u0646 \u062A\u063A\u06CC\u06CC\u0631 \u0631\u0627 \u0627\u0646\u062C\u0627\u0645 \u0646\u062F\u0627\u062F\u0647\u200C\u0627\u06CC\u062F \u0628\u0627 \u067E\u0634\u062A\u06CC\u0628\u0627\u0646\u06CC \u062A\u0645\u0627\u0633 \u0628\u06AF\u06CC\u0631\u06CC\u062F.",
     smsFa: null
+  },
+  LISTINGS_PAUSED: {
+    titleFa: "\u0622\u06AF\u0647\u06CC\u200C\u0647\u0627 \u0645\u0648\u0642\u062A\u0627\u064B \u0627\u0632 \u0628\u0627\u0632\u0627\u0631 \u0628\u0631\u062F\u0627\u0634\u062A\u0647 \u0634\u062F",
+    bodyFa: "\u0633\u0647 \u062F\u0631\u062E\u0648\u0627\u0633\u062A \u067E\u06CC\u0627\u067E\u06CC \u0628\u06CC\u200C\u067E\u0627\u0633\u062E \u0645\u0627\u0646\u062F\u060C \u0628\u0646\u0627\u0628\u0631\u0627\u06CC\u0646 \u0622\u06AF\u0647\u06CC\u200C\u0647\u0627\u06CC \u0634\u0645\u0627 \u062A\u0627 {hours} \u0633\u0627\u0639\u062A \u062F\u0631 \u0628\u0627\u0632\u0627\u0631 \u062F\u06CC\u062F\u0647 \u0646\u0645\u06CC\u200C\u0634\u0648\u0646\u062F. \u0628\u0627 \u067E\u0627\u0633\u062E \u062F\u0627\u062F\u0646 \u0628\u0647 \u062F\u0631\u062E\u0648\u0627\u0633\u062A \u0628\u0639\u062F\u06CC\u060C \u0646\u0631\u062E \u067E\u0627\u0633\u062E\u200C\u062F\u0647\u06CC\u200C\u062A\u0627\u0646 \u0628\u0627\u0644\u0627 \u0645\u06CC\u200C\u0631\u0648\u062F\u061B \u0646\u06CC\u0627\u0632\u06CC \u0628\u0647 \u06A9\u0627\u0631 \u062F\u06CC\u06AF\u0631\u06CC \u0646\u06CC\u0633\u062A.",
+    smsFa: null
+  },
+  LISTINGS_RESUMED: {
+    titleFa: "\u0622\u06AF\u0647\u06CC\u200C\u0647\u0627\u06CC \u0634\u0645\u0627 \u0628\u0647 \u0628\u0627\u0632\u0627\u0631 \u0628\u0631\u06AF\u0634\u062A",
+    bodyFa: "\u062F\u0648\u0631\u0647\u0654 \u062A\u0648\u0642\u0641 \u0646\u0645\u0627\u06CC\u0634 \u0622\u06AF\u0647\u06CC\u200C\u0647\u0627 \u062A\u0645\u0627\u0645 \u0634\u062F \u0648 \u0633\u0641\u0627\u0631\u0634\u200C\u0647\u0627\u06CC \u0628\u0627\u0632 \u0634\u0645\u0627 \u062F\u0648\u0628\u0627\u0631\u0647 \u062F\u0631 \u0628\u0627\u0632\u0627\u0631 \u062F\u06CC\u062F\u0647 \u0645\u06CC\u200C\u0634\u0648\u0646\u062F.",
+    smsFa: "\u0622\u06AF\u0647\u06CC\u200C\u0647\u0627\u06CC \u0634\u0645\u0627 \u062F\u0648\u0628\u0627\u0631\u0647 \u062F\u0631 \u0628\u0627\u0632\u0627\u0631 \u0646\u0645\u0627\u06CC\u0634 \u062F\u0627\u062F\u0647 \u0645\u06CC\u200C\u0634\u0648\u062F. \u0628\u0646\u0632\u06CC\u0646"
   },
   ACCOUNT_RESTORED: {
     titleFa: "\u062A\u0639\u0644\u06CC\u0642 \u062D\u0633\u0627\u0628 \u0628\u0631\u062F\u0627\u0634\u062A\u0647 \u0634\u062F",
@@ -55439,6 +55454,10 @@ function nextReservationStatus(from, event, actor) {
 }
 
 // ../apps/api/src/ports.ts
+var NOOP_OWNER_RESPONSE = {
+  recordAnswer: async () => void 0,
+  recordMiss: async () => void 0
+};
 var NOOP_REPUTATION = {
   record: async () => void 0
 };
@@ -55446,6 +55465,184 @@ var NOOP_NOTIFIER = {
   emit: async () => void 0
 };
 var NOOP_CHAT_EVENTS = { publish: () => void 0 };
+
+// ../apps/api/src/modules/owner-response-service.ts
+var RESPONSE_WINDOW_DAYS = 30;
+var RESPONSE_MISS_LIMIT = 3;
+var RESPONSE_PAUSE_HOURS = 24;
+var ratePercentOf = (user) => user.responseReceived === 0 ? null : Math.round(user.responseAnswered * 1e3 / user.responseReceived) / 10;
+var toPercent = (answered, received) => received === 0 ? null : Math.round(answered * 1e3 / received) / 10;
+var responseLabelFa = (received, ratePercent) => {
+  if (ratePercent === null) return "\u062A\u0627\u0632\u0647\u200C\u06A9\u0627\u0631";
+  if (received < 3) return "\u06A9\u0645\u200C\u0633\u0627\u0628\u0642\u0647";
+  return `${new Intl.NumberFormat("fa-IR", { maximumFractionDigits: 1 }).format(ratePercent)}\u066A \u067E\u0627\u0633\u062E\u200C\u062F\u0647\u06CC`;
+};
+var toResponseView = (user) => {
+  const ratePercent = toPercent(user.responseAnswered, user.responseReceived);
+  return {
+    ownerId: user.id,
+    ratePercent,
+    answered: user.responseAnswered,
+    received: user.responseReceived,
+    labelFa: responseLabelFa(user.responseReceived, ratePercent),
+    unansweredStreak: user.unansweredStreak,
+    delistedUntil: user.delistedUntil && user.delistedUntil.getTime() > 0 ? user.delistedUntil.toISOString() : null
+  };
+};
+var OwnerResponseService = class {
+  constructor(repos2, clock, notifier) {
+    this.repos = repos2;
+    this.clock = clock;
+    this.notifier = notifier;
+  }
+  /** Recomputes the 30-day window for one owner and stores it on the account. */
+  async refresh(userId) {
+    const user = await this.repos.users.findById(userId);
+    if (!user) return null;
+    const since = new Date(
+      this.clock.now().getTime() - RESPONSE_WINDOW_DAYS * 24 * 36e5
+    );
+    const { received, answered } = await this.repos.reservations.countForOwnerWindow(
+      userId,
+      since
+    );
+    user.responseReceived = received;
+    user.responseAnswered = answered;
+    user.responseRatePermille = received === 0 ? null : Math.round(answered * 1e3 / received);
+    user.responseRefreshedAt = this.clock.now();
+    const saved = await this.repos.users.save(user);
+    return toResponseView(saved);
+  }
+  /** Called when the owner accepted or rejected a request — the streak resets. */
+  async recordAnswer(ownerId) {
+    const user = await this.repos.users.findById(ownerId);
+    if (!user) return null;
+    if (user.unansweredStreak !== 0) {
+      user.unansweredStreak = 0;
+      await this.repos.users.save(user);
+    }
+    return this.refresh(ownerId);
+  }
+  /**
+   * Called when a request died without the owner answering. Three in a row pause the listings
+   * for a day; the pause is recorded in the audit log so support can see it and undo it.
+   */
+  async recordMiss(ownerId) {
+    const user = await this.repos.users.findById(ownerId);
+    if (!user) return { view: null, paused: false };
+    const now = this.clock.now();
+    user.unansweredStreak += 1;
+    let paused = false;
+    if (user.unansweredStreak >= RESPONSE_MISS_LIMIT) {
+      const alreadyPaused = user.delistedUntil !== null && user.delistedUntil.getTime() > now.getTime();
+      if (!alreadyPaused) {
+        user.delistedUntil = new Date(now.getTime() + RESPONSE_PAUSE_HOURS * 36e5);
+        paused = true;
+        await this.repos.audit.append({
+          actorId: null,
+          action: "owner.delisted",
+          entity: "user",
+          entityId: ownerId,
+          metadata: {
+            unansweredStreak: user.unansweredStreak,
+            until: user.delistedUntil.toISOString(),
+            hours: RESPONSE_PAUSE_HOURS
+          }
+        });
+      }
+    }
+    await this.repos.users.save(user);
+    const view = await this.refresh(ownerId);
+    if (paused) {
+      await this.notifier.emit({
+        userId: ownerId,
+        kind: "LISTINGS_PAUSED",
+        params: { hours: RESPONSE_PAUSE_HOURS },
+        payload: { delistedUntil: user.delistedUntil?.toISOString() ?? null }
+      });
+    }
+    return { view, paused };
+  }
+  /** Badge for the listing card, batched: one call per market page, not one per card. */
+  async badges(ownerIds) {
+    const unique = [...new Set(ownerIds)];
+    const users2 = await this.repos.users.findByIds(unique);
+    return new Map(users2.map((user) => [user.id, toResponseView(user)]));
+  }
+  /** The signed-in seller's own card (profile screen). */
+  async me(userId) {
+    const user = await this.repos.users.findById(userId);
+    if (!user) throw new Error("USER_NOT_FOUND");
+    return toResponseView(user);
+  }
+  /** Scheduler sweep: a paused owner comes back on their own when the day is over. */
+  async liftDuePauses(limit = 100) {
+    const now = this.clock.now();
+    const due = await this.repos.users.listDelistDue(now, limit);
+    let lifted = 0;
+    for (const user of due) {
+      user.delistedUntil = null;
+      user.unansweredStreak = 0;
+      await this.repos.users.save(user);
+      await this.repos.audit.append({
+        actorId: null,
+        action: "owner.relisted",
+        entity: "user",
+        entityId: user.id,
+        metadata: { automatic: true }
+      });
+      await this.notifier.emit({
+        userId: user.id,
+        kind: "LISTINGS_RESUMED",
+        params: {},
+        payload: {}
+      });
+      lifted += 1;
+    }
+    return lifted;
+  }
+  /**
+   * Scheduler sweep: a 30-day window ages even when nothing happens, so the stored rate is
+   * refreshed at most `limit` owners per tick for anyone whose numbers are a day old.
+   */
+  async refreshStale(limit = 25) {
+    const before = new Date(this.clock.now().getTime() - 24 * 36e5);
+    const stale = await this.repos.users.listResponseStale(before, limit);
+    for (const user of stale) {
+      await this.refresh(user.id);
+    }
+    return stale.length;
+  }
+  /** Admin action: put a paused owner back in the market early. */
+  async relist(actorId, userId) {
+    const user = await this.repos.users.findById(userId);
+    if (!user) throw new Error("USER_NOT_FOUND");
+    user.delistedUntil = null;
+    user.unansweredStreak = 0;
+    const saved = await this.repos.users.save(user);
+    await this.repos.audit.append({
+      actorId,
+      action: "owner.relisted",
+      entity: "user",
+      entityId: userId,
+      metadata: { automatic: false }
+    });
+    await this.notifier.emit({
+      userId,
+      kind: "LISTINGS_RESUMED",
+      params: {},
+      payload: { manual: true }
+    });
+    return toResponseView(saved);
+  }
+  /** «توقف نمایش» count for the admin dashboard strip. */
+  async pausedCount() {
+    const paused = await this.repos.users.listDelisted(this.clock.now(), 500);
+    return paused.filter(
+      (user) => user.delistedUntil !== null && user.delistedUntil.getTime() > this.clock.now().getTime()
+    ).length;
+  }
+};
 
 // ../apps/api/src/modules/admin-service.ts
 var SECRET_KEY = /(secret|key|token|password)/i;
@@ -55468,7 +55665,15 @@ var toUserRow = (user) => ({
   roleFa: USER_ROLE_FA[user.role],
   status: user.status,
   suspendedUntil: user.suspendedUntil?.toISOString() ?? null,
-  createdAt: user.createdAt.toISOString()
+  createdAt: user.createdAt.toISOString(),
+  response: {
+    answered: user.responseAnswered,
+    received: user.responseReceived,
+    ratePercent: ratePercentOf(user),
+    labelFa: responseLabelFa(user.responseReceived, ratePercentOf(user)),
+    unansweredStreak: user.unansweredStreak
+  },
+  delistedUntil: user.delistedUntil?.toISOString() ?? null
 });
 var toAuditRow = (entry) => ({
   id: entry.id,
@@ -55594,6 +55799,39 @@ var AdminService = class {
     if (roleChanged && input.role) {
       await this.notify(saved.id, "ACCOUNT_ROLE_CHANGED", { role: USER_ROLE_FA[input.role] });
     }
+    return toUserRow(saved);
+  }
+  /**
+   * G-10 — the review queue for listing pauses.
+   *
+   * Support reviews *pauses*, never scores: the row shows how many requests the seller answered,
+   * how long they are out of the market, and which audit entries caused it. Putting them back is
+   * one call (`relist`), so the pause can never become a hidden ban.
+   */
+  async listingPauses() {
+    const now = this.clock.now();
+    const paused = await this.repos.users.listDelisted(now, 200);
+    const items = paused.filter((user) => user.delistedUntil !== null && user.delistedUntil.getTime() > now.getTime()).map((user) => ({
+      ...toUserRow(user),
+      until: user.delistedUntil.toISOString(),
+      reasonFa: `\u0633\u0647 \u062F\u0631\u062E\u0648\u0627\u0633\u062A \u067E\u06CC\u0627\u067E\u06CC \u0628\u06CC\u200C\u067E\u0627\u0633\u062E (${user.unansweredStreak} \u062F\u0631\u062E\u0648\u0627\u0633\u062A) \u2014 \u0646\u0645\u0627\u06CC\u0634 \u062A\u0627 \u067E\u0627\u06CC\u0627\u0646 \u062F\u0648\u0631\u0647 \u0645\u062A\u0648\u0642\u0641 \u0627\u0633\u062A`
+    }));
+    return { items, total: items.length };
+  }
+  /** G-10: early release from a pause, recorded in the audit log like every other moderation act. */
+  async relist(actor, userId) {
+    const user = await this.repos.users.findById(userId);
+    if (!user) throw AppError.notFound("USER_NOT_FOUND", "User not found");
+    if (user.delistedUntil === null) {
+      throw new AppError("NOT_DELISTED", 409, "This seller is not paused right now", {
+        userId
+      });
+    }
+    user.delistedUntil = null;
+    user.unansweredStreak = 0;
+    const saved = await this.repos.users.save(user);
+    await this.audit(actor, "owner.relisted", "user", userId, { automatic: false, by: actor.id });
+    await this.notify(saved.id, "LISTINGS_RESUMED", {});
     return toUserRow(saved);
   }
   /** E8-10: the first owner account is created by one CLI command, never from a public route. */
@@ -56786,7 +57024,16 @@ function toOrderView(order) {
     ),
     deliveryMethod: order.deliveryMethod,
     expiresAt: order.expiresAt.toISOString(),
-    createdAt: order.createdAt.toISOString()
+    createdAt: order.createdAt.toISOString(),
+    // G-10: the real badge is filled in by `decorate`, which has the owner rows; this default keeps
+    // `toOrderView` a pure function of the order for callers that do not need it.
+    owner: {
+      id: order.ownerId,
+      ratePercent: null,
+      labelFa: responseLabelFa(0, null),
+      answered: 0,
+      received: 0
+    }
   };
 }
 var encodeCursor = (offset) => Buffer.from(String(offset)).toString("base64url");
@@ -56893,6 +57140,7 @@ var OrderService = class {
     const origin = query2.lat !== void 0 && query2.lng !== void 0 ? { lat: query2.lat, lng: query2.lng } : null;
     const exact = query2.litresMode === "exact" ? query2.litres ?? null : null;
     const between2 = query2.litresMode === "range" && (query2.minLitres !== void 0 || query2.maxLitres !== void 0) ? { min: query2.minLitres ?? 1, max: query2.maxLitres ?? 1e3 } : null;
+    const paused = await this.repos.users.listDelisted(this.clock.now(), 500);
     const { items, total } = await this.repos.orders.search({
       province: query2.province ?? null,
       county: query2.county ?? null,
@@ -56900,6 +57148,8 @@ var OrderService = class {
       side: query2.side,
       tier: query2.tier ?? null,
       now: this.clock.now(),
+      excludeOwnerIds: paused.map((user) => user.id),
+      responseSince: new Date(this.clock.now().getTime() - 30 * 24 * 36e5),
       limit: query2.limit,
       offset,
       sort: query2.sort,
@@ -56925,7 +57175,8 @@ var OrderService = class {
         origin: null,
         radiusKm: null,
         litresExact: null,
-        litresBetween: { min: Math.max(1, exact - margin), max: exact + margin }
+        litresBetween: { min: Math.max(1, exact - margin), max: exact + margin },
+        excludeOwnerIds: paused.map((user) => user.id)
       });
       return {
         items: [],
@@ -56947,9 +57198,22 @@ var OrderService = class {
    * response carries the snapped `location` from `toOrderView` and nothing else.
    */
   async decorate(orders2, origin) {
+    const owners = await this.repos.users.findByIds(orders2.map((order) => order.ownerId));
+    const byId = new Map(owners.map((owner) => [owner.id, owner]));
     return Promise.all(
       orders2.map(async (order) => {
-        const view = toOrderView(order);
+        const owner = byId.get(order.ownerId) ?? null;
+        const ratePercent = owner === null || owner.responseReceived === 0 ? null : Math.round(owner.responseAnswered * 1e3 / owner.responseReceived) / 10;
+        const view = {
+          ...toOrderView(order),
+          owner: {
+            id: order.ownerId,
+            ratePercent,
+            labelFa: responseLabelFa(owner?.responseReceived ?? 0, ratePercent),
+            answered: owner?.responseAnswered ?? 0,
+            received: owner?.responseReceived ?? 0
+          }
+        };
         if (!origin || order.lat === null || order.lng === null) return view;
         return {
           ...view,
@@ -57849,12 +58113,13 @@ var toReservationView = (reservation) => ({
   deliveryLockedUntil: reservation.deliveryLockedUntil?.toISOString() ?? null
 });
 var ReservationService = class {
-  constructor(repos2, settings2, clock, notifier = NOOP_NOTIFIER, reputation = NOOP_REPUTATION) {
+  constructor(repos2, settings2, clock, notifier = NOOP_NOTIFIER, reputation = NOOP_REPUTATION, ownerResponse = NOOP_OWNER_RESPONSE) {
     this.repos = repos2;
     this.settings = settings2;
     this.clock = clock;
     this.notifier = notifier;
     this.reputation = reputation;
+    this.ownerResponse = ownerResponse;
   }
   /** One taker must not reserve twice at the same instant (E1-07). */
   takerLock = new KeyedLock();
@@ -57961,6 +58226,7 @@ var ReservationService = class {
     const orderNext = nextOrderStatus(order.status, "CONFIRM", "OWNER");
     const updatedOrder = await this.repos.orders.transition(order.id, order.status, orderNext);
     if (!updatedOrder) throw AppError.conflict("CONFLICT", "Order changed while accepting");
+    await this.ownerResponse.recordAnswer(order.ownerId);
     await this.repos.audit.append({
       actorId: actor.id,
       action: "reservation.confirmed",
@@ -57987,6 +58253,7 @@ var ReservationService = class {
     });
     if (!updated) throw AppError.conflict("CONFLICT", "Reservation changed while rejecting");
     await this.repos.orders.transition(order.id, "RESERVED", "OPEN");
+    await this.ownerResponse.recordAnswer(order.ownerId);
     await this.repos.audit.append({
       actorId: actor.id,
       action: "reservation.rejected",
@@ -58356,6 +58623,7 @@ var ReservationService = class {
     );
     if (!expired) return;
     await this.repos.orders.transition(order.id, "RESERVED", "OPEN");
+    await this.ownerResponse.recordMiss(order.ownerId);
     await this.notify(
       reservation.takerId,
       "RESERVATION_EXPIRED",
@@ -59053,7 +59321,7 @@ function createPostgresSweepLock(pool, options = {}) {
 
 // ../apps/api/src/scheduler.ts
 var SWEEP_LOCK_NAME = "expiry";
-function createScheduler(reservations2, orders2, reputation, payments2, _clock, lock = createProcessSweepLock(), options = {}) {
+function createScheduler(reservations2, orders2, reputation, payments2, _clock, lock = createProcessSweepLock(), ownerResponse = null, options = {}) {
   let last = null;
   const sweep = async () => {
     const reconciled = await payments2.reconcile();
@@ -59063,7 +59331,9 @@ function createScheduler(reservations2, orders2, reputation, payments2, _clock, 
       autoCompletedTrades: await reservations2.autoCompleteDueTrades(),
       // Trust suspensions are time-boxed; releasing them must not need an admin (E6-01).
       liftedSuspensions: await reputation.liftDueSuspensions(),
-      reconciledPayments: reconciled.expiredPayments + reconciled.healedPayments + reconciled.expiredSubscriptions
+      reconciledPayments: reconciled.expiredPayments + reconciled.healedPayments + reconciled.expiredSubscriptions,
+      liftedListingPauses: ownerResponse ? await ownerResponse.liftDuePauses() : 0,
+      refreshedResponseWindows: ownerResponse ? await ownerResponse.refreshStale() : 0
     };
     last = { at: _clock.now(), result };
     options.onTick?.(result, last.at);
@@ -59309,8 +59579,16 @@ async function buildApp(options) {
   );
   const reputation = new ReputationService(repos2, settings2, clock, notifications2);
   const profile = new ProfileService(repos2, reputation);
+  const ownerResponse = new OwnerResponseService(repos2, clock, notifications2);
   const orders2 = new OrderService(repos2, settings2, clock, distance, locations, notifications2);
-  const reservations2 = new ReservationService(repos2, settings2, clock, notifications2, reputation);
+  const reservations2 = new ReservationService(
+    repos2,
+    settings2,
+    clock,
+    notifications2,
+    reputation,
+    ownerResponse
+  );
   const events = { publish: (event) => hub.publisher.publish(event) };
   const hub = { publisher: NOOP_CHAT_EVENTS };
   const chat = new ChatService(repos2, settings2, clock, notifications2, events);
@@ -59329,7 +59607,7 @@ async function buildApp(options) {
     region: options.node?.region ?? config2.NODE_REGION ?? null,
     staleSeconds: config2.NODE_STALE_SECONDS
   });
-  const scheduler2 = createScheduler(reservations2, orders2, reputation, payments2, clock, sweepLock2, {
+  const scheduler2 = createScheduler(reservations2, orders2, reputation, payments2, clock, sweepLock2, ownerResponse, {
     onTick: (result, at) => {
       const detail = { ...result };
       const count = Object.values(detail).reduce((total, value) => total + value, 0);
@@ -59349,7 +59627,8 @@ async function buildApp(options) {
     admin,
     stats,
     nodes,
-    tradeMedian
+    tradeMedian,
+    ownerResponse
   };
   const requireAuth = authenticate(auth);
   const app2 = (0, import_fastify.default)({
@@ -59659,6 +59938,11 @@ async function buildApp(options) {
     { preHandler: requireAuth },
     async (request) => reputation.summary(currentUser(request).id)
   );
+  app2.get(
+    "/v1/me/response",
+    { preHandler: requireAuth },
+    async (request) => ownerResponse.me(currentUser(request).id)
+  );
   app2.get("/v1/users/:id/reputation", { preHandler: requireAuth }, async (request) => {
     const { id } = request.params;
     return reputation.publicProfile(id);
@@ -59809,6 +60093,15 @@ async function buildApp(options) {
     const { id } = request.params;
     const body = parseInput(adminUpdateUserSchema, request.body ?? {});
     return admin.updateUser(currentUser(request), id, body);
+  });
+  app2.get(
+    "/v1/admin/listing-pauses",
+    { preHandler: [...staffOnly] },
+    async () => admin.listingPauses()
+  );
+  app2.post("/v1/admin/users/:id/relist", { preHandler: [...staffOnly] }, async (request) => {
+    const { id } = request.params;
+    return admin.relist(currentUser(request), id);
   });
   app2.get("/v1/admin/orders", { preHandler: [...staffOnly] }, async (request) => {
     const query2 = parseInput(adminOrderQuerySchema, request.query);
@@ -60456,6 +60749,23 @@ var MemoryUserRepository = class {
     const user = this.byId.get(id);
     return user ? clone7(user) : null;
   }
+  async findByIds(ids) {
+    return ids.flatMap((id) => {
+      const user = this.byId.get(id);
+      return user ? [clone7(user)] : [];
+    });
+  }
+  async listDelisted(now, limit) {
+    return [...this.byId.values()].filter((user) => user.delistedUntil !== null && user.delistedUntil.getTime() > now.getTime()).sort((a, b) => a.delistedUntil.getTime() - b.delistedUntil.getTime()).slice(0, limit).map(clone7);
+  }
+  async listDelistDue(now, limit) {
+    return [...this.byId.values()].filter((user) => user.delistedUntil !== null && user.delistedUntil.getTime() <= now.getTime()).slice(0, limit).map(clone7);
+  }
+  async listResponseStale(before, limit) {
+    return [...this.byId.values()].filter(
+      (user) => user.responseRefreshedAt === null || user.responseRefreshedAt.getTime() <= before.getTime()
+    ).slice(0, limit).map(clone7);
+  }
   async findByPhone(phone) {
     const id = this.byPhone.get(phone);
     return id ? this.findById(id) : null;
@@ -60468,7 +60778,13 @@ var MemoryUserRepository = class {
       role: input.role ?? "USER",
       status: "ACTIVE",
       suspendedUntil: null,
-      createdAt: /* @__PURE__ */ new Date()
+      createdAt: /* @__PURE__ */ new Date(),
+      responseAnswered: 0,
+      responseReceived: 0,
+      responseRatePermille: null,
+      responseRefreshedAt: null,
+      unansweredStreak: 0,
+      delistedUntil: null
     };
     this.byId.set(user.id, clone7(user));
     this.byPhone.set(user.phone, user.id);
@@ -60608,6 +60924,14 @@ var MemoryOrderRepository = class {
   attachReservations(reservations2) {
     this.reservations = reservations2;
   }
+  /**
+   * G-10: the market hides a paused owner's listings and breaks price ties by answer rate, which
+   * are both user facts. Postgres joins `users`; here the factory hands the store over.
+   */
+  users = null;
+  attachUsers(users2) {
+    this.users = users2;
+  }
   async create(input) {
     const now = /* @__PURE__ */ new Date();
     const order = {
@@ -60638,18 +60962,29 @@ var MemoryOrderRepository = class {
     return order ? clone7(order) : null;
   }
   async search(query2) {
+    const paused = new Set(query2.excludeOwnerIds ?? []);
     const matches = [...this.byId.values()].filter(
-      (order) => order.status === "OPEN" && (query2.zoneId === null || order.zoneId === query2.zoneId) && (query2.province === null || order.province === query2.province) && (query2.county === null || order.county === query2.county) && order.side === query2.side && (query2.tier === null || order.tier === query2.tier) && (query2.litresExact === null || order.litres === query2.litresExact) && (query2.litresBetween === null || order.litres >= query2.litresBetween.min && order.litres <= query2.litresBetween.max) && order.expiresAt.getTime() > query2.now.getTime()
+      (order) => order.status === "OPEN" && !paused.has(order.ownerId) && (query2.zoneId === null || order.zoneId === query2.zoneId) && (query2.province === null || order.province === query2.province) && (query2.county === null || order.county === query2.county) && order.side === query2.side && (query2.tier === null || order.tier === query2.tier) && (query2.litresExact === null || order.litres === query2.litresExact) && (query2.litresBetween === null || order.litres >= query2.litresBetween.min && order.litres <= query2.litresBetween.max) && order.expiresAt.getTime() > query2.now.getTime()
     );
     const withDistance = matches.map((order) => {
       if (!query2.origin || order.lat === null || order.lng === null) return { order, km: Infinity };
       return { order, km: haversineKm(query2.origin, { lat: order.lat, lng: order.lng }) };
     });
     const filtered = query2.origin && query2.radiusKm !== null ? withDistance.filter((entry) => entry.km <= query2.radiusKm) : withDistance;
+    const rate = /* @__PURE__ */ new Map();
+    if (query2.sort === "price" && this.users) {
+      for (const { order } of filtered) {
+        if (rate.has(order.ownerId)) continue;
+        const owner = await this.users.findById(order.ownerId);
+        rate.set(order.ownerId, owner?.responseRatePermille ?? -1);
+      }
+    }
     filtered.sort((a, b) => {
       if (query2.sort === "price") {
         const allIn = (order) => order.rateToman + (order.side === "SELL" ? TIER_RATE_TOMAN[order.tier] : 0);
-        return allIn(a.order) - allIn(b.order);
+        const byPrice = allIn(a.order) - allIn(b.order);
+        if (byPrice !== 0) return byPrice;
+        return (rate.get(b.order.ownerId) ?? -1) - (rate.get(a.order.ownerId) ?? -1);
       }
       if (query2.sort === "newest") return b.order.createdAt.getTime() - a.order.createdAt.getTime();
       return a.km - b.km;
@@ -60743,6 +61078,24 @@ var MemoryOrderRepository = class {
 };
 var MemoryReservationRepository = class {
   byId = /* @__PURE__ */ new Map();
+  /** G-10: the answer window needs the order's owner; Postgres joins, here the factory hands it over. */
+  orders = null;
+  attachOrders(orders2) {
+    this.orders = orders2;
+  }
+  async countForOwnerWindow(ownerId, since) {
+    let received = 0;
+    let answered = 0;
+    for (const reservation of this.byId.values()) {
+      if (reservation.createdAt.getTime() < since.getTime()) continue;
+      const order = this.orders ? await this.orders.findById(reservation.orderId) : null;
+      if (!order || order.ownerId !== ownerId) continue;
+      if (reservation.status === "CANCELLED_BY_TAKER" && reservation.decidedAt === null) continue;
+      received += 1;
+      if (reservation.decidedAt !== null) answered += 1;
+    }
+    return { received, answered };
+  }
   isActive(reservation) {
     return ACTIVE_RESERVATION_STATUSES.includes(reservation.status);
   }
@@ -60887,9 +61240,12 @@ var MemoryProviderSettingsRepository = class {
 function createMemoryRepositories() {
   const orders2 = new MemoryOrderRepository();
   const reservations2 = new MemoryReservationRepository();
+  const users2 = new MemoryUserRepository();
   orders2.attachReservations(reservations2);
+  orders2.attachUsers(users2);
+  reservations2.attachOrders(orders2);
   return {
-    users: new MemoryUserRepository(),
+    users: users2,
     conversations: new MemoryConversationRepository(orders2, reservations2),
     messages: new MemoryMessageRepository(),
     notifications: new MemoryNotificationRepository(),
@@ -67674,6 +68030,16 @@ var users = pgTable(
     reputation: integer("reputation").notNull().default(0),
     /** Trust suspension window (task E6-01); null when the account is unrestricted. */
     suspendedUntil: timestamp("suspended_until", { withTimezone: true }),
+    /**
+     * G-10 — answer rate over the last 30 days, stored as a projection so the market can sort on
+     * it and the card can show it without recounting reservations. Nothing here is a penalty.
+     */
+    responseAnswered: integer("response_answered").notNull().default(0),
+    responseReceived: integer("response_received").notNull().default(0),
+    responseRatePermille: integer("response_rate_permille"),
+    responseRefreshedAt: timestamp("response_refreshed_at", { withTimezone: true }),
+    unansweredStreak: integer("unanswered_streak").notNull().default(0),
+    delistedUntil: timestamp("delisted_until", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true })
@@ -68074,7 +68440,9 @@ var Conditions = class {
 };
 
 // ../apps/api/src/infra/db/repositories/pg-identity.ts
-var USER_COLUMNS = `id, phone, display_name, role, status, suspended_until, created_at`;
+var USER_COLUMNS = `id, phone, display_name, role, status, suspended_until, created_at,
+  response_answered, response_received, response_rate_permille, response_refreshed_at,
+  unanswered_streak, delisted_until`;
 var toUser = (row) => ({
   id: row.id,
   phone: row.phone,
@@ -68082,7 +68450,13 @@ var toUser = (row) => ({
   role: row.role,
   status: row.status,
   suspendedUntil: row.suspended_until,
-  createdAt: row.created_at
+  createdAt: row.created_at,
+  responseAnswered: Number(row.response_answered ?? 0),
+  responseReceived: Number(row.response_received ?? 0),
+  responseRatePermille: row.response_rate_permille === null ? null : Number(row.response_rate_permille),
+  responseRefreshedAt: row.response_refreshed_at,
+  unansweredStreak: Number(row.unanswered_streak ?? 0),
+  delistedUntil: row.delisted_until
 });
 var PgUserRepository = class {
   constructor(db) {
@@ -68095,6 +68469,47 @@ var PgUserRepository = class {
       [id]
     );
     return row ? toUser(row) : null;
+  }
+  async findByIds(ids) {
+    if (ids.length === 0) return [];
+    const rows = await query(
+      this.db,
+      `SELECT ${USER_COLUMNS} FROM users WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`,
+      [ids]
+    );
+    return rows.map(toUser);
+  }
+  /** G-10: owners paused out of the market right now. */
+  async listDelisted(now, limit) {
+    const rows = await query(
+      this.db,
+      `SELECT ${USER_COLUMNS} FROM users
+        WHERE deleted_at IS NULL AND delisted_until IS NOT NULL AND delisted_until > $1
+        ORDER BY delisted_until LIMIT $2`,
+      [now, limit]
+    );
+    return rows.map(toUser);
+  }
+  async listDelistDue(now, limit) {
+    const rows = await query(
+      this.db,
+      `SELECT ${USER_COLUMNS} FROM users
+        WHERE deleted_at IS NULL AND delisted_until IS NOT NULL AND delisted_until <= $1
+        ORDER BY delisted_until LIMIT $2`,
+      [now, limit]
+    );
+    return rows.map(toUser);
+  }
+  async listResponseStale(before, limit) {
+    const rows = await query(
+      this.db,
+      `SELECT ${USER_COLUMNS} FROM users
+        WHERE deleted_at IS NULL
+          AND (response_refreshed_at IS NULL OR response_refreshed_at <= $1)
+        ORDER BY response_refreshed_at NULLS FIRST LIMIT $2`,
+      [before, limit]
+    );
+    return rows.map(toUser);
   }
   async listSuspendedDue(now, limit) {
     const rows = await query(
@@ -68126,9 +68541,24 @@ var PgUserRepository = class {
   async save(user) {
     const row = await queryOne(
       this.db,
-      `UPDATE users SET display_name = $2, role = $3, status = $4, suspended_until = $5, updated_at = now()
+      `UPDATE users SET display_name = $2, role = $3, status = $4, suspended_until = $5,
+         response_answered = $6, response_received = $7, response_rate_permille = $8,
+         response_refreshed_at = $9, unanswered_streak = $10, delisted_until = $11,
+         updated_at = now()
         WHERE id = $1 RETURNING ${USER_COLUMNS}`,
-      [user.id, user.displayName, user.role, user.status, user.suspendedUntil]
+      [
+        user.id,
+        user.displayName,
+        user.role,
+        user.status,
+        user.suspendedUntil,
+        user.responseAnswered,
+        user.responseReceived,
+        user.responseRatePermille,
+        user.responseRefreshedAt,
+        user.unansweredStreak,
+        user.delistedUntil
+      ]
     );
     if (!row) throw new Error(`user ${user.id} not found`);
     return toUser(row);
@@ -68562,6 +68992,9 @@ var PgOrderRepository = class {
     };
     parts.push(`o.expires_at > ${param(input.now)}`);
     parts.push(`o.side = ${param(input.side)}`);
+    if (input.excludeOwnerIds && input.excludeOwnerIds.length > 0) {
+      parts.push(`o.owner_id <> ALL(${param([...input.excludeOwnerIds])}::uuid[])`);
+    }
     if (input.zoneId !== null) parts.push(`o.zone_id = ${param(input.zoneId)}`);
     if (input.province !== null) parts.push(`o.province = ${param(input.province)}`);
     if (input.county !== null) parts.push(`o.county = ${param(input.county)}`);
@@ -68590,9 +69023,9 @@ var PgOrderRepository = class {
     const offset = param(input.offset);
     const rows = await query(
       this.db,
-      `SELECT ${ORDER_FIELDS}, ${distance} AS distance_m FROM orders o ${where} ORDER BY ${this.orderBy(
-        input.sort
-      )} LIMIT ${limit} OFFSET ${offset}`,
+      `SELECT ${ORDER_FIELDS}, ${distance} AS distance_m FROM orders o
+         LEFT JOIN users o_owner ON o_owner.id = o.owner_id
+         ${where} ORDER BY ${this.orderBy(input.sort, input.now)} LIMIT ${limit} OFFSET ${offset}`,
       values
     );
     const total = await scalar(
@@ -68602,8 +69035,10 @@ var PgOrderRepository = class {
     );
     return { items: rows.map(toOrder), total };
   }
-  orderBy(sort) {
-    if (sort === "price") return `${PRICE_PER_LITRE_SQL} ASC, o.created_at DESC`;
+  orderBy(sort, now) {
+    if (sort === "price") {
+      return `${PRICE_PER_LITRE_SQL} ASC, COALESCE(o_owner.response_rate_permille, -1) DESC, o.created_at DESC`;
+    }
     if (sort === "newest") return "o.created_at DESC";
     return "distance_m ASC NULLS LAST, o.created_at DESC";
   }
@@ -68801,6 +69236,23 @@ var PgReservationRepository = class {
       [id]
     );
     return row ? toReservation(row) : null;
+  }
+  /**
+   * G-10: one owner's 30-day answer rate in a single aggregate. A request the buyer cancelled
+   * before the owner ever decided is left out — that silence is not the seller's.
+   */
+  async countForOwnerWindow(ownerId, since) {
+    const row = await queryOne(
+      this.db,
+      `SELECT
+         count(*) FILTER (WHERE NOT (r.status = 'CANCELLED_BY_TAKER' AND r.decided_at IS NULL))::int AS received,
+         count(*) FILTER (WHERE r.decided_at IS NOT NULL)::int AS answered
+       FROM reservations r
+       JOIN orders o ON o.id = r.order_id
+       WHERE o.owner_id = $1 AND r.created_at >= $2`,
+      [ownerId, since]
+    );
+    return { received: Number(row?.received ?? 0), answered: Number(row?.answered ?? 0) };
   }
   async findActiveByOrder(orderId) {
     const row = await queryOne(
