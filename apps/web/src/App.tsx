@@ -8,7 +8,14 @@ import {
   writeSession,
   type Session,
 } from './lib/session.js';
-import { buildQuery, isPublic, matchRoute, navigate, type RouteMatch } from './lib/router.js';
+import {
+  buildQuery,
+  isPublic,
+  matchRoute,
+  navigate,
+  resolveRedirect,
+  type RouteMatch,
+} from './lib/router.js';
 import { filtersFromQuery, type MarketFilters } from './lib/market.js';
 import {
   applyTheme,
@@ -133,11 +140,25 @@ export function App(): JSX.Element {
   }, []);
 
   // Bounce unauthenticated deep links to /login, keeping the destination.
+  //
+  // The destination comes from the *parsed* route, never from `window.location`: with a stale route
+  // (StrictMode runs effects twice in dev) reading `location` produced
+  // `/login?next=/login?next=/`, which logged the user in and then dropped them back on the login
+  // screen — a trap the browser check for G-09 walked straight into.
   useEffect(() => {
     if (!route) return;
-    if (session || isPublic(route.name)) return;
-    const path = `${window.location.pathname}${window.location.search}`;
-    navigate(`/login?next=${encodeURIComponent(path)}`, { replace: true });
+    if (isPublic(route.name)) return;
+    if (session) return;
+    // A login that has just finished is not in React state yet: `navigate()` dispatches `popstate`,
+    // and React flushes that discrete event before the pending `setSession` — so the user was
+    // bounced straight back to /login (the session existed, the screen did not know). Ask the store
+    // before redirecting; only a genuinely signed-out visitor is sent to the login screen.
+    const stored = readSession(storeRef.current);
+    if (stored) {
+      setSession(stored);
+      return;
+    }
+    navigate(`/login?next=${encodeURIComponent(resolveRedirect(route))}`, { replace: true });
   }, [route, session]);
 
   // -------------------------------------------------------------- bootstrap
@@ -179,7 +200,9 @@ export function App(): JSX.Element {
       setSession(next);
       const requested = route?.query['next'];
       const target = requested ? decodeURIComponent(requested) : '/market';
-      navigate(target.startsWith('/') ? target : '/market', { replace: true });
+      // A `next` that points back at the login screen (older links, nested redirects) is ignored.
+      const safe = target.startsWith('/') && !target.startsWith('/login') ? target : '/market';
+      navigate(safe, { replace: true });
     },
     [route],
   );

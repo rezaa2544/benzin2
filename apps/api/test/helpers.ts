@@ -115,6 +115,30 @@ export async function createTestContext(
   return { app, services: built.services, repos, sms, clock, close: () => app.close() };
 }
 
+/**
+ * Closes a matched trade exactly the way the product does since G-09: the buyer reads the
+ * four-digit hand-over code, the seller types it. Tests that only care about the *result* of a
+ * completed trade should use this instead of hand-rolling the two calls.
+ */
+export async function completeTrade(
+  ctx: TestContext,
+  input: { reservationId: string; sellerToken: string; buyerToken: string },
+): Promise<{ statusCode: number; body: { status?: string; error?: { code: string } } }> {
+  const codeResponse = await ctx.app.inject({
+    method: 'GET',
+    url: `/v1/reservations/${input.reservationId}/delivery-code`,
+    headers: { authorization: `Bearer ${input.buyerToken}` },
+  });
+  const code = codeResponse.statusCode === 200 ? (codeResponse.json() as { code: string }).code : undefined;
+  const response = await ctx.app.inject({
+    method: 'POST',
+    url: `/v1/reservations/${input.reservationId}/complete`,
+    headers: { authorization: `Bearer ${input.sellerToken}` },
+    ...(code ? { payload: { code } } : {}),
+  });
+  return { statusCode: response.statusCode, body: response.json() };
+}
+
 /** Registers a user through the real OTP flow and returns their bearer token. */
 export async function login(
   ctx: TestContext,

@@ -15,6 +15,7 @@ import {
   chatMessagesQuerySchema,
   confirmPaymentSchema,
   createPaymentCardSchema,
+  completeReservationSchema,
   createOrderSchema,
   isAppError,
   marketStatsSchema,
@@ -476,7 +477,19 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
 
   app.post('/v1/reservations/:id/complete', { preHandler: requireAuth }, async (request) => {
     const { id } = request.params as { id: string };
-    return reservations.complete(currentUser(request), id);
+    // G-09: the seller must send the buyer's four-digit code; an empty body is still fine for the
+    // buyer closing their own trade, so the body is optional here.
+    const body = request.body === undefined ? {} : parseInput(completeReservationSchema, request.body);
+    return reservations.complete(currentUser(request), id, body.code);
+  });
+
+  /**
+   * G-09 — the hand-over code, readable by the buyer only. The seller gets 403
+   * `DELIVERY_CODE_BUYER_ONLY`, because the whole point is that they have to be told the code.
+   */
+  app.get('/v1/reservations/:id/delivery-code', { preHandler: requireAuth }, async (request) => {
+    const { id } = request.params as { id: string };
+    return reservations.deliveryCode(currentUser(request), id);
   });
 
   app.get('/v1/reservations/:id/contact', { preHandler: requireAuth }, async (request) => {

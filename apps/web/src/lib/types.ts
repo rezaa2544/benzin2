@@ -295,3 +295,13 @@ export interface TradeMedian {
   byRegion: TradeMedianRegion[];
   generatedAt: string;
 }
+
+/** `GET /v1/reservations/:id/delivery-code` — the buyer's four-digit hand-over code (G-09). */
+export interface DeliveryCode {
+  reservationId: string;
+  orderId: string;
+  code: string;
+  expiresAt: string;
+  attemptsRemaining: number;
+  lockedUntil: string | null;
+}

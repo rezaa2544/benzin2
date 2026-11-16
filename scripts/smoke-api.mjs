@@ -6,7 +6,8 @@
  *   API=http://127.0.0.1:4301 node scripts/smoke-api.mjs
  *
  * Walks the whole marketplace: OTP login for two accounts → market stats → place a SELL listing →
- * search → reserve → owner confirms → contact reveal → chat → complete → rating → notifications →
+ * search → reserve → owner confirms → contact reveal → chat → delivery code (G-09) → complete →
+ * rating → notifications →
  * admin dashboard. Every step asserts on the response, so a broken adapter fails loudly instead of
  * "seeming" fine. Read-only on the database: it only creates its own rows.
  */
@@ -221,9 +222,37 @@ await step('chat: post + read message', async () => {
   return `${items.length} message(s)`;
 });
 
-await step('POST /v1/reservations/:id/complete', async () => {
+// G-09 — the four-digit hand-over code: buyer reads it, seller types it to close the trade.
+let deliveryCodeValue = '';
+const deliveryCode = await step('GET /v1/reservations/:id/delivery-code (G-09, buyer only)', async () => {
+  const mine = await call('GET', `/v1/reservations/${reservation.id}/delivery-code`, {
+    token: buyer.token,
+  });
+  expect(mine.status === 200, `status ${mine.status}: ${JSON.stringify(mine.payload)}`);
+  expect(/^\d{4}$/.test(mine.payload?.code ?? ''), `code ${mine.payload?.code}`);
+  const seller = await call('GET', `/v1/reservations/${reservation.id}/delivery-code`, {
+    token: owner.token,
+  });
+  expect(seller.status === 403, `the seller must not see the code, got ${seller.status}`);
+  deliveryCodeValue = mine.payload.code;
+  return `code ${deliveryCodeValue} · seller 403`;
+});
+
+await step('POST /v1/reservations/:id/complete refuses a wrong code (G-09)', async () => {
+  const wrong = deliveryCodeValue === '0000' ? '1111' : '0000';
   const { status, payload } = await call('POST', `/v1/reservations/${reservation.id}/complete`, {
     token: owner.token,
+    body: { code: wrong },
+  });
+  expect(status === 422, `status ${status}: ${JSON.stringify(payload)}`);
+  expect(payload?.error?.code === 'DELIVERY_CODE_INVALID', `code ${payload?.error?.code}`);
+  return `attempts left ${payload.error.details?.attemptsRemaining}`;
+});
+
+await step('POST /v1/reservations/:id/complete with the code (G-09)', async () => {
+  const { status, payload } = await call('POST', `/v1/reservations/${reservation.id}/complete`, {
+    token: owner.token,
+    body: { code: deliveryCodeValue },
   });
   expect(status === 200, `status ${status}: ${JSON.stringify(payload)}`);
   expect(['COMPLETED', 'AUTO_COMPLETED'].includes(payload.status), `status ${payload.status}`);

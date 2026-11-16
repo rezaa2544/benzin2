@@ -519,6 +519,9 @@ export class MemoryReservationRepository implements ReservationRepository {
       completedAt: null,
       cancelReason: null,
       extensionCount: 0,
+      deliveryCode: null,
+      deliveryAttempts: 0,
+      deliveryLockedUntil: null,
     };
     this.byId.set(reservation.id, clone(reservation));
     return clone(reservation);
@@ -533,6 +536,19 @@ export class MemoryReservationRepository implements ReservationRepository {
     const current = this.byId.get(id);
     if (!current || current.status !== expected) return null;
     const updated: Reservation = { ...current, ...patch, status: next };
+    this.byId.set(id, clone(updated));
+    return clone(updated);
+  }
+
+  async updateDelivery(
+    id: string,
+    patch: Partial<
+      Pick<Reservation, 'deliveryCode' | 'deliveryAttempts' | 'deliveryLockedUntil'>
+    >,
+  ): Promise<Reservation | null> {
+    const current = this.byId.get(id);
+    if (!current) return null;
+    const updated: Reservation = { ...current, ...patch };
     this.byId.set(id, clone(updated));
     return clone(updated);
   }

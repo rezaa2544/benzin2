@@ -61,6 +61,17 @@ export interface Reservation {
   cancelReason: string | null;
   /** How many times the taker pushed the deadline (G-04 allows exactly one 10-minute extension). */
   extensionCount: number;
+  /**
+   * G-09: the four-digit hand-over code the buyer reads to the seller at the pump. Minted when the
+   * owner accepts the request, visible only to the buyer, and the only way the *seller* can close
+   * the trade. Stored in clear because the buyer has to be able to read it again later; it dies
+   * with the reservation, never leaves the two parties, and every failed attempt is audited.
+   */
+  deliveryCode: string | null;
+  /** Wrong codes typed since the last success — the third one arms the lock. */
+  deliveryAttempts: number;
+  /** Set when `deliveryAttempts` hits the limit; ignored after it passes. */
+  deliveryLockedUntil: Date | null;
 }
 
 /** One chat thread per order; both trade parties write into it (task E5-01). */

@@ -87,6 +87,24 @@ export const createOrderSchema = z
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 
 /** Owner-side edit of an open order. Every field is optional, but at least one is required. */
+/**
+ * G-09 — closing a trade. `code` is the four-digit hand-over code the buyer reads out; the seller
+ * must send it, the buyer may omit it (they are the one holding it). Persian digits are accepted
+ * and normalised, because the app's inputs are Persian.
+ */
+export const completeReservationSchema = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .transform((value) => toAsciiDigits(value).replace(/\s/g, ''))
+      .refine((value) => /^\d{4}$/.test(value), { message: 'code must be four digits' })
+      .optional(),
+  })
+  .strict();
+
+export type CompleteReservationInput = z.infer<typeof completeReservationSchema>;
+
 export const updateOrderSchema = z
   .object({
     litres: litresSchema.optional(),

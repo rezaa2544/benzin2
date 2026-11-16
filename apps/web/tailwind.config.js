@@ -38,6 +38,14 @@ export default {
         card: '0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px -12px rgb(0 0 0 / 0.18)',
         sheet: '0 -12px 40px -16px rgb(0 0 0 / 0.35)',
       },
+      // Layer order lives in tokens.css (--z-nav / --z-sheet / --z-toast). Without these keys the
+      // `z-nav` / `z-sheet` classes compile to nothing and the bottom sheet ends up *under* the
+      // bottom navigation bar — its confirm button was unclickable on a phone viewport (G-09).
+      zIndex: {
+        nav: 'var(--z-nav)',
+        sheet: 'var(--z-sheet)',
+        toast: 'var(--z-toast)',
+      },
       minHeight: { tap: '44px' },
       minWidth: { tap: '44px' },
       maxWidth: { phone: '430px' },

@@ -238,6 +238,16 @@ export interface ReservationRepository {
     patch?: Partial<Pick<Reservation, 'decidedAt' | 'completedAt' | 'cancelReason'>>,
   ): Promise<Reservation | null>;
   /**
+   * G-09: writes the delivery-code state without touching the status — the code is minted on
+   * accept, and a wrong attempt only bumps the counter, it must not move the reservation.
+   */
+  updateDelivery(
+    id: string,
+    patch: Partial<
+      Pick<Reservation, 'deliveryCode' | 'deliveryAttempts' | 'deliveryLockedUntil'>
+    >,
+  ): Promise<Reservation | null>;
+  /**
    * Pushes the deadline of a still-pending reservation (G-04). `expectedExpiresAt` makes it a
    * compare-and-set, so two taps on "extend" cannot buy 20 minutes.
    */

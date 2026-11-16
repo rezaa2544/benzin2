@@ -413,6 +413,9 @@ type ReservationRow = {
   completed_at: Date | null;
   created_at: Date;
   extension_count: number;
+  delivery_code: string | null;
+  delivery_attempts: number;
+  delivery_locked_until: Date | null;
 };
 
 /**
@@ -425,7 +428,7 @@ const PRICE_PER_LITRE_SQL = `(o.rate_toman + CASE WHEN o.side = 'SELL' THEN (CAS
   .map(([tier, fee]) => `WHEN '${tier}' THEN ${fee}`)
   .join(' ')} ELSE 0 END) ELSE 0 END))`;
 
-const RESERVATION_COLUMNS = `id, order_id, taker_id, status, cancel_reason, expires_at, decided_at, completed_at, created_at, extension_count`;
+const RESERVATION_COLUMNS = `id, order_id, taker_id, status, cancel_reason, expires_at, decided_at, completed_at, created_at, extension_count, delivery_code, delivery_attempts, delivery_locked_until`;
 
 const toReservation = (row: ReservationRow): Reservation => ({
   id: row.id,
@@ -438,6 +441,9 @@ const toReservation = (row: ReservationRow): Reservation => ({
   completedAt: row.completed_at,
   cancelReason: row.cancel_reason,
   extensionCount: row.extension_count ?? 0,
+  deliveryCode: row.delivery_code,
+  deliveryAttempts: row.delivery_attempts ?? 0,
+  deliveryLockedUntil: row.delivery_locked_until,
 });
 
 export class PgReservationRepository implements ReservationRepository {
@@ -503,6 +509,30 @@ export class PgReservationRepository implements ReservationRepository {
        ON CONFLICT DO NOTHING
        RETURNING ${RESERVATION_COLUMNS}`,
       [input.id, input.orderId, input.takerId, input.expiresAt],
+    );
+    return row ? toReservation(row) : null;
+  }
+
+  async updateDelivery(
+    id: string,
+    patch: Partial<
+      Pick<Reservation, 'deliveryCode' | 'deliveryAttempts' | 'deliveryLockedUntil'>
+    >,
+  ): Promise<Reservation | null> {
+    const row = await queryOne<ReservationRow>(
+      this.db,
+      `UPDATE reservations
+          SET delivery_code = COALESCE($2, delivery_code),
+              delivery_attempts = COALESCE($3, delivery_attempts),
+              delivery_locked_until = $4
+        WHERE id = $1
+        RETURNING ${RESERVATION_COLUMNS}`,
+      [
+        id,
+        patch.deliveryCode ?? null,
+        patch.deliveryAttempts ?? null,
+        patch.deliveryLockedUntil ?? null,
+      ],
     );
     return row ? toReservation(row) : null;
   }

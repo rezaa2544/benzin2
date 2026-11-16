@@ -13,6 +13,7 @@ import { useNow, useResource } from '../lib/useResource.js';
 import { navigate } from '../lib/router.js';
 import { t } from '../lib/i18n.js';
 import { CountdownRing } from '../components/CountdownRing.js';
+import { DeliveryCodeCard } from '../components/DeliveryCodeCard.js';
 import { ConfirmSheet } from '../components/ConfirmSheet.js';
 import { Notice, PageTitle, Skeleton } from './parts.js';
 
@@ -34,6 +35,9 @@ const errorMap = {
   INVALID_STATE_TRANSITION: t('errors.INVALID_STATE_TRANSITION'),
   CONTACT_SHARING_BLOCKED: t('errors.CONTACT_SHARING_BLOCKED'),
   ALREADY_DECIDED: t('errors.ALREADY_DECIDED'),
+  DELIVERY_CODE_REQUIRED: t('errors.DELIVERY_CODE_REQUIRED'),
+  DELIVERY_CODE_INVALID: t('errors.DELIVERY_CODE_INVALID'),
+  DELIVERY_CODE_LOCKED: t('errors.DELIVERY_CODE_LOCKED'),
 };
 
 const LABELS: Record<TradeAction, string> = {
@@ -71,6 +75,8 @@ export function TradePage({ api, user, config, reservationId }: TradePageProps):
   const [rateOpen, setRateOpen] = useState(false);
   const [stars, setStars] = useState(5);
   const [rated, setRated] = useState(false);
+  /** What the seller types in when closing the trade (G-09). */
+  const [code, setCode] = useState('');
 
   const load = useCallback(async () => {
     const reservation = await api.get<ReservationView>(`/v1/reservations/${reservationId}`);
@@ -91,10 +97,12 @@ export function TradePage({ api, user, config, reservationId }: TradePageProps):
         const isTaker = data?.reservation.takerId === user.id;
         setPhone(isTaker ? result.owner.phone : result.taker.phone);
       } else {
-        await api.post(
-          `/v1/reservations/${reservationId}/${action}`,
-          action === 'cancel' ? {} : undefined,
-        );
+        // G-09: closing the trade sends the buyer's hand-over code; everything else keeps the old
+        // body-less shape (only `cancel` carries a reason object today).
+        const body =
+          action === 'complete' ? { code: code.trim() } : action === 'cancel' ? {} : undefined;
+        await api.post(`/v1/reservations/${reservationId}/${action}`, body);
+        if (action === 'complete') setCode('');
         reload();
       }
     } catch (cause) {
@@ -174,6 +182,10 @@ export function TradePage({ api, user, config, reservationId }: TradePageProps):
           <dd className="tnum text-end font-bold">{formatToman(order.totalToman)}</dd>
         </dl>
       </div>
+
+      {role === 'taker' && (reservation.status === 'CONFIRMED' || reservation.status === 'COMPLETED') ? (
+        <DeliveryCodeCard api={api} reservationId={reservationId} />
+      ) : null}
 
       {phone ? (
         <Notice tone="success">
@@ -259,9 +271,29 @@ export function TradePage({ api, user, config, reservationId }: TradePageProps):
         confirmLabel={pending ? LABELS[pending] : undefined}
         tone={pending && DANGER.includes(pending) ? 'danger' : 'default'}
         busy={busy}
+        confirmDisabled={pending === 'complete' && role === 'owner' && code.trim().length !== 4}
         onConfirm={() => (pending ? void call(pending) : undefined)}
-        onClose={() => setPending(null)}
-      />
+        onClose={() => {
+          setPending(null);
+          setCode('');
+        }}
+      >
+        {pending === 'complete' && role === 'owner' ? (
+          <label className="mb-3 block">
+            <span className="mb-1 block text-xs text-muted">{t('trade.deliveryCodeAsk')}</span>
+            <input
+              className="input tnum text-center text-2xl"
+              dir="ltr"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={4}
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              aria-label={t('trade.deliveryCodeAsk')}
+            />
+          </label>
+        ) : null}
+      </ConfirmSheet>
     </div>
   );
 }

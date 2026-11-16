@@ -10,6 +10,8 @@ export interface ConfirmSheetProps {
   cancelLabel?: string;
   tone?: 'default' | 'danger';
   busy?: boolean;
+  /** Blocks the confirm button while a required input (e.g. the G-09 code) is still incomplete. */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onClose: () => void;
   children?: ReactNode;
@@ -28,6 +30,7 @@ export function ConfirmSheet({
   cancelLabel,
   tone = 'default',
   busy = false,
+  confirmDisabled = false,
   onConfirm,
   onClose,
   children,
@@ -82,7 +85,7 @@ export function ConfirmSheet({
           <button
             ref={confirmRef}
             type="button"
-            disabled={busy}
+            disabled={busy || confirmDisabled}
             onClick={onConfirm}
             className={`btn flex-1 ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}`}
           >

@@ -56,6 +56,11 @@ export const ERROR_CODES = [
   'CONFLICT',
   'NODE_TOKEN_INVALID',
   'NODE_AGENT_DISABLED',
+  // G-09 — the four-digit hand-over code.
+  'DELIVERY_CODE_REQUIRED',
+  'DELIVERY_CODE_INVALID',
+  'DELIVERY_CODE_LOCKED',
+  'DELIVERY_CODE_BUYER_ONLY',
   'INTERNAL_ERROR',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   auth,
+  completeTrade,
   createTestContext,
   freshPhone,
   login,
@@ -170,10 +171,10 @@ describe('user profile (E1-05)', () => {
 
   it('counts completed trades and ratings on the public card', async () => {
     const trade = await startTrade(ctx, { confirm: true });
-    const completed = await ctx.app.inject({
-      method: 'POST',
-      url: `/v1/reservations/${trade.reservationId}/complete`,
-      headers: auth(trade.owner.token),
+    const completed = await completeTrade(ctx, {
+      reservationId: trade.reservationId,
+      sellerToken: trade.owner.token,
+      buyerToken: trade.taker.token,
     });
     expect(completed.statusCode).toBe(200);
 

@@ -241,6 +241,12 @@ export const reservations = pgTable(
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** G-04: one 10-minute extension per reservation (migration `0006`). */
+    extensionCount: integer('extension_count').notNull().default(0),
+    /** G-09: the four-digit hand-over code and its wrong-attempt lock (migration `0008`). */
+    deliveryCode: text('delivery_code'),
+    deliveryAttempts: integer('delivery_attempts').notNull().default(0),
+    deliveryLockedUntil: timestamp('delivery_locked_until', { withTimezone: true }),
   },
   (t) => [
     // The database half of the concurrency guarantee tested in apps/api/test/reservations.test.ts.
