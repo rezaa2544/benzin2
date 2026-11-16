@@ -84,6 +84,18 @@ export interface PaymentRow {
   createdAt: string;
 }
 
+/** G-11 — one bank transfer sitting in the deposit table. */
+export interface CardDepositRow {
+  id: string;
+  reference: string;
+  amountToman: number;
+  senderName: string | null;
+  paidAt: string;
+  receivedAt: string;
+  status: 'MATCHED' | 'UNMATCHED' | 'IGNORED';
+  paymentId: string | null;
+}
+
 export interface PaymentCardRow {
   id: string;
   maskedNumber: string;

@@ -36,6 +36,10 @@ import {
   ratingSchema,
   requestOtpSchema,
   gatewayCallbackSchema,
+  cardDepositSchema,
+  cardProofSchema,
+  attachDepositSchema,
+  depositListSchema,
   sendMessageSchema,
   updateOrderSchema,
   updateProfileSchema,
@@ -61,6 +65,7 @@ import {
   ZarinpalGatewayProvider,
 } from '../modules/payment-providers.js';
 import { PaymentService } from '../modules/payment-service.js';
+import { CardDepositService, verifyDepositSignature } from '../modules/card-deposit-service.js';
 import { OwnerResponseService } from '../modules/owner-response-service.js';
 import { ReputationService } from '../modules/reputation-service.js';
 import { ReservationService } from '../modules/reservations-service.js';
@@ -150,7 +155,16 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
           baseUrl: config.ZARINPAL_BASE_URL,
         })
       : new SandboxGatewayProvider();
-  const cardToCard = new CardToCardProvider(repos.paymentCards);
+  // G-11: the destination card comes from settings (editable in the panel), not from a constant.
+  const cardToCard = new CardToCardProvider(repos.paymentCards, async () => {
+    const config = await settings.get();
+    const [card] = await repos.paymentCards.list(true);
+    return {
+      cardNumber: config['payment.card_number'],
+      holderName: config['payment.card_holder'],
+      bankName: card?.bankName ?? null,
+    };
+  });
   const payments = new PaymentService(
     repos,
     settings,
@@ -158,6 +172,10 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     { gateway, cardToCard },
     notifications,
   );
+  // G-11: deposits arrive before matching, so the service owns the record → match → settle path.
+  const cardDeposits = new CardDepositService(repos, settings, clock, notifications);
+  // A matched deposit settles through the same path a manual approval takes (G-11).
+  cardDeposits.attachSettlement((payment, reference) => payments.settleDeposit(payment, reference));
   const reputation = new ReputationService(repos, settings, clock, notifications);
   const profile = new ProfileService(repos, reputation);
   // G-10: the answer rate is a badge, not a penalty — it never writes to the reputation ledger.
@@ -216,6 +234,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     nodes,
     tradeMedian,
     ownerResponse,
+    cardDeposits,
   };
   const requireAuth = authenticate(auth);
 
@@ -307,6 +326,9 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
       maxActiveReservations: effective['reservation.max_active_per_user'],
       maxMessageLength: effective['chat.max_message_length'],
       quickReplies: effective['chat.quick_replies'],
+      // G-11: the app shows the tracking-number box only in review mode. Never the card number —
+      // that one arrives with the invoice, after the buyer chose a plan.
+      cardMode: effective['payment.card_mode'],
     };
   });
 
@@ -597,6 +619,56 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     return payments.handleGatewayCallback(currentUser(request), id, body);
   });
 
+  // ------------------------------------------------- card-to-card (G-11)
+  /**
+   * The deposit webhook.
+   *
+   * Unauthenticated by design — the bank's forwarder has no session — but every call must carry
+   * `x-benzin-signature: sha256=<hmac of the raw body with CARD_WEBHOOK_SECRET>`. Without a secret
+   * configured the route refuses everything: an open money endpoint is worse than a broken one.
+   *
+   * The answer is 200 even for an unmatched amount, because retries cannot fix it; the deposit is
+   * recorded, `UNMATCHED`, and the panel picks it up. A replayed reference is answered 200 as well
+   * (`duplicate: true`) so a transfer can never be activated twice.
+   */
+  app.post('/v1/payments/card/deposits', async (request, reply) => {
+    const secret = config.CARD_WEBHOOK_SECRET;
+    if (!secret) {
+      throw new AppError(
+        'CARD_WEBHOOK_DISABLED',
+        503,
+        'The deposit webhook is not configured on this server',
+      );
+    }
+    const rawBody = request.body as string;
+    const body = typeof rawBody === 'string' ? rawBody : JSON.stringify(request.body ?? {});
+    const signature = request.headers['x-benzin-signature'];
+    if (
+      !verifyDepositSignature(
+        body,
+        Array.isArray(signature) ? signature[0] : signature,
+        secret,
+      )
+    ) {
+      throw new AppError('CARD_WEBHOOK_UNAUTHORIZED', 401, 'Invalid webhook signature');
+    }
+    const parsed = parseInput(cardDepositSchema, JSON.parse(body || '{}'));
+    const result = await cardDeposits.handleDeposit({
+      amountToman: parsed.amountToman,
+      reference: parsed.reference,
+      paidAt: parsed.paidAt ? new Date(parsed.paidAt) : clock.now(),
+      senderName: parsed.senderName ?? null,
+    });
+    return reply.status(200).send(result);
+  });
+
+  /** Review mode: the buyer sends the tracking number from their banking app. */
+  app.post('/v1/payments/:id/card-proof', { preHandler: requireAuth }, async (request) => {
+    const { id } = request.params as { id: string };
+    const body = parseInput(cardProofSchema, request.body ?? {});
+    return cardDeposits.submitProof(currentUser(request), id, body);
+  });
+
   // ---------------------------------------------------------- reputation
   app.get('/v1/me/reputation', { preHandler: requireAuth }, async (request) =>
     reputation.summary(currentUser(request).id),
@@ -720,6 +792,26 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
       const { id } = request.params as { id: string };
       const body = parseInput(rejectPaymentSchema, request.body);
       return payments.rejectPayment(currentUser(request), id, body.reason);
+    },
+  );
+
+  /** G-11: transfers nobody is waiting for — money on the books, needs a human. */
+  app.get(
+    '/v1/admin/card-deposits',
+    { preHandler: [requireAuth, requireRole('ADMIN', 'OWNER')] },
+    async (request) => {
+      const query = parseInput(depositListSchema, request.query);
+      return cardDeposits.listDeposits(query.status ?? null, query.limit, query.offset);
+    },
+  );
+
+  app.post(
+    '/v1/admin/card-deposits/:id/attach',
+    { preHandler: [requireAuth, requireRole('ADMIN', 'OWNER')] },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      const body = parseInput(attachDepositSchema, request.body ?? {});
+      return cardDeposits.attachDeposit(currentUser(request), id, body.paymentId);
     },
   );
 

@@ -398,6 +398,16 @@ export interface PaymentRepository {
   findById(id: string): Promise<Payment | null>;
   findByAuthority(authority: string): Promise<Payment | null>;
   findByUniqueAmount(amountToman: number): Promise<Payment | null>;
+  /**
+   * G-11: every invoice still payable for exactly this amount. The card deposit webhook uses it as
+   * the match key; more than one result means the unique suffix collided, and the deposit goes to a
+   * human instead of guessing which buyer paid.
+   */
+  findPayableByAmount(
+    provider: Payment['provider'],
+    amountToman: number,
+    now: Date,
+  ): Promise<Payment[]>;
   transition(
     id: string,
     expected: PaymentStatus,
@@ -422,6 +432,48 @@ export interface PaymentCardRepository {
   findById(id: string): Promise<PaymentCard | null>;
   create(input: Omit<PaymentCard, 'id' | 'createdAt' | 'isActive'>, at: Date): Promise<PaymentCard>;
   deactivate(id: string): Promise<PaymentCard | null>;
+}
+
+/**
+ * G-11 — one card-to-card transfer as the bank told us about it.
+ *
+ * Deposits are the *source* document: they arrive from the deposit webhook (or a person typing a
+ * tracking number) and are matched to an invoice afterwards. Keeping them separate from `payments`
+ * means an unmatched transfer is still a fact we recorded, not an error we threw away.
+ */
+export interface CardDeposit {
+  id: string;
+  /** Bank reference — unique, which is what makes the webhook idempotent. */
+  reference: string;
+  amountToman: number;
+  senderName: string | null;
+  paidAt: Date;
+  receivedAt: Date;
+  status: 'MATCHED' | 'UNMATCHED' | 'IGNORED';
+  /** Set once a deposit paid for an invoice. */
+  paymentId: string | null;
+  note: string | null;
+}
+
+export interface CardDepositRepository {
+  /**
+   * Inserts the deposit unless a row with the same bank reference already exists.
+   * Returns `{ deposit, created }` so the webhook can answer 200 both times — a replayed callback
+   * must never activate a second subscription.
+   */
+  record(input: Omit<CardDeposit, 'id' | 'receivedAt' | 'status' | 'paymentId'>): Promise<{
+    deposit: CardDeposit;
+    created: boolean;
+  }>;
+  findById(id: string): Promise<CardDeposit | null>;
+  /** Attaches the invoice a deposit paid for and flips it to MATCHED. */
+  markMatched(id: string, paymentId: string): Promise<CardDeposit | null>;
+  list(status: CardDeposit['status'] | null, limit: number, offset: number): Promise<{
+    items: CardDeposit[];
+    total: number;
+  }>;
+  /** Deposits from the same payer on a day, used to spot a missing unique suffix. */
+  countUnmatchedSince(since: Date): Promise<number>;
 }
 
 /** Result of starting a payment with a provider. */
@@ -677,6 +729,8 @@ export interface Repositories {
   subscriptions: SubscriptionRepository;
   payments: PaymentRepository;
   paymentCards: PaymentCardRepository;
+  /** Card-to-card transfers received from the bank (G-11). */
+  cardDeposits: CardDepositRepository;
   providerSettings: ProviderSettingsRepository;
   messages: MessageRepository;
   notifications: NotificationRepository;

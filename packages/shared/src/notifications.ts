@@ -34,6 +34,9 @@ export const NOTIFICATION_KINDS = [
   // itself.
   'LISTINGS_PAUSED',
   'LISTINGS_RESUMED',
+  // G-11: money arrived that we could not place, and a transfer waiting for an operator.
+  'PAYMENT_DEPOSIT_UNMATCHED',
+  'PAYMENT_NEEDS_REVIEW',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
@@ -146,6 +149,18 @@ export const NOTIFICATION_TEMPLATES: Record<NotificationKind, NotificationTempla
     titleFa: 'نقش حساب شما تغییر کرد',
     bodyFa:
       'نقش حساب شما به «{role}» تغییر یافت. اگر این تغییر را انجام نداده‌اید با پشتیبانی تماس بگیرید.',
+    smsFa: null,
+  },
+  PAYMENT_DEPOSIT_UNMATCHED: {
+    titleFa: 'واریز بی‌صاحب',
+    bodyFa:
+      'مبلغ {amount} تومان با شمارهٔ پیگیری {reference} به کارت رسید ولی هیچ فاکتوری با این مبلغ منتظر نیست. در پنل، «واریزهای بی‌صاحب» را بررسی کنید.',
+    smsFa: null,
+  },
+  PAYMENT_NEEDS_REVIEW: {
+    titleFa: 'پرداخت در انتظار تأیید',
+    bodyFa:
+      'خریدار برای فاکتور {amount} تومانی شمارهٔ پیگیری {tracking} را فرستاد. تأیید یا رد آن در صف «پرداخت‌های در انتظار» است.',
     smsFa: null,
   },
   LISTINGS_PAUSED: {

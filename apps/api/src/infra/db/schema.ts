@@ -467,6 +467,28 @@ export const paymentCards = pgTable('payment_cards', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * G-11 — one card-to-card transfer as the bank reported it.
+ *
+ * `reference` is unique: that single constraint is what makes the deposit webhook idempotent, so a
+ * retried callback can never activate a second subscription.
+ */
+export const cardDeposits = pgTable(
+  'card_deposits',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    reference: text('reference').notNull().unique(),
+    amountToman: bigint('amount_toman', { mode: 'number' }).notNull(),
+    senderName: text('sender_name'),
+    paidAt: timestamp('paid_at', { withTimezone: true }).notNull(),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+    status: text('status').notNull().default('UNMATCHED'),
+    paymentId: uuid('payment_id').references(() => payments.id, { onDelete: 'set null' }),
+    note: text('note'),
+  },
+  (t) => [check('card_deposits_status', sql`${t.status} in ('MATCHED','UNMATCHED','IGNORED')`)],
+);
+
 export const providerSettings = pgTable(
   'provider_settings',
   {

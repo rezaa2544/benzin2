@@ -2,13 +2,20 @@ import { useCallback, useState } from 'react';
 import { formatJalaliDate, formatToman, toPersianDigits } from '@benzin/shared';
 import type { ApiClient } from '../lib/api.js';
 import { errorMessage } from '../lib/api.js';
-import type { PaymentStartView, PlanView, SubscriptionView } from '../lib/types.js';
+import type {
+  MetaConfig,
+  PaymentStartView,
+  PlanView,
+  SubscriptionView,
+} from '../lib/types.js';
 import { useResource } from '../lib/useResource.js';
 import { t, tf } from '../lib/i18n.js';
 import { Notice, PageTitle, Skeleton } from './parts.js';
 
 export interface PlansPageProps {
   api: ApiClient;
+  /** G-11: `cardMode` decides whether the buyer is asked for a tracking number. */
+  config?: MetaConfig | null;
 }
 
 const errorMap = {
@@ -20,10 +27,15 @@ const errorMap = {
 
 /** Subscription plans (E9-13). Card-to-card is the default method; the API returns the
  *  destination card and a Persian instruction the client shows verbatim. */
-export function PlansPage({ api }: PlansPageProps): JSX.Element {
+export function PlansPage({ api, config }: PlansPageProps): JSX.Element {
   const [pending, setPending] = useState<PaymentStartView | null>(null);
   const [busyCode, setBusyCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // G-11 review mode: the transfer is confirmed by a person, so the buyer sends the bank's
+  // tracking number. In auto mode the unique amount does the same job and this box never shows.
+  const [tracking, setTracking] = useState('');
+  const [proofState, setProofState] = useState<'idle' | 'sending' | 'queued'>('idle');
+  const reviewMode = config?.cardMode === 'review';
 
   const load = useCallback(async () => {
     const [plans, subscription] = await Promise.all([
@@ -44,10 +56,31 @@ export function PlansPage({ api }: PlansPageProps): JSX.Element {
         method: 'CARD_TO_CARD',
       });
       setPending(started);
+      setTracking('');
+      setProofState('idle');
     } catch (cause) {
       setError(errorMessage(cause, errorMap));
     } finally {
       setBusyCode(null);
+    }
+  };
+
+  /** G-11: sends the bank tracking number; the invoice then waits in the operator queue. */
+  const submitProof = async (paymentId: string): Promise<void> => {
+    if (tracking.trim().length < 4) {
+      setError(t('plans.proofInvalid'));
+      return;
+    }
+    setProofState('sending');
+    setError(null);
+    try {
+      await api.post(`/v1/payments/${paymentId}/card-proof`, {
+        trackingNumber: tracking.trim(),
+      });
+      setProofState('queued');
+    } catch (cause) {
+      setProofState('idle');
+      setError(errorMessage(cause, errorMap));
     }
   };
 
@@ -81,6 +114,16 @@ export function PlansPage({ api }: PlansPageProps): JSX.Element {
               <dl className="grid grid-cols-2 gap-2 text-sm">
                 <dt className="text-muted">{t('common.toman')}</dt>
                 <dd className="text-end tnum font-bold">{formatToman(pending.amountToman)}</dd>
+                {pending.uniqueAmountToman ? (
+                  <>
+                    {/* G-11: the amount with the random suffix is the matcher key, so it is shown
+                        as its own row — the buyer must transfer exactly this number. */}
+                    <dt className="text-muted">{t('plans.uniqueAmount')}</dt>
+                    <dd className="text-end tnum font-bold" data-testid="unique-amount">
+                      {formatToman(pending.uniqueAmountToman)}
+                    </dd>
+                  </>
+                ) : null}
                 {pending.destination ? (
                   <>
                     <dt className="text-muted">{t('plans.cardNumber')}</dt>
@@ -92,6 +135,39 @@ export function PlansPage({ api }: PlansPageProps): JSX.Element {
                   </>
                 ) : null}
               </dl>
+              {!pending.redirectUrl && reviewMode ? (
+                <div className="mt-3 border-t border-line pt-3">
+                  <h3 className="text-sm font-bold">{t('plans.proofTitle')}</h3>
+                  <p className="mb-2 text-xs text-muted">{t('plans.proofLead')}</p>
+                  {proofState === 'queued' ? (
+                    <Notice tone="success">{t('plans.proofQueued')}</Notice>
+                  ) : (
+                    <>
+                      <label className="mb-1 block text-xs text-muted" htmlFor="tracking">
+                        {t('plans.proofLabel')}
+                      </label>
+                      <input
+                        id="tracking"
+                        className="input tnum mb-2"
+                        dir="ltr"
+                        inputMode="numeric"
+                        value={tracking}
+                        onChange={(event) => setTracking(event.target.value)}
+                        data-testid="card-tracking"
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-primary w-full"
+                        disabled={proofState === 'sending' || tracking.trim().length < 4}
+                        onClick={() => void submitProof(pending.id)}
+                      >
+                        {t('plans.proofSubmit')}
+                      </button>
+                    </>
+                  )}
+                </div>
+              ) : null}
+
               {pending.redirectUrl ? (
                 <a className="btn btn-primary mt-3 w-full" href={pending.redirectUrl}>
                   {t('plans.openGateway')}

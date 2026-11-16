@@ -13,7 +13,14 @@ import type { PaymentCardRepository, PaymentInitResult, PaymentProvider } from '
 export class CardToCardProvider implements PaymentProvider {
   readonly kind = 'CARD_TO_CARD' as const;
 
-  constructor(private readonly cards: PaymentCardRepository) {}
+  constructor(
+    private readonly cards: PaymentCardRepository,
+    /**
+     * G-11: the destination card lives in settings so an operator can rotate it from the panel.
+     * When present it wins over the legacy `payment_cards` table.
+     */
+    private readonly override: (() => Promise<PaymentInitResult['destination']>) | null = null,
+  ) {}
 
   private destination(card: PaymentCard): PaymentInitResult['destination'] {
     return {
@@ -29,6 +36,15 @@ export class CardToCardProvider implements PaymentProvider {
     uniqueAmountToman: number | null;
     descriptionFa: string;
   }): Promise<PaymentInitResult> {
+    const fromSettings = this.override ? await this.override() : null;
+    if (fromSettings) {
+      return {
+        redirectUrl: null,
+        authority: null,
+        destination: fromSettings,
+        uniqueAmountToman: input.uniqueAmountToman,
+      };
+    }
     const [card] = await this.cards.list(true);
     if (!card) throw new AppError('NO_PAYMENT_CARD', 503, 'No destination card is configured');
     return {

@@ -37,6 +37,17 @@ export const SETTING_DEFINITIONS = {
   'payment.card_to_card_ttl_minutes': { schema: z.number().int().min(15).max(1440), default: 120 },
   'payment.gateway_ttl_minutes': { schema: z.number().int().min(5).max(180), default: 30 },
   'payment.unique_suffix_max': { schema: z.number().int().min(1).max(999), default: 999 },
+  /**
+   * G-11 — how a card-to-card transfer gets confirmed.
+   * `auto`: the deposit webhook matches the unique amount and activates the plan immediately.
+   * `review`: the buyer types the tracking number and an operator approves it in the panel.
+   */
+  'payment.card_mode': { schema: z.enum(['auto', 'review']), default: 'auto' },
+  /** G-11 — the destination account, editable from the panel instead of hard-coded. */
+  // The default matches the seeded destination card, so a fresh install shows the same account
+  // whether the buyer looks at the old `payment_cards` row or at these settings (G-11).
+  'payment.card_number': { schema: z.string().regex(/^\d{16}$/), default: '6037991234567890' },
+  'payment.card_holder': { schema: z.string().min(3).max(60), default: 'شرکت بنزین' },
   'trust.suspend_below_score': { schema: z.number().int().min(0).max(99), default: 20 },
   'trust.suspend_hours': { schema: z.number().int().min(1).max(720), default: 24 },
   'trust.window_days': { schema: z.number().int().min(1).max(365), default: 180 },
@@ -131,6 +142,12 @@ export const SETTING_META: Record<SettingKey, { labelFa: string; group: SettingG
   },
   'payment.gateway_ttl_minutes': { labelFa: 'مهلت پرداخت درگاه (دقیقه)', group: 'PAYMENT' },
   'payment.unique_suffix_max': { labelFa: 'حداکثر پسوند مبلغ یکتا', group: 'PAYMENT' },
+  'payment.card_mode': {
+    labelFa: 'حالت تأیید کارت‌به‌کارت (auto = خودکار، review = بازبینی اپراتور)',
+    group: 'PAYMENT',
+  },
+  'payment.card_number': { labelFa: 'شمارهٔ کارت مقصد (۱۶ رقم)', group: 'PAYMENT' },
+  'payment.card_holder': { labelFa: 'صاحب کارت مقصد', group: 'PAYMENT' },
   'trust.suspend_below_score': { labelFa: 'تعلیق زیر امتیاز', group: 'TRUST' },
   'trust.suspend_hours': { labelFa: 'مدت تعلیق (ساعت)', group: 'TRUST' },
   'trust.window_days': { labelFa: 'پنجره‌ی محاسبه‌ی اعتبار (روز)', group: 'TRUST' },
@@ -138,7 +155,7 @@ export const SETTING_META: Record<SettingKey, { labelFa: string; group: SettingG
 };
 
 /** Shape of a setting editor rendered by the panel. */
-export type SettingKind = 'number' | 'boolean' | 'list';
+export type SettingKind = 'number' | 'boolean' | 'list' | 'text' | 'select';
 
 interface ZodDefLite {
   typeName?: string;
@@ -163,5 +180,16 @@ export function settingKind(key: SettingKey): SettingKind {
   const typeName = schema._def?.typeName;
   if (typeName === 'ZodBoolean') return 'boolean';
   if (typeName === 'ZodArray') return 'list';
+  if (typeName === 'ZodEnum') return 'select';
+  // G-11 added plain text settings (the destination card) next to the numeric ones.
+  if (typeName === 'ZodString') return 'text';
   return 'number';
+}
+
+/** Allowed values for a `select` setting, in the order the panel should list them. */
+export function settingOptions(key: SettingKey): string[] {
+  const schema = SETTING_DEFINITIONS[key].schema as unknown as {
+    _def?: { typeName?: string; values?: string[] };
+  };
+  return schema._def?.typeName === 'ZodEnum' ? [...(schema._def.values ?? [])] : [];
 }

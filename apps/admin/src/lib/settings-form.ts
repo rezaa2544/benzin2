@@ -4,6 +4,7 @@ import {
   SETTING_META,
   settingBounds,
   settingKind,
+  settingOptions,
   type SettingGroup,
   type SettingKey,
   type SettingKind,
@@ -23,6 +24,8 @@ export interface SettingRow {
   kind: SettingKind;
   min: number | null;
   max: number | null;
+  /** Allowed values when `kind === 'select'` (G-11). */
+  options: string[];
   value: string | boolean;
 }
 
@@ -57,6 +60,7 @@ export const buildSettingRows = (settings: Settings): SettingRow[] =>
       kind: settingKind(key),
       min: bounds.min,
       max: bounds.max,
+      options: settingOptions(key),
       value: toEditable(settings[key]),
     };
   });
@@ -72,7 +76,7 @@ export const groupSettings = (
 
 export interface SettingParseResult {
   ok: boolean;
-  value?: number | boolean | string[];
+  value?: number | boolean | string | string[];
   errorFa?: string;
 }
 
@@ -81,6 +85,16 @@ const ASCII_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
 /** Converts one edited control back into the JSON the API expects. */
 export const parseSettingInput = (row: SettingRow, raw: string | boolean): SettingParseResult => {
   if (row.kind === 'boolean') return { ok: true, value: raw === true };
+  // G-11: text settings (the destination card number/holder) and enumerations pass through, with
+  // the same emptiness check the API applies.
+  if (row.kind === 'text' || row.kind === 'select') {
+    const text = String(raw).trim();
+    if (text.length === 0) return { ok: false, errorFa: 'مقدار لازم است.' };
+    if (row.kind === 'select' && row.options.length > 0 && !row.options.includes(text)) {
+      return { ok: false, errorFa: 'مقدار از فهرست مجاز نیست.' };
+    }
+    return { ok: true, value: text };
+  }
   if (row.kind === 'list') {
     const text = String(raw).trim();
     if (text.length === 0) return { ok: false, errorFa: 'حداقل یک مورد لازم است.' };

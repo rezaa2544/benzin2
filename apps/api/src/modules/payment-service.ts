@@ -429,9 +429,11 @@ export class PaymentService {
     reference: string | null,
     actorId: string | null,
     nextStatus: Payment['status'] = 'PAID',
+    /** G-11: an approval can start from NEEDS_REVIEW; everything else starts from PENDING. */
+    expected: Payment['status'] = 'PENDING',
   ): Promise<{ payment: PaymentView; subscription: SubscriptionView | null }> {
     const now = this.clock.now();
-    const updated = await this.repos.payments.transition(payment.id, 'PENDING', nextStatus, {
+    const updated = await this.repos.payments.transition(payment.id, expected, nextStatus, {
       paidAt: now,
       reference,
     });
@@ -476,6 +478,14 @@ export class PaymentService {
     return { payment: toPaymentView(updated), subscription };
   }
 
+  /**
+   * G-11: the deposit webhook settles through the very same path an operator approval takes, so a
+   * matched transfer and a hand-approved one can never diverge in what they activate.
+   */
+  async settleDeposit(payment: Payment, reference: string): Promise<void> {
+    await this.settle(payment, reference, null);
+  }
+
   /** Operator confirmation for a card-to-card transfer (task E7-07). */
   async confirmPayment(
     actor: User,
@@ -484,16 +494,29 @@ export class PaymentService {
   ): Promise<{ payment: PaymentView; subscription: SubscriptionView | null }> {
     const payment = await this.repos.payments.findById(paymentId);
     if (!payment) throw AppError.notFound('PAYMENT_NOT_FOUND', 'Payment not found');
-    if (payment.status !== 'PENDING') {
+    // G-11: a review-mode proof parks the invoice in NEEDS_REVIEW; approving it settles from there.
+    // Both states are «waiting for a human», and both settle exactly once via the compare-and-set.
+    if (payment.status !== 'PENDING' && payment.status !== 'NEEDS_REVIEW') {
       throw new AppError('PAYMENT_ALREADY_SETTLED', 409, 'Payment is already settled');
     }
-    return this.settle(payment, reference ?? `MANUAL-${payment.id.slice(0, 8)}`, actor.id);
+    return this.settle(
+      payment,
+      reference ?? payment.reference ?? `MANUAL-${payment.id.slice(0, 8)}`,
+      actor.id,
+      'PAID',
+      payment.status,
+    );
   }
 
   async rejectPayment(actor: User, paymentId: string, reason: string): Promise<PaymentView> {
     const payment = await this.repos.payments.findById(paymentId);
     if (!payment) throw AppError.notFound('PAYMENT_NOT_FOUND', 'Payment not found');
-    const updated = await this.repos.payments.transition(payment.id, 'PENDING', 'FAILED', {
+    // G-11: rejecting a review-mode proof starts from NEEDS_REVIEW.
+    const expected = payment.status === 'NEEDS_REVIEW' ? 'NEEDS_REVIEW' : 'PENDING';
+    if (payment.status !== 'PENDING' && payment.status !== 'NEEDS_REVIEW') {
+      throw new AppError('PAYMENT_ALREADY_SETTLED', 409, 'Payment is already settled');
+    }
+    const updated = await this.repos.payments.transition(payment.id, expected, 'FAILED', {
       reference: reason,
     });
     if (!updated) {

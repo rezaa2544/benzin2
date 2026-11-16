@@ -116,7 +116,16 @@
     "addCard": "افزودن کارت",
     "cards": "کارت‌های مقصد",
     "deactivate": "غیرفعال",
-    "reconcile": "اجرای هم‌فرم‌سازی"
+    "reconcile": "اجرای هم‌فرم‌سازی",
+    "depositsTitle": "واریزهای بی‌صاحب",
+    "depositsLead": "پولی که به کارت رسیده ولی هیچ فاکتوری با آن مبلغ منتظر نیست. با وارد کردن شناسهٔ فاکتور، آن را به فاکتور وصل کن.",
+    "depositAmount": "مبلغ",
+    "depositReference": "شمارهٔ پیگیری",
+    "depositSender": "واریزکننده",
+    "depositReceived": "زمان دریافت",
+    "depositAttach": "وصل به فاکتور",
+    "depositAttached": "واریز به فاکتور وصل شد.",
+    "depositNone": "واریز بی‌صاحبی وجود ندارد."
   },
   "subscriptions": {
     "title": "اشتراک‌ها",

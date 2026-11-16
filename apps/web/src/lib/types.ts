@@ -162,6 +162,8 @@ export interface MetaConfig {
   maxActiveReservations: number;
   maxMessageLength: number;
   quickReplies: string[];
+  /** G-11: `auto` matches the deposit amount, `review` waits for an operator. */
+  cardMode?: 'auto' | 'review';
 }
 
 export interface NotificationView {
@@ -224,6 +226,8 @@ export interface PaymentView {
   method: 'CARD_TO_CARD' | 'GATEWAY';
   expiresAt: string;
   createdAt: string;
+  /** G-11: price + random suffix — the number the buyer must transfer, and the matcher key. */
+  uniqueAmountToman?: number | null;
 }
 
 export interface PaymentStartView extends PaymentView {

@@ -14,6 +14,7 @@ import type { ReservationService } from '../modules/reservations-service.js';
 import type { SettingsService } from '../modules/settings-service.js';
 import type { StatsService } from '../modules/stats-service.js';
 import type { NodesService } from '../modules/nodes-service.js';
+import type { CardDepositService } from '../modules/card-deposit-service.js';
 import type { OwnerResponseService } from '../modules/owner-response-service.js';
 import type { TradeMedianService } from '../modules/stats-service.js';
 
@@ -35,6 +36,8 @@ export interface AppServices {
   tradeMedian: TradeMedianService;
   /** Seller answer rate and listing pauses (task G-10). */
   ownerResponse: OwnerResponseService;
+  /** Card-to-card deposits: webhook matching, review queue (task G-11). */
+  cardDeposits: CardDepositService;
 }
 
 declare module 'fastify' {

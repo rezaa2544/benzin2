@@ -324,7 +324,7 @@ export function App(): JSX.Element {
           />
         );
       case 'plans':
-        return <PlansPage api={api} />;
+        return <PlansPage api={api} config={config} />;
       case 'styleGuide':
         return <StyleGuidePage theme={mode} onToggleTheme={toggleTheme} />;
       default:

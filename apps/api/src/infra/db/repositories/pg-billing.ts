@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { PaymentMethod, PaymentStatus, SubscriptionStatus } from '@benzin/shared';
 import type { Payment, PaymentCard, Plan, Subscription } from '../../../domain/entities.js';
 import type {
+  CardDeposit,
+  CardDepositRepository,
   NewPayment,
   NewSubscription,
   PaymentCardRepository,
@@ -9,7 +11,7 @@ import type {
   PlanRepository,
   SubscriptionRepository,
 } from '../../../ports.js';
-import { Conditions, query, queryOne, scalar, type Db } from './pg-common.js';
+import { Conditions, num, query, queryOne, scalar, type Db } from './pg-common.js';
 
 /** Plans, subscriptions, payments and destination cards on Postgres (task G-01, G-15). */
 
@@ -353,6 +355,22 @@ export class PgPaymentRepository implements PaymentRepository {
     return row ? toPayment(row) : null;
   }
 
+  async findPayableByAmount(
+    provider: Payment['provider'],
+    amountToman: number,
+    now: Date,
+  ): Promise<Payment[]> {
+    const rows = await query<PaymentRow>(
+      this.db,
+      `SELECT ${PAYMENT_COLUMNS} FROM payments
+        WHERE unique_amount = $1 AND provider = $2::payment_method
+          AND status = 'PENDING' AND expires_at > $3
+        ORDER BY created_at`,
+      [amountToman, provider, now],
+    );
+    return rows.map(toPayment);
+  }
+
   async findByUniqueAmount(amountToman: number): Promise<Payment | null> {
     const row = await queryOne<PaymentRow>(
       this.db,
@@ -477,6 +495,110 @@ const toCard = (row: CardRow): PaymentCard => ({
   dailyLimit: row.daily_limit === null ? null : Number(row.daily_limit),
   createdAt: row.created_at,
 });
+
+/**
+ * G-11 — deposits on Postgres. `ON CONFLICT (reference) DO NOTHING` is the whole idempotency
+ * story: the unique index decides, so two callbacks racing each other still create one row.
+ */
+type DepositRow = {
+  id: string;
+  reference: string;
+  amount_toman: string | number;
+  sender_name: string | null;
+  paid_at: Date;
+  received_at: Date;
+  status: CardDeposit['status'];
+  payment_id: string | null;
+  note: string | null;
+};
+
+const DEPOSIT_COLUMNS = `id, reference, amount_toman, sender_name, paid_at, received_at, status,
+         payment_id, note`;
+
+const toDeposit = (row: DepositRow): CardDeposit => ({
+  id: row.id,
+  reference: row.reference,
+  amountToman: num(row.amount_toman),
+  senderName: row.sender_name,
+  paidAt: row.paid_at,
+  receivedAt: row.received_at,
+  status: row.status,
+  paymentId: row.payment_id,
+  note: row.note,
+});
+
+export class PgCardDepositRepository implements CardDepositRepository {
+  constructor(private readonly db: Db) {}
+
+  async record(
+    input: Omit<CardDeposit, 'id' | 'receivedAt' | 'status' | 'paymentId'>,
+  ): Promise<{ deposit: CardDeposit; created: boolean }> {
+    const inserted = await queryOne<DepositRow>(
+      this.db,
+      `INSERT INTO card_deposits (reference, amount_toman, sender_name, paid_at, note)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (reference) DO NOTHING
+       RETURNING ${DEPOSIT_COLUMNS}`,
+      [input.reference, input.amountToman, input.senderName, input.paidAt, input.note],
+    );
+    if (inserted) return { deposit: toDeposit(inserted), created: true };
+    const existing = await queryOne<DepositRow>(
+      this.db,
+      `SELECT ${DEPOSIT_COLUMNS} FROM card_deposits WHERE reference = $1`,
+      [input.reference],
+    );
+    if (!existing) throw new Error('card deposit vanished while recording');
+    return { deposit: toDeposit(existing), created: false };
+  }
+
+  async findById(id: string): Promise<CardDeposit | null> {
+    const row = await queryOne<DepositRow>(
+      this.db,
+      `SELECT ${DEPOSIT_COLUMNS} FROM card_deposits WHERE id = $1`,
+      [id],
+    );
+    return row ? toDeposit(row) : null;
+  }
+
+  async markMatched(id: string, paymentId: string): Promise<CardDeposit | null> {
+    const row = await queryOne<DepositRow>(
+      this.db,
+      `UPDATE card_deposits SET status = 'MATCHED', payment_id = $2
+        WHERE id = $1 RETURNING ${DEPOSIT_COLUMNS}`,
+      [id, paymentId],
+    );
+    return row ? toDeposit(row) : null;
+  }
+
+  async list(
+    status: CardDeposit['status'] | null,
+    limit: number,
+    offset: number,
+  ): Promise<{ items: CardDeposit[]; total: number }> {
+    const rows = await query<DepositRow>(
+      this.db,
+      `SELECT ${DEPOSIT_COLUMNS} FROM card_deposits
+        WHERE ($1::text IS NULL OR status = $1)
+        ORDER BY received_at DESC LIMIT $2 OFFSET $3`,
+      [status, limit, offset],
+    );
+    const total = await scalar(
+      this.db,
+      `SELECT count(*)::int AS value FROM card_deposits WHERE ($1::text IS NULL OR status = $1)`,
+      [status],
+    );
+    return { items: rows.map(toDeposit), total };
+  }
+
+  async countUnmatchedSince(since: Date): Promise<number> {
+    return scalar(
+      this.db,
+      `SELECT count(*)::int AS value FROM card_deposits
+        WHERE status = 'UNMATCHED' AND received_at >= $1`,
+      [since],
+    );
+  }
+}
 
 export class PgPaymentCardRepository implements PaymentCardRepository {
   constructor(private readonly db: Db) {}

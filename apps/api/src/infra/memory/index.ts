@@ -39,6 +39,7 @@ import {
 } from '@benzin/shared';
 import { MemoryConversationRepository, MemoryMessageRepository } from './chat.js';
 import {
+  MemoryCardDepositRepository,
   MemoryPaymentCardRepository,
   MemoryPaymentRepository,
   MemoryPlanRepository,
@@ -789,6 +790,7 @@ export function createMemoryRepositories(): Repositories {
     subscriptions: new MemorySubscriptionRepository(),
     payments: new MemoryPaymentRepository(),
     paymentCards: new MemoryPaymentCardRepository(),
+    cardDeposits: new MemoryCardDepositRepository(),
     providerSettings: new MemoryProviderSettingsRepository(),
     otps: new MemoryOtpRepository(),
     refreshTokens: new MemoryRefreshTokenRepository(),

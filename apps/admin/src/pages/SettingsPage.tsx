@@ -91,10 +91,23 @@ export function SettingsPage({ api }: { api: ApiClient }): JSX.Element {
                       checked={value === true}
                       onChange={(event) => setEdits({ ...edits, [row.key]: event.target.checked })}
                     />
+                  ) : row.kind === 'select' ? (
+                    // G-11: the card-to-card mode is one of a fixed set — a dropdown, not free text.
+                    <select
+                      className="input"
+                      value={String(value)}
+                      onChange={(event) => setEdits({ ...edits, [row.key]: event.target.value })}
+                    >
+                      {row.options.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
                   ) : (
                     <input
                       className="input tnum"
-                      dir={row.kind === 'number' ? 'ltr' : 'rtl'}
+                      dir={row.kind === 'number' || row.key === 'payment.card_number' ? 'ltr' : 'rtl'}
                       value={String(value)}
                       onChange={(event) => setEdits({ ...edits, [row.key]: event.target.value })}
                     />

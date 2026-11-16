@@ -63,6 +63,13 @@ export const ERROR_CODES = [
   'DELIVERY_CODE_BUYER_ONLY',
   /** G-10: admin tried to relist a seller whose listings were never paused. */
   'NOT_DELISTED',
+  /** G-11: the buyer sent a tracking number while the platform confirms transfers automatically. */
+  'CARD_REVIEW_DISABLED',
+  /** G-11: the deposit webhook is switched off (no secret configured) or the signature is wrong. */
+  'CARD_WEBHOOK_DISABLED',
+  'CARD_WEBHOOK_UNAUTHORIZED',
+  'DEPOSIT_NOT_FOUND',
+  'DEPOSIT_ALREADY_MATCHED',
   'INTERNAL_ERROR',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

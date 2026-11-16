@@ -289,6 +289,27 @@ await step('GET /v1/stats/market/median counts the closed trade (G-08)', async (
   return `${payload.trades} معامله در ناحیه، آستانه ${payload.requiredTrades}`;
 });
 
+await step('POST /v1/payments/card/deposits refuses an unsigned call (G-11)', async () => {
+  const { status, payload } = await call('POST', '/v1/payments/card/deposits', {
+    body: { amountToman: 150_001, reference: `SMOKE-UNSIGNED-${Date.now()}` },
+  });
+  // 503 = no secret configured on this server, 401 = secret configured but the caller is unsigned.
+  // Both are correct; what must never happen is a 200 without a valid signature.
+  expect(status === 401 || status === 503, `status ${status}: ${JSON.stringify(payload)}`);
+  return `HTTP ${status} (${payload?.error?.code ?? 'refused'})`;
+});
+
+await step('POST /v1/subscriptions (G-11 card destination from settings)', async () => {
+  const { status, payload } = await call('POST', '/v1/subscriptions', {
+    token: buyer.token,
+    body: { planCode: 'monthly', method: 'CARD_TO_CARD' },
+  });
+  expect(status === 201 || status === 200, `status ${status}: ${JSON.stringify(payload)}`);
+  expect(typeof payload.destination?.cardNumber === 'string', 'destination card missing');
+  expect(payload.uniqueAmountToman > payload.amountToman, 'the amount must carry a unique suffix');
+  return `مبلغ یکتا ${payload.uniqueAmountToman}، کارت ${payload.destination.cardNumber}`;
+});
+
 await step('GET /v1/me/response (G-10, seller answer rate)', async () => {
   const { status, payload } = await call('GET', '/v1/me/response', { token: owner.token });
   expect(status === 200, `status ${status}: ${JSON.stringify(payload)}`);

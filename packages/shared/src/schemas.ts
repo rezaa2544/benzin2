@@ -253,6 +253,45 @@ export const rejectPaymentSchema = z
   })
   .strict();
 
+/**
+ * G-11 — one transfer as the bank's forwarder reports it.
+ *
+ * The amount is the match key (it carries the invoice's unique suffix), so it must be exact: no
+ * rounding, no «تومان» suffix, no Persian digits. The adapter / deposit-SMS bridge is responsible
+ * for that normalisation, and the schema rejects anything else loudly.
+ */
+export const cardDepositSchema = z
+  .object({
+    amountToman: z.number().int().min(1).max(100_000_000),
+    reference: z.string().trim().min(3).max(128),
+    paidAt: z.string().datetime().optional(),
+    senderName: z.string().trim().min(2).max(80).optional(),
+  })
+  .strict();
+
+export type CardDepositInput = z.infer<typeof cardDepositSchema>;
+
+/** G-11 review mode: the tracking number the buyer reads off their banking app. */
+export const cardProofSchema = z
+  .object({
+    trackingNumber: z.string().trim().min(4).max(64),
+  })
+  .strict();
+
+export const attachDepositSchema = z
+  .object({
+    paymentId: z.string().uuid(),
+  })
+  .strict();
+
+export const depositListSchema = z
+  .object({
+    status: z.enum(['MATCHED', 'UNMATCHED', 'IGNORED']).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+    offset: z.coerce.number().int().min(0).default(0),
+  })
+  .strict();
+
 export const paymentListSchema = z
   .object({
     status: z.enum(['PENDING', 'PAID', 'FAILED', 'EXPIRED', 'NEEDS_REVIEW']).optional(),

@@ -13,6 +13,7 @@ import {
 } from './pg-identity.js';
 import { PgOrderRepository, PgReservationRepository } from './pg-orders.js';
 import {
+  PgCardDepositRepository,
   PgPaymentCardRepository,
   PgPaymentRepository,
   PgPlanRepository,
@@ -60,6 +61,7 @@ export function createPostgresRepositories(databaseUrl: string): PostgresHandle 
     subscriptions: new PgSubscriptionRepository(pool),
     payments: new PgPaymentRepository(pool),
     paymentCards: new PgPaymentCardRepository(pool),
+    cardDeposits: new PgCardDepositRepository(pool),
     providerSettings: new PgProviderSettingsRepository(pool),
     messages: new PgMessageRepository(pool),
     notifications: new PgNotificationRepository(pool),

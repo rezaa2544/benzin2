@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Payment, PaymentCard, Plan, Subscription } from '../../domain/entities.js';
 import type {
+  CardDeposit,
+  CardDepositRepository,
   NewPayment,
   NewSubscription,
   PaymentCardRepository,
@@ -192,6 +194,22 @@ export class MemoryPaymentRepository implements PaymentRepository {
     return payment ? clone(payment) : null;
   }
 
+  async findPayableByAmount(
+    provider: Payment['provider'],
+    amountToman: number,
+    now: Date,
+  ): Promise<Payment[]> {
+    return [...this.byId.values()]
+      .filter(
+        (payment) =>
+          payment.provider === provider &&
+          payment.status === 'PENDING' &&
+          payment.uniqueAmountToman === amountToman &&
+          payment.expiresAt.getTime() > now.getTime(),
+      )
+      .map(clone);
+  }
+
   async findByUniqueAmount(amountToman: number): Promise<Payment | null> {
     const payment = [...this.byId.values()].find(
       (candidate) => candidate.uniqueAmountToman === amountToman,
@@ -271,6 +289,75 @@ export class MemoryPaymentRepository implements PaymentRepository {
       }
     }
     return summary;
+  }
+}
+
+/**
+ * G-11 — card-to-card deposits held in memory.
+ *
+ * `record` is the idempotency gate: the bank reference is the key, so a webhook replayed ten times
+ * produces one deposit and therefore at most one activation.
+ */
+export class MemoryCardDepositRepository implements CardDepositRepository {
+  private readonly byId = new Map<string, CardDeposit>();
+  private readonly byReference = new Map<string, string>();
+
+  async record(
+    input: Omit<CardDeposit, 'id' | 'receivedAt' | 'status' | 'paymentId'>,
+  ): Promise<{ deposit: CardDeposit; created: boolean }> {
+    const existingId = this.byReference.get(input.reference);
+    if (existingId) {
+      const existing = this.byId.get(existingId)!;
+      return { deposit: clone(existing), created: false };
+    }
+    const deposit: CardDeposit = {
+      id: randomUUID(),
+      reference: input.reference,
+      amountToman: input.amountToman,
+      senderName: input.senderName,
+      paidAt: input.paidAt,
+      receivedAt: new Date(),
+      status: 'UNMATCHED',
+      paymentId: null,
+      note: input.note,
+    };
+    this.byId.set(deposit.id, clone(deposit));
+    this.byReference.set(deposit.reference, deposit.id);
+    return { deposit: clone(deposit), created: true };
+  }
+
+  async findById(id: string): Promise<CardDeposit | null> {
+    const deposit = this.byId.get(id);
+    return deposit ? clone(deposit) : null;
+  }
+
+  async markMatched(id: string, paymentId: string): Promise<CardDeposit | null> {
+    const deposit = this.byId.get(id);
+    if (!deposit) return null;
+    deposit.status = 'MATCHED';
+    deposit.paymentId = paymentId;
+    return clone(deposit);
+  }
+
+  async list(
+    status: CardDeposit['status'] | null,
+    limit: number,
+    offset: number,
+  ): Promise<{ items: CardDeposit[]; total: number }> {
+    const matches = [...this.byId.values()]
+      .filter((deposit) => status === null || deposit.status === status)
+      .sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime());
+    return {
+      items: matches.slice(offset, offset + limit).map(clone),
+      total: matches.length,
+    };
+  }
+
+  async countUnmatchedSince(since: Date): Promise<number> {
+    return [...this.byId.values()].filter(
+      (deposit) =>
+        deposit.status === 'UNMATCHED' && deposit.receivedAt.getTime() >= since.getTime(),
+    ).length;
   }
 }
 

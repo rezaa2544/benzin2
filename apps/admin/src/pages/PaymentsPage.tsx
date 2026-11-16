@@ -1,13 +1,105 @@
 import { useState } from 'react';
 import { PAYMENT_STATUSES, type PaymentStatus } from '@benzin/shared';
 import type { ApiClient } from '../lib/api.js';
-import { fmtDateTime, fmtToman, statusFa } from '../lib/format.js';
+import { fmtDateTime, fmtNumber, fmtToman, statusFa } from '../lib/format.js';
 import { useResource } from '../lib/useResource.js';
-import type { PaymentCardRow, PaymentRow } from '../lib/types.js';
+import type { CardDepositRow, PaymentCardRow, PaymentRow } from '../lib/types.js';
 import { Badge, DataTable, Field, Modal, Notice } from '../components/ui.js';
 import fa from '../i18n/fa.json';
 
 /** E8-04 + E7-07: manual settlement of card-to-card transfers and destination cards. */
+function DepositQueue({
+  api,
+  onAttached,
+}: {
+  api: ApiClient;
+  onAttached: () => void;
+}): JSX.Element {
+  const queue = useResource<{ items: CardDepositRow[]; total: number }>(
+    () =>
+      api.get<{ items: CardDepositRow[]; total: number }>('/v1/admin/card-deposits', {
+        status: 'UNMATCHED',
+        limit: 20,
+      }),
+    [],
+  );
+  const [targets, setTargets] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const attach = async (depositId: string): Promise<void> => {
+    const paymentId = (targets[depositId] ?? '').trim();
+    if (paymentId.length === 0) return;
+    setBusy(depositId);
+    setMessage(null);
+    setError(null);
+    try {
+      await api.post(`/v1/admin/card-deposits/${depositId}/attach`, { paymentId });
+      setMessage(fa.payments.depositAttached);
+      queue.reload();
+      onAttached();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : fa.app.error);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const items = queue.data?.items ?? [];
+
+  return (
+    <div className="card space-y-2">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-bold">{fa.payments.depositsTitle}</h2>
+        <span className="chip">{fmtNumber(queue.data?.total ?? 0)}</span>
+      </div>
+      <p className="text-xs text-muted">{fa.payments.depositsLead}</p>
+      {message ? <Notice tone="success">{message}</Notice> : null}
+      {error ? <Notice tone="error">{error}</Notice> : null}
+      {queue.error ? <Notice tone="error">{queue.error.message}</Notice> : null}
+      {queue.loading && !queue.data ? <Notice>{fa.app.loading}</Notice> : null}
+      {!queue.loading && items.length === 0 ? <Notice>{fa.payments.depositNone}</Notice> : null}
+      {items.map((row) => (
+        <div
+          key={row.id}
+          className="flex flex-wrap items-end gap-2 rounded-lg border border-line p-2"
+          data-testid="card-deposit"
+        >
+          <div className="min-w-40 text-xs">
+            <p className="font-bold tnum">{fmtToman(row.amountToman)}</p>
+            <p className="text-muted">
+              {fa.payments.depositReference}: <span className="tnum">{row.reference}</span>
+            </p>
+            <p className="text-muted">
+              {fa.payments.depositSender}: {row.senderName ?? '—'} · {fmtDateTime(row.receivedAt)}
+            </p>
+          </div>
+          <div className="flex flex-1 items-end gap-2">
+            <Field label={fa.payments.depositAttach}>
+              <input
+                className="input tnum"
+                dir="ltr"
+                placeholder="payment id"
+                value={targets[row.id] ?? ''}
+                onChange={(event) => setTargets({ ...targets, [row.id]: event.target.value })}
+              />
+            </Field>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy === row.id}
+              onClick={() => void attach(row.id)}
+            >
+              {fa.payments.depositAttach}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function PaymentsPage({ api }: { api: ApiClient }): JSX.Element {
   const [status, setStatus] = useState<PaymentStatus | ''>('PENDING');
   const [message, setMessage] = useState<string | null>(null);
@@ -75,6 +167,8 @@ export function PaymentsPage({ api }: { api: ApiClient }): JSX.Element {
       {message ? <Notice tone="success">{message}</Notice> : null}
       {error ? <Notice tone="error">{error}</Notice> : null}
 
+      <DepositQueue api={api} onAttached={() => payments.reload()} />
+
       <div className="card">
         {payments.loading && !payments.data ? (
           <Notice>{fa.app.loading}</Notice>
@@ -118,7 +212,8 @@ export function PaymentsPage({ api }: { api: ApiClient }): JSX.Element {
                 key: 'actions',
                 header: '',
                 render: (row) =>
-                  row.status === 'PENDING' ? (
+                  // G-11: a review-mode proof waits in NEEDS_REVIEW — same approve/reject actions.
+                  row.status === 'PENDING' || row.status === 'NEEDS_REVIEW' ? (
                     <div className="flex gap-2">
                       <button
                         type="button"
