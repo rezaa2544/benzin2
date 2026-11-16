@@ -1,6 +1,7 @@
+import os from 'node:os';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
 import {
   AppError,
@@ -17,6 +18,7 @@ import {
   createOrderSchema,
   isAppError,
   marketStatsSchema,
+  nodeHeartbeatSchema,
   notificationQuerySchema,
   createPlanSchema,
   orderSearchSchema,
@@ -62,6 +64,7 @@ import { ReservationService } from '../modules/reservations-service.js';
 import { SettingsService } from '../modules/settings-service.js';
 import { ProfileService } from '../modules/profile-service.js';
 import { StatsService } from '../modules/stats-service.js';
+import { NodesService } from '../modules/nodes-service.js';
 import { createScheduler, type Scheduler } from '../scheduler.js';
 import { createProcessSweepLock, type SweepLock } from '../modules/sweep-lock.js';
 import { attachChatSocket, type ChatSocketHandle } from './chat-socket.js';
@@ -80,6 +83,11 @@ export interface BuildAppOptions {
    * deployments pass the advisory-lock implementation; dev/tests use the in-process one.
    */
   sweepLock?: SweepLock;
+  /**
+   * Overrides for the node registry (task G-28). Tests shorten the stale window and pin the node
+   * id; the desktop bundle relies on the defaults derived from the config.
+   */
+  node?: { nodeId?: string; name?: string; role?: 'primary' | 'helper'; region?: string | null };
 }
 
 export interface BuiltApp {
@@ -90,6 +98,13 @@ export interface BuiltApp {
   /** Realtime chat channel (E5-01); closed together with the HTTP server. */
   chatSocket: ChatSocketHandle;
 }
+
+/** Host part of the default node id: stable across restarts, readable in the panel. */
+const hostSlug = (): string =>
+  (os.hostname() || 'local')
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]+/g, '-')
+    .slice(0, 40);
 
 const toPublicUser = (user: User) => ({
   id: user.id,
@@ -155,7 +170,23 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     mode: config.DATABASE_URL ? 'postgres' : 'memory',
     version: config.APP_VERSION,
   });
-  const scheduler = createScheduler(reservations, orders, reputation, payments, clock, sweepLock);
+  const nodes = new NodesService(repos, clock, {
+    nodeId: options.node?.nodeId ?? config.NODE_ID ?? `${config.NODE_ROLE}-${hostSlug()}`,
+    name: options.node?.name ?? config.NODE_NAME ?? `بنزین — ${config.NODE_ROLE === 'helper' ? 'کمکی' : 'اصلی'}`,
+    role: options.node?.role ?? config.NODE_ROLE,
+    version: config.APP_VERSION,
+    region: options.node?.region ?? config.NODE_REGION ?? null,
+    staleSeconds: config.NODE_STALE_SECONDS,
+  });
+  // The scheduler reports every sweep it runs, so the panel can show a real work report.
+  const scheduler = createScheduler(reservations, orders, reputation, payments, clock, sweepLock, {
+    onTick: (result, at) => {
+      const detail = { ...result } as Record<string, number>;
+      const count = Object.values(detail).reduce((total, value) => total + value, 0);
+      void at;
+      nodes.recordJob('expiry-sweep', count, detail);
+    },
+  });
   const services: AppServices = {
     auth,
     chat,
@@ -168,6 +199,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     profile,
     admin,
     stats,
+    nodes,
   };
   const requireAuth = authenticate(auth);
 
@@ -185,6 +217,20 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     origin: config.CORS_ORIGINS,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  });
+
+  // Node monitor (task G-28): every response feeds the traffic counters the panel shows. The
+  // start time lives in a WeakMap so a request carries no extra property of its own.
+  const requestStartedAt = new WeakMap<object, bigint>();
+  app.addHook('onRequest', async (request) => {
+    requestStartedAt.set(request, process.hrtime.bigint());
+  });
+  app.addHook('onResponse', async (request, reply) => {
+    const startedAt = requestStartedAt.get(request);
+    nodes.recordRequest({
+      statusCode: reply.statusCode,
+      durationMs: startedAt ? Number(process.hrtime.bigint() - startedAt) / 1e6 : 0,
+    });
   });
 
   app.setErrorHandler((rawError: unknown, request, reply) => {
@@ -739,6 +785,42 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     return { ran: result !== null, result };
   });
   app.get('/v1/admin/status', { preHandler: [...staffOnly] }, async () => admin.systemStatus());
+
+  // ------------------------------------------------------ node monitor (task G-28)
+  // The panel's live screen: every node that ever reported, its resources, its traffic and the
+  // jobs it ran, plus the failover verdict ("is the helper needed right now?").
+  app.get('/v1/admin/nodes', { preHandler: [...staffOnly] }, async () => nodes.overview());
+
+  // Agent endpoints. They carry a shared secret instead of a user token: the caller is a machine
+  // (the owner's standby PC), not a person, and it must keep working with nobody logged in.
+  const nodeTokenGuard = async (request: FastifyRequest): Promise<void> => {
+    if (!config.NODE_TOKEN) {
+      throw new AppError(
+        'NODE_AGENT_DISABLED',
+        503,
+        'NODE_TOKEN تنظیم نشده؛ پذیرش گرهٔ خارجی خاموش است',
+      );
+    }
+    if (request.headers['x-node-token'] !== config.NODE_TOKEN) {
+      throw new AppError('NODE_TOKEN_INVALID', 401, 'توکن گره نامعتبر است');
+    }
+  };
+
+  app.get('/v1/nodes/failover', { preHandler: [nodeTokenGuard] }, async (request) => {
+    const query = request.query as { nodeId?: string } | undefined;
+    const decision = await nodes.failover();
+    return {
+      nodeId: query?.nodeId ?? null,
+      staleAfterSeconds: config.NODE_STALE_SECONDS,
+      serverTime: clock.now().toISOString(),
+      ...decision,
+    };
+  });
+
+  app.post('/v1/nodes/heartbeat', { preHandler: [nodeTokenGuard] }, async (request) => {
+    const body = parseInput(nodeHeartbeatSchema, request.body ?? {});
+    return nodes.ingest(body);
+  });
 
   // ------------------------------------------------ admin: providers (E8-06)
   app.get('/v1/admin/providers', { preHandler: [...staffOnly] }, async () => admin.listProviders());

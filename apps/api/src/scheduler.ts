@@ -38,6 +38,11 @@ export function createScheduler(
   payments: PaymentService,
   _clock: Clock,
   lock: SweepLock = createProcessSweepLock(),
+  /**
+   * Observation hook for the node monitor (task G-28): how many rows each sweep touched, so the
+   * panel can show a work report per node instead of just "the scheduler is alive".
+   */
+  options: { onTick?: (result: TickResult, at: Date) => void } = {},
 ): Scheduler {
   let last: { at: Date; result: TickResult } | null = null;
 
@@ -54,6 +59,7 @@ export function createScheduler(
         reconciled.expiredPayments + reconciled.healedPayments + reconciled.expiredSubscriptions,
     };
     last = { at: _clock.now(), result };
+    options.onTick?.(result, last.at);
     return result;
   };
 

@@ -18,7 +18,8 @@ export type PageId =
   | 'sms'
   | 'zones'
   | 'audit'
-  | 'status';
+  | 'status'
+  | 'nodes';
 
 /** Pages a role may open. Support staff get the operational screens, not the money ones. */
 export const PAGE_ACCESS: Record<PageId, readonly UserRole[]> = {
@@ -33,6 +34,7 @@ export const PAGE_ACCESS: Record<PageId, readonly UserRole[]> = {
   zones: ['ADMIN', 'OWNER'],
   audit: ['SUPPORT', 'ADMIN', 'OWNER'],
   status: ['SUPPORT', 'ADMIN', 'OWNER'],
+  nodes: ['SUPPORT', 'ADMIN', 'OWNER'],
 };
 
 export const canAccess = (role: UserRole, page: PageId): boolean =>
@@ -62,6 +64,7 @@ export const defaultPageFor = (role: UserRole): PageId | null => {
     'zones',
     'audit',
     'status',
+    'nodes',
   ];
   return order.find((page) => canAccess(role, page)) ?? null;
 };

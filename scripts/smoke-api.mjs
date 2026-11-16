@@ -238,6 +238,28 @@ await step('GET /v1/admin/status (infra monitoring)', async () => {
   return `storage ${payload.storage?.mode ?? payload.mode ?? '?'}`;
 });
 
+await step('GET /v1/admin/nodes (live node monitor, G-28)', async () => {
+  const { status, payload } = await call('GET', '/v1/admin/nodes', { token: owner.token });
+  expect(status === 200, `status ${status}: ${JSON.stringify(payload)}`);
+  const nodes = payload.nodes ?? [];
+  expect(nodes.length >= 1, 'no node in the monitor');
+  const self = nodes.find((node) => node.nodeId === payload.selfNodeId);
+  expect(Boolean(self), 'the serving node is missing from its own monitor');
+  expect(self.resources !== null, 'no resources reported for the serving node');
+  expect(typeof self.traffic.requests === 'number', 'traffic counters missing');
+  expect(typeof payload.failover?.shouldTakeOver === 'boolean', 'failover verdict missing');
+  return `${nodes.length} node(s), cpu ${self.resources.cpuPct}%, ${self.traffic.requests} req handled`;
+});
+
+await step('POST /v1/nodes/heartbeat refuses a heartbeat without the node token', async () => {
+  const { status } = await call('POST', '/v1/nodes/heartbeat', {
+    body: { nodeId: 'smoke-helper', role: 'helper' },
+  });
+  // 401 with a token configured, 503 when external agents are switched off — never 200.
+  expect(status === 401 || status === 503, `unexpected status ${status}`);
+  return `rejected (${status})`;
+});
+
 await step('GET /v1/me/reputation', async () => {
   const { status } = await call('GET', '/v1/me/reputation', { token: buyer.token });
   expect(status === 200, `status ${status}`);

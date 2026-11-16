@@ -72,6 +72,21 @@ const envSchema = z.object({
   PAYMENT_CALLBACK_URL: z.string().url().default('https://app.benzin.ir/payments/callback'),
   /** Reported on the admin status screen (task E8-08). */
   APP_VERSION: z.string().default('0.1.0'),
+  /**
+   * Node identity for the live node monitor (task G-28). `helper` means "park my sweeps until the
+   * primary stops reporting": this is how the owner's own machine stands by without interfering.
+   */
+  NODE_ROLE: z.enum(['primary', 'helper']).default('primary'),
+  /** Stable id for the heartbeat row; defaults to `<role>-<hostname>` at boot. */
+  NODE_ID: z.string().min(3).max(64).optional(),
+  NODE_NAME: z.string().min(1).max(64).optional(),
+  NODE_REGION: z.string().min(1).max(64).optional(),
+  /** Shared secret for `POST /v1/nodes/heartbeat`; unset disables external agents. */
+  NODE_TOKEN: z.string().min(8).optional(),
+  NODE_HEARTBEAT_MS: z.coerce.number().int().min(1000).max(300_000).default(10_000),
+  /** No heartbeat from any primary for this long → a helper takes the sweeps over. */
+  NODE_STALE_SECONDS: z.coerce.number().int().min(15).max(3600).default(90),
+  NODE_FAILOVER_POLL_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 

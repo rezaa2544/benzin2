@@ -13,6 +13,7 @@ import type { OrderService } from '../modules/orders-service.js';
 import type { ReservationService } from '../modules/reservations-service.js';
 import type { SettingsService } from '../modules/settings-service.js';
 import type { StatsService } from '../modules/stats-service.js';
+import type { NodesService } from '../modules/nodes-service.js';
 
 export interface AppServices {
   auth: AuthService;
@@ -26,6 +27,8 @@ export interface AppServices {
   profile: ProfileService;
   admin: AdminService;
   stats: StatsService;
+  /** Node monitor and failover registry (task G-28). */
+  nodes: NodesService;
 }
 
 declare module 'fastify' {

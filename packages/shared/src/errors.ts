@@ -54,6 +54,8 @@ export const ERROR_CODES = [
   'INVALID_STATE_TRANSITION',
   'ALREADY_DECIDED',
   'CONFLICT',
+  'NODE_TOKEN_INVALID',
+  'NODE_AGENT_DISABLED',
   'INTERNAL_ERROR',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

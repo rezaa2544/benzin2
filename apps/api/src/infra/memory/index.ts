@@ -41,6 +41,7 @@ import {
 import { MemoryReputationRepository } from './reputation.js';
 import { MemoryNotificationRepository } from './notifications.js';
 import { MemoryZoneRepository } from './zones.js';
+import { MemoryNodeRepository } from './nodes.js';
 
 /**
  * In-memory repositories. They exist for unit/e2e tests and for `pnpm dev` without Docker.
@@ -631,6 +632,7 @@ export function createMemoryRepositories(): Repositories {
     settings: new MemorySettingsRepository(),
     zones: new MemoryZoneRepository(),
     audit: new MemoryAuditRepository(),
+    nodes: new MemoryNodeRepository(),
   };
 }
 

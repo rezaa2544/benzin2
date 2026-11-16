@@ -12,6 +12,7 @@ import { PaymentsPage } from './pages/PaymentsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { SmsPage } from './pages/SmsPage.js';
 import { StatusPage } from './pages/StatusPage.js';
+import { NodesPage } from './pages/NodesPage.js';
 import { SubscriptionsPage } from './pages/SubscriptionsPage.js';
 import { PlansPage } from './pages/PlansPage.js';
 import { UsersPage } from './pages/UsersPage.js';
@@ -96,6 +97,8 @@ export function App(): JSX.Element {
         return <AuditPage api={api} />;
       case 'status':
         return <StatusPage api={api} />;
+      case 'nodes':
+        return <NodesPage api={api} />;
       default:
         return <Notice>{fa.app.empty}</Notice>;
     }

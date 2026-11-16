@@ -494,6 +494,69 @@ export interface AuditRepository {
   query(input: AuditQuery): Promise<{ items: AuditEntry[]; total: number }>;
 }
 
+/**
+ * Node telemetry (task G-28).
+ *
+ * A deployment can run a second process — the owner's own desktop, a spare VPS — as a *helper*
+ * node. It stays idle while the primary is healthy and takes the expiry sweeps over when the
+ * primary stops sending heartbeats. Everything the panel shows is a heartbeat: host resources,
+ * a traffic counter and the jobs the node actually ran.
+ */
+export interface NodeResources {
+  cpuPct: number;
+  cores: number;
+  memUsedPct: number;
+  memRssMb: number;
+  diskFreeGb: number;
+  diskTotalGb: number;
+  loadAvg: number;
+  eventLoopLagMs: number | null;
+}
+
+export interface NodeTraffic {
+  requests: number;
+  errors: number;
+  requestsPerMin: number;
+  avgLatencyMs: number;
+  lastRequestAt: string | null;
+}
+
+export interface NodeJob {
+  kind: string;
+  count: number;
+  at: string;
+  detail?: Record<string, number>;
+}
+
+export interface NodeJobs {
+  total: number;
+  last30Min: number;
+  lastJobAt: string | null;
+  recent: NodeJob[];
+}
+
+export interface NodeHeartbeatRecord {
+  nodeId: string;
+  name: string;
+  role: 'primary' | 'helper';
+  version: string | null;
+  region: string | null;
+  resources: NodeResources | null;
+  traffic: NodeTraffic;
+  jobs: NodeJobs;
+  uptimeSeconds: number;
+  /** What the node reports about itself: sweeping (active) or deliberately parked (standby). */
+  active: boolean;
+  lastSeenAt: Date;
+}
+
+/** One row per node: `node_id` is the key, the last heartbeat wins. */
+export interface NodeRepository {
+  save(record: NodeHeartbeatRecord): Promise<void>;
+  list(): Promise<NodeHeartbeatRecord[]>;
+  get(nodeId: string): Promise<NodeHeartbeatRecord | null>;
+}
+
 /** Result of a drive between two points. */
 export interface RouteResult {
   distanceMeters: number;
@@ -545,6 +608,7 @@ export interface Repositories {
   settings: SettingsRepository;
   zones: ZoneRepository;
   audit: AuditRepository;
+  nodes: NodeRepository;
 }
 
 export type { UserStatus };

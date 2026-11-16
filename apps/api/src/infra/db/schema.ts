@@ -514,3 +514,30 @@ export const auditLogs = pgTable(
     index('audit_logs_actor_idx').on(t.actorId, t.createdAt),
   ],
 );
+
+/**
+ * Node telemetry (task G-28) — the owner's own machine can stand by as a helper node.
+ *
+ * One row per node and last write wins: this is a "what is true right now" feed that the panel
+ * polls, not an event log, so it stays a single small table. Resources, traffic and jobs travel
+ * as `jsonb`; `role`, `active` and `last_seen_at` are real columns because the failover decision
+ * filters on them ("has any primary reported inside the stale window?").
+ */
+export const nodeHeartbeats = pgTable(
+  'node_heartbeats',
+  {
+    nodeId: text('node_id').primaryKey(),
+    name: text('name').notNull(),
+    role: text('role').notNull().default('primary'),
+    version: text('version'),
+    region: text('region'),
+    resources: jsonb('resources'),
+    traffic: jsonb('traffic').notNull().default({}),
+    jobs: jsonb('jobs').notNull().default({}),
+    uptimeSeconds: integer('uptime_seconds').notNull().default(0),
+    /** The node says it is sweeping right now (or parked and waiting, for a helper). */
+    active: boolean('active').notNull().default(false),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('node_heartbeats_last_seen_idx').on(t.lastSeenAt)],
+);

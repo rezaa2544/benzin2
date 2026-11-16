@@ -163,3 +163,71 @@ export interface AuthResponse {
   refreshToken: string;
   user: { id: string; phone: string; displayName: string | null; role: UserRole };
 }
+
+/**
+ * Node monitor (task G-28). Mirrors `apps/api/src/modules/nodes-service.ts` — the owner's own
+ * machine can stand by as a helper node, so the panel shows every node's resources, the traffic it
+ * served and the sweeps it actually ran.
+ */
+export interface NodeResources {
+  cpuPct: number;
+  cores: number;
+  memUsedPct: number;
+  memRssMb: number;
+  diskFreeGb: number;
+  diskTotalGb: number;
+  loadAvg: number;
+  eventLoopLagMs: number | null;
+}
+
+export interface NodeTraffic {
+  requests: number;
+  errors: number;
+  requestsPerMin: number;
+  avgLatencyMs: number;
+  lastRequestAt: string | null;
+}
+
+export interface NodeJob {
+  kind: string;
+  count: number;
+  at: string;
+  detail?: Record<string, number>;
+}
+
+export interface NodeJobs {
+  total: number;
+  last30Min: number;
+  lastJobAt: string | null;
+  recent: NodeJob[];
+}
+
+export interface NodeView {
+  nodeId: string;
+  name: string;
+  role: 'primary' | 'helper';
+  version: string | null;
+  region: string | null;
+  resources: NodeResources | null;
+  traffic: NodeTraffic;
+  jobs: NodeJobs;
+  uptimeSeconds: number;
+  active: boolean;
+  lastSeenAt: string;
+  state: 'active' | 'standby' | 'offline';
+  stateFa: string;
+  heartbeatAgeSeconds: number;
+  self: boolean;
+  duties: 'primary' | 'taking-over' | 'standby' | 'offline';
+  dutiesFa: string;
+}
+
+export interface NodesOverview {
+  generatedAt: string;
+  staleAfterSeconds: number;
+  selfNodeId: string;
+  activeNodeId: string | null;
+  primary: { nodeId: string; healthy: boolean; lastSeenAt: string | null } | null;
+  failover: { shouldTakeOver: boolean; reason: string; reasonFa: string };
+  nodes: NodeView[];
+}

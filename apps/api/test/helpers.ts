@@ -74,6 +74,10 @@ export interface TestContext {
 export interface TestContextOptions {
   /** Injected router; omit to exercise the straight-line fallback. */
   routeProvider?: RouteProvider | null;
+  /** Node identity/role overrides for the node monitor (task G-28). */
+  node?: { nodeId?: string; name?: string; role?: 'primary' | 'helper'; region?: string | null };
+  /** Extra environment (e.g. `NODE_TOKEN`, `NODE_STALE_SECONDS`) for config-level behaviour. */
+  env?: Record<string, string>;
   /**
    * Wraps the capturing sender the app receives. Lets a test simulate a provider outage while
    * still reading the codes the capturing sender recorded.
@@ -96,11 +100,13 @@ export async function createTestContext(
       JWT_SECRET: TEST_JWT_SECRET,
       TOKEN_ISSUER: TEST_ISSUER,
       CORS_ORIGINS: 'http://localhost:5173',
+      ...(options.env ?? {}),
     }),
     repos,
     sms: sender,
     clock,
     routeProvider: options.routeProvider ?? null,
+    ...(options.node ? { node: options.node } : {}),
   });
   const app = built.app;
   // Every test context starts from the same seed as development (zones, plans, settings).

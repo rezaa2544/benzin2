@@ -25,6 +25,7 @@ import {
   PgReputationRepository,
 } from './pg-social.js';
 import { PgZoneRepository } from './zones.js';
+import { PgNodeRepository } from './pg-nodes.js';
 
 /**
  * The Postgres adapter (task G-01): one `Pool` per process, one repository per port.
@@ -70,6 +71,7 @@ export function createPostgresRepositories(databaseUrl: string): PostgresHandle 
     settings: new PgSettingsRepository(pool),
     zones: new PgZoneRepository(db),
     audit: new PgAuditRepository(pool),
+    nodes: new PgNodeRepository(pool),
   };
 
   return {

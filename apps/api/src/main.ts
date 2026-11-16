@@ -64,7 +64,7 @@ const sweepLock = postgres
   ? createPostgresSweepLock(postgres.pool, { logger: { warn: (message) => console.warn(message) } })
   : createProcessSweepLock();
 
-const { app, scheduler } = await buildApp({
+const { app, services, scheduler } = await buildApp({
   config,
   repos,
   sms,
@@ -72,8 +72,59 @@ const { app, scheduler } = await buildApp({
   sweepLock,
 });
 
-// Expiry worker (task G-02): single-flight across instances, idempotent per row.
-const stopScheduler = scheduler.start(config.SCHEDULER_INTERVAL_MS);
+/**
+ * Node duty (task G-28).
+ *
+ * A `primary` sweeps from boot. A `helper` — the owner's second machine — deliberately does
+ * nothing: it publishes its heartbeat (CPU, RAM, disk, traffic) and polls the registry. Only when
+ * no primary has reported inside `NODE_STALE_SECONDS` does it start the expiry sweeps, and it
+ * parks them again the moment the primary comes back. Sweeps stay single-flight either way: every
+ * instance goes through the `expiry` advisory lock, so an overlap cannot double-apply.
+ */
+let stopScheduler: (() => void) | null = null;
+
+const startSweeping = (why: string): void => {
+  if (stopScheduler) return;
+  stopScheduler = scheduler.start(config.SCHEDULER_INTERVAL_MS);
+  services.nodes.setActiveLocal(true);
+  app.log.warn(`[g-28] ${why}: this node is now running the expiry sweeps`);
+};
+
+const stopSweeping = (why: string): void => {
+  if (!stopScheduler) return;
+  stopScheduler();
+  stopScheduler = null;
+  services.nodes.setActiveLocal(false);
+  app.log.warn(`[g-28] ${why}: this node is parked and will not sweep`);
+};
+
+const publishHeartbeat = (): void => {
+  void services.nodes.publishSelf().catch((error: unknown) => {
+    console.error('[g-28] heartbeat failed', error);
+  });
+};
+
+if (config.NODE_ROLE === 'primary') {
+  startSweeping('primary role');
+  publishHeartbeat();
+} else {
+  // Standby loop: the only thing a helper does until it is needed.
+  const supervise = async (): Promise<void> => {
+    try {
+      const decision = await services.nodes.failover();
+      if (decision.shouldTakeOver) startSweeping(`primary unreachable (${decision.reason})`);
+      else stopSweeping('primary is healthy');
+    } catch (error) {
+      console.error('[g-28] failover check failed', error);
+    }
+    publishHeartbeat();
+  };
+  void supervise();
+  setInterval(() => void supervise(), config.NODE_FAILOVER_POLL_MS).unref();
+}
+
+const heartbeatTimer = setInterval(publishHeartbeat, config.NODE_HEARTBEAT_MS);
+heartbeatTimer.unref();
 
 app.log.warn(
   postgres
@@ -85,7 +136,8 @@ await app.listen({ port: config.API_PORT, host: config.API_HOST });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
-    stopScheduler();
+    clearInterval(heartbeatTimer);
+    stopScheduler?.();
     void app
       .close()
       .then(() => postgres?.close())

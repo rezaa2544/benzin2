@@ -499,3 +499,71 @@ export const createOwnerSchema = z
   .strict();
 
 export type CreateOwnerInput = z.infer<typeof createOwnerSchema>;
+
+/**
+ * Heartbeat from an external node agent (task G-28). Everything except the identity is optional:
+ * a stripped-down agent on a Windows box should be able to report "I am alive, here is my CPU"
+ * with four fields, and fill in traffic/jobs later if it has them.
+ */
+export const nodeHeartbeatSchema = z
+  .object({
+    nodeId: z
+      .string()
+      .trim()
+      .min(3)
+      .max(64)
+      .regex(/^[A-Za-z0-9._-]+$/, { message: 'NODE_ID_INVALID' }),
+    name: z.string().trim().min(1).max(64).optional(),
+    role: z.enum(['primary', 'helper']).optional(),
+    version: z.string().trim().max(40).nullish(),
+    region: z.string().trim().max(64).nullish(),
+    resources: z
+      .object({
+        cpuPct: z.number().min(0).max(100).optional(),
+        cores: z.number().int().min(0).max(1024).optional(),
+        memUsedPct: z.number().min(0).max(100).optional(),
+        memRssMb: z.number().min(0).optional(),
+        diskFreeGb: z.number().min(0).optional(),
+        diskTotalGb: z.number().min(0).optional(),
+        loadAvg: z.number().min(0).optional(),
+        eventLoopLagMs: z.number().min(0).nullish(),
+      })
+      .strict()
+      .nullish(),
+    traffic: z
+      .object({
+        requests: z.number().int().min(0).optional(),
+        errors: z.number().int().min(0).optional(),
+        requestsPerMin: z.number().min(0).optional(),
+        avgLatencyMs: z.number().min(0).optional(),
+        lastRequestAt: z.string().datetime().nullish(),
+      })
+      .strict()
+      .nullish(),
+    jobs: z
+      .object({
+        total: z.number().min(0).optional(),
+        last30Min: z.number().min(0).optional(),
+        lastJobAt: z.string().datetime().nullish(),
+        recent: z
+          .array(
+            z
+              .object({
+                kind: z.string().trim().min(1).max(40),
+                count: z.number().min(0),
+                at: z.string().datetime(),
+                detail: z.record(z.number()).optional(),
+              })
+              .strict(),
+          )
+          .max(20)
+          .optional(),
+      })
+      .strict()
+      .nullish(),
+    uptimeSeconds: z.number().int().min(0).optional(),
+    active: z.boolean().optional(),
+  })
+  .strict();
+
+export type NodeHeartbeatInputSchema = z.infer<typeof nodeHeartbeatSchema>;

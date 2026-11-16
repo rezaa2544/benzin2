@@ -17,6 +17,7 @@ const NAV: { page: PageId; label: string }[] = [
   { page: 'zones', label: fa.nav.zones },
   { page: 'audit', label: fa.nav.audit },
   { page: 'status', label: fa.nav.status },
+  { page: 'nodes', label: fa.nav.nodes },
 ];
 
 export function AppShell({
