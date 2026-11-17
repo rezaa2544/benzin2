@@ -14,7 +14,7 @@ import { navigate } from '../lib/router.js';
 import { useResource } from '../lib/useResource.js';
 import { t, tf } from '../lib/i18n.js';
 import { ConfirmSheet } from '../components/ConfirmSheet.js';
-import { Notice, PageTitle, Skeleton } from './parts.js';
+import { ListError, Notice, PageTitle, Skeleton } from './parts.js';
 
 export interface ProfilePageProps {
   api: ApiClient;
@@ -61,7 +61,7 @@ export function ProfilePage({ api, user, onUser, onLogout }: ProfilePageProps): 
     };
   }, [api]);
 
-  const { data, loading, error: loadError } = useResource(load, [api]);
+  const { data, loading, error: loadError, reload } = useResource(load, [api]);
 
   /** E1-05: only the display name is editable; it is what the counterpart sees. */
   const saveName = async (): Promise<void> => {
@@ -123,7 +123,13 @@ export function ProfilePage({ api, user, onUser, onLogout }: ProfilePageProps): 
       <PageTitle title={t('profile.title')} lead={user.displayName ?? undefined} />
 
       {error ? <Notice tone="error">{error}</Notice> : null}
-      {loadError ? <Notice tone="error">{errorMessage(loadError, errorMap)}</Notice> : null}
+      {loadError ? (
+        <ListError
+          message={errorMessage(loadError, errorMap)}
+          error={loadError}
+          onRetry={reload}
+        />
+      ) : null}
 
       <div className="card mb-3">
         <dl className="grid grid-cols-2 gap-2 text-sm">

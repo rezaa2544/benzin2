@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { t } from '../lib/i18n.js';
+import { errorTracking } from '../lib/api.js';
 
 export type NoticeTone = 'info' | 'error' | 'success' | 'warning';
 
@@ -26,6 +28,42 @@ export function Notice({
     >
       <span>{children}</span>
       {action}
+    </div>
+  );
+}
+
+/**
+ * G-21 — the error state of every list, in one place.
+ *
+ * The spec asks for three things on failure: what happened, a way out («تلاش دوباره») and a
+ * tracking code. The third one is the one that always got skipped, and it is the only part that
+ * helps after the user closes the app.
+ */
+export function ListError({
+  message,
+  error,
+  onRetry,
+}: {
+  message: string;
+  /** The thrown value, used only for its tracking code. */
+  error?: unknown;
+  onRetry?: () => void;
+}): JSX.Element {
+  const tracking = errorTracking(error);
+  return (
+    <div role="alert" className="card border border-danger/30 bg-dangerSoft">
+      <p className="text-sm font-bold text-ink">{message}</p>
+      <p className="mt-1 text-xs text-muted">
+        {t('state.errorHint')}{' '}
+        <span dir="ltr" className="font-mono">
+          {tracking}
+        </span>
+      </p>
+      {onRetry ? (
+        <button type="button" className="btn mt-3 min-h-tap px-3 text-sm" onClick={onRetry}>
+          {t('state.retry')}
+        </button>
+      ) : null}
     </div>
   );
 }

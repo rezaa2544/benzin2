@@ -1,21 +1,34 @@
 import { useState } from 'react';
 import {
   AppShell,
+  Avatar,
   BottomNav,
+  BottomSheet,
+  Button,
+  Card,
   ChatBubble,
   ConfirmSheet,
+  Countdown,
   CountdownRing,
   EmptyState,
   FormField,
+  NumberStepper,
   OrderCard,
   OtpInput,
   PriceTag,
+  QuantityChip,
+  RadioCard,
+  RangeSlider,
+  SegmentedControl,
+  StatusBadge,
+  TextField,
   TierBadge,
   ToastStack,
   useToasts,
   type NavKey,
 } from '../components/index.js';
 import { t } from '../lib/i18n.js';
+import { ListError, Skeleton } from './parts.js';
 import { NAV_ITEMS } from '../components/BottomNav.js';
 import type { ThemeMode } from '../lib/theme.js';
 
@@ -89,6 +102,13 @@ export function StyleGuidePage({ theme, onToggleTheme }: StyleGuidePageProps): J
   const [sheetOpen, setSheetOpen] = useState(false);
   const [otp, setOtp] = useState('');
   const [activeNav, setActiveNav] = useState<NavKey>('market');
+  // G-21: every base component gets a working sample, not a picture of one.
+  const [stepper, setStepper] = useState(40);
+  const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
+  const [radius, setRadius] = useState(10);
+  const [plan, setPlan] = useState('single');
+  const [field, setSetField] = useState('');
+  const [kitSheet, setKitSheet] = useState(false);
   const { toasts, push, dismiss } = useToasts();
 
   return (
@@ -116,11 +136,11 @@ export function StyleGuidePage({ theme, onToggleTheme }: StyleGuidePageProps): J
             <div key={token.name} className="card overflow-hidden p-0">
               <div className={`h-12 w-full border-b border-line ${token.className}`} />
               <div className="p-2">
-                <div dir="ltr" className="font-mono text-[0.6875rem] text-ink">
+                <div dir="ltr" className="font-mono text-xs text-ink">
                   --{token.name}
                 </div>
                 {token.note ? (
-                  <div className="text-[0.6875rem] text-muted">{token.note}</div>
+                  <div className="text-xs text-muted">{token.note}</div>
                 ) : null}
               </div>
             </div>
@@ -133,7 +153,7 @@ export function StyleGuidePage({ theme, onToggleTheme }: StyleGuidePageProps): J
           {TYPE_SCALE.map((item) => (
             <div key={item.token} className="flex items-baseline justify-between gap-3">
               <span className={item.className}>{t('styleGuide.sampleBody')}</span>
-              <span dir="ltr" className="font-mono text-[0.6875rem] text-muted">
+              <span dir="ltr" className="font-mono text-xs text-muted">
                 {item.token}
               </span>
             </div>
@@ -155,7 +175,7 @@ export function StyleGuidePage({ theme, onToggleTheme }: StyleGuidePageProps): J
                   className="w-6 rounded-xs bg-brandSoft"
                   style={{ height: `var(--space-${step})` }}
                 />
-                <span dir="ltr" className="font-mono text-[0.625rem] text-muted">
+                <span dir="ltr" className="font-mono text-xs text-muted">
                   {step}
                 </span>
               </div>
@@ -165,7 +185,7 @@ export function StyleGuidePage({ theme, onToggleTheme }: StyleGuidePageProps): J
             {RADII.map((radius) => (
               <div
                 key={radius.name}
-                className={`grid h-14 w-14 place-items-center border border-line bg-surface2 text-[0.625rem] text-muted ${radius.className}`}
+                className={`grid h-14 w-14 place-items-center border border-line bg-surface2 text-xs text-muted ${radius.className}`}
               >
                 {radius.name}
               </div>
@@ -300,6 +320,164 @@ export function StyleGuidePage({ theme, onToggleTheme }: StyleGuidePageProps): J
         </div>
       </Section>
 
+
+      <Section title={t('styleGuide.kit')} lead={t('styleGuide.kitLead')}>
+        <div className="flex flex-col gap-4">
+          <Card title="Button">
+            <div className="flex flex-wrap gap-2">
+              <Button variant="primary">اصلی</Button>
+              <Button variant="secondary">ثانویه</Button>
+              <Button variant="ghost">بی‌قاب</Button>
+              <Button variant="danger">خطر</Button>
+              <Button variant="primary" loading>
+                در حال ارسال
+              </Button>
+              <Button disabled>غیرفعال</Button>
+            </div>
+          </Card>
+
+          <Card title="QuantityChip · StatusBadge · Countdown">
+            <div className="flex flex-wrap items-center gap-2">
+              <QuantityChip litres={40} />
+              <QuantityChip litres={12} tone="brand" />
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <StatusBadge status="OPEN" />
+              <StatusBadge status="AWAITING_OWNER_DECISION" />
+              <StatusBadge status="COMPLETED" />
+              <StatusBadge status="CANCELLED" />
+              <StatusBadge status="SOMETHING_NEW" />
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <Countdown dueAt={Date.now() + 12 * 60 * 1000} now={Date.now()} />
+              <Countdown dueAt={Date.now() + 3 * 60 * 1000} now={Date.now()} />
+              <Countdown dueAt={Date.now() - 1000} now={Date.now()} />
+            </div>
+          </Card>
+
+          <Card title="TextField">
+            <TextField
+              label={t('form.phone')}
+              hint={t('form.phoneHint')}
+              value={field}
+              onChange={setSetField}
+              dir="ltr"
+              inputMode="tel"
+              required
+            />
+            <TextField
+              label={t('form.litres')}
+              value="۳۰۰"
+              onChange={() => {}}
+              error={t('form.errorRange')}
+            />
+          </Card>
+
+          <Card title="NumberStepper · RangeSlider">
+            <NumberStepper
+              label={t('form.litres')}
+              value={stepper}
+              onChange={setStepper}
+              step={5}
+              min={0}
+              max={200}
+              suffix={t('common.litre')}
+            />
+            <div className="mt-4">
+              <RangeSlider
+                label={t('market.radius')}
+                value={radius}
+                onChange={setRadius}
+                min={1}
+                max={50}
+                format={(value) => `${value}`}
+              />
+            </div>
+          </Card>
+
+          <Card title="SegmentedControl">
+            <SegmentedControl
+              label={t('market.side')}
+              value={side}
+              onChange={setSide}
+              options={[
+                { value: 'BUY', label: t('market.buy') },
+                { value: 'SELL', label: t('market.sell') },
+              ]}
+            />
+          </Card>
+
+          <Card title="RadioCard">
+            <RadioCard
+              name="plan-sample"
+              checked={plan === 'single'}
+              onSelect={() => setPlan('single')}
+              title="یک رزرو"
+              subtitle="۱۵٬۰۰۰ تومان · ۹۰ روز"
+              price={15000}
+            />
+            <RadioCard
+              name="plan-sample"
+              checked={plan === 'monthly'}
+              onSelect={() => setPlan('monthly')}
+              title="ماهانه"
+              subtitle="نامحدود در ماه"
+              price={49000}
+            />
+            <RadioCard
+              name="plan-sample"
+              checked={false}
+              onSelect={() => {}}
+              title="پلن غیرفعال"
+              disabled
+            />
+          </Card>
+
+          <Card title="Avatar · BottomSheet">
+            <div className="flex items-center gap-3">
+              <Avatar name="مریم احمدی" />
+              <Avatar name="کیوان رستمی" size={56} />
+              <Button onClick={() => setKitSheet(true)}>نمونهٔ شیت</Button>
+            </div>
+          </Card>
+        </div>
+      </Section>
+
+      <Section title={t('styleGuide.states')} lead={t('styleGuide.statesLead')}>
+        <div className="flex flex-col gap-4">
+          <div>
+            <p className="mb-1 text-xs text-muted">{t('state.loading')}</p>
+            <Skeleton rows={2} />
+          </div>
+          <div>
+            <p className="mb-1 text-xs text-muted">{t('common.empty')}</p>
+            <EmptyState title={t('empty.ordersTitle')} body={t('empty.ordersBody')} />
+          </div>
+          <div>
+            <p className="mb-1 text-xs text-muted">{t('errors.UNKNOWN')}</p>
+            <ListError message={t('errors.UNKNOWN')} onRetry={() => push(t('state.retry'), 'info')} />
+          </div>
+          <div>
+            <p className="mb-1 text-xs text-muted">{t('offline.banner')}</p>
+            <div role="status" className="rounded-sm border border-warning/30 bg-warning/10 p-3">
+              <p className="text-xs font-medium text-warning">{t('offline.banner')}</p>
+              <p className="mt-1 text-xs text-muted">{t('state.offlineHint')}</p>
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      <Section title={t('styleGuide.previewLink')} lead={t('styleGuide.previewLinkLead')}>
+        <Card>
+          <p className="text-sm">
+            {t('styleGuide.previewLinkBody')}{' '}
+            <a className="text-info underline" href="/style-guide" data-testid="style-guide-link">
+              /style-guide
+            </a>
+          </p>
+        </Card>
+      </Section>
+
       <Section title="BottomNav" lead={NAV_ITEMS.map((item) => t(item.labelKey)).join(' · ')}>
         <div className="card p-0">
           <div className="pointer-events-none relative h-20">
@@ -307,6 +485,24 @@ export function StyleGuidePage({ theme, onToggleTheme }: StyleGuidePageProps): J
           </div>
         </div>
       </Section>
+
+      <BottomSheet
+        open={kitSheet}
+        title="BottomSheet"
+        onClose={() => setKitSheet(false)}
+        footer={
+          <>
+            <Button variant="primary" fullWidth onClick={() => setKitSheet(false)}>
+              {t('common.confirm')}
+            </Button>
+            <Button fullWidth onClick={() => setKitSheet(false)}>
+              {t('common.cancel')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-muted">{t('styleGuide.kitLead')}</p>
+      </BottomSheet>
 
       <ConfirmSheet
         open={sheetOpen}

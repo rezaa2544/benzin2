@@ -15,7 +15,7 @@ import { t } from '../lib/i18n.js';
 import { CountdownRing } from '../components/CountdownRing.js';
 import { DeliveryCodeCard } from '../components/DeliveryCodeCard.js';
 import { ConfirmSheet } from '../components/ConfirmSheet.js';
-import { Notice, PageTitle, Skeleton } from './parts.js';
+import { ListError, Notice, PageTitle, Skeleton } from './parts.js';
 
 export interface TradePageProps {
   api: ApiClient;
@@ -143,7 +143,11 @@ export function TradePage({ api, user, config, reservationId }: TradePageProps):
     return (
       <div>
         <PageTitle title={t('trade.title')} />
-        <Notice tone="error">{errorMessage(loadError, errorMap)}</Notice>
+        <ListError
+          message={errorMessage(loadError, errorMap)}
+          error={loadError}
+          onRetry={reload}
+        />
       </div>
     );
   }

@@ -37,7 +37,7 @@ import { MapPicker } from '../components/MapPicker.js';
 import { OrderCard } from '../components/OrderCard.js';
 import { RebookBanner } from '../components/RebookBanner.js';
 import { EmptyState } from '../components/EmptyState.js';
-import { Notice, PageTitle, Skeleton } from './parts.js';
+import { ListError, Notice, PageTitle, Skeleton } from './parts.js';
 
 export interface MarketPageProps {
   api: ApiClient;
@@ -90,6 +90,10 @@ export function MarketPage({
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // G-21: the thrown value rides along so «تلاش دوباره» can also quote a tracking code.
+  const [errorCause, setErrorCause] = useState<unknown>(null);
+  const [tick, setTick] = useState(0);
+  const reload = (): void => setTick((value) => value + 1);
   const [stats, setStats] = useState<MarketStats | null>(null);
   // G-08: «میانگین بازار» — the median of closed trades, which is the number a seller anchors on.
   const [median, setMedian] = useState<TradeMedian | null>(null);
@@ -134,9 +138,12 @@ export function MarketPage({
         setMedian(tradeMedian);
         setNearest(list.nearest ?? null);
         setLotMessage(list.message ?? null);
+        setErrorCause(null);
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setError(errorMessage(cause, errorMap));
+        if (cancelled) return;
+        setError(errorMessage(cause, errorMap));
+        setErrorCause(cause);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -155,6 +162,7 @@ export function MarketPage({
     filters.radiusKm,
     origin,
     api,
+    tick,
   ]);
 
   const apply = (patch: Partial<MarketFilters>): void => {
@@ -364,7 +372,7 @@ export function MarketPage({
         </div>
         <select
           aria-label={t('market.sort')}
-          className="input max-w-[8rem] text-sm"
+          className="input max-w-32 text-sm"
           value={filters.sort}
           onChange={(event) => apply({ sort: event.target.value as SortKey })}
         >
@@ -381,7 +389,7 @@ export function MarketPage({
         <div className="flex items-center justify-between gap-2">
           <div>
             <span className="text-sm font-bold">{t('market.traveler')}</span>
-            <p className="mt-0.5 text-[11px] text-muted">{t('market.travelerLead')}</p>
+            <p className="mt-0.5 text-xs text-muted">{t('market.travelerLead')}</p>
           </div>
           <button
             type="button"
@@ -397,14 +405,14 @@ export function MarketPage({
           </button>
         </div>
 
-        {travelerNote ? <p className="mt-2 text-[11px] text-danger">{travelerNote}</p> : null}
+        {travelerNote ? <p className="mt-2 text-xs text-danger">{travelerNote}</p> : null}
 
         {origin ? (
           <>
             <div className="mt-3">
               <div className="mb-1.5 flex items-center justify-between">
                 <span className="label mb-0">{t('market.radius')}</span>
-                <span className="text-[11px] text-muted tnum" dir="ltr">
+                <span className="text-xs text-muted tnum" dir="ltr">
                   {filters.radiusKm
                     ? tf('market.radiusOption', { km: filters.radiusKm })
                     : t('market.radiusAny')}
@@ -429,7 +437,7 @@ export function MarketPage({
                   </button>
                 ))}
               </div>
-              <p className="mt-1 text-[11px] text-muted">{t('market.originHint')}</p>
+              <p className="mt-1 text-xs text-muted">{t('market.originHint')}</p>
             </div>
             <button
               type="button"
@@ -458,13 +466,13 @@ export function MarketPage({
         <div className="card mb-3 flex flex-wrap items-center justify-between gap-2 p-3">
           <div>
             <p className="text-sm font-bold">{t('market.medianTitle')}</p>
-            <p className="mt-0.5 text-[11px] text-muted">{t('market.medianLead')}</p>
+            <p className="mt-0.5 text-xs text-muted">{t('market.medianLead')}</p>
           </div>
           <div className="text-end">
             {median.sufficient && median.medianRateToman !== null ? (
               <>
                 <p className="money text-base tnum">{formatToman(median.medianRateToman)}</p>
-                <p className="text-[11px] text-muted tnum">
+                <p className="text-xs text-muted tnum">
                   {t('market.medianPerLitre')}
                   <span aria-hidden="true"> · </span>
                   {tf('market.medianSample', { count: toPersianDigits(median.trades) })}
@@ -473,7 +481,7 @@ export function MarketPage({
             ) : (
               <>
                 <p className="text-sm font-bold text-muted">{t('market.medianInsufficient')}</p>
-                <p className="text-[11px] text-muted tnum">
+                <p className="text-xs text-muted tnum">
                   {tf('market.medianNeeded', {
                     count: toPersianDigits(median.requiredTrades),
                   })}
@@ -488,7 +496,7 @@ export function MarketPage({
         <div className="card mb-3 p-3">
           <div className="mb-2 flex items-baseline justify-between gap-2">
             <span className="text-sm font-bold">{placeName}</span>
-            <span className="text-[11px] text-muted tnum">
+            <span className="text-xs text-muted tnum">
               {tf('market.sample', {
                 count: toPersianDigits(stats.sampleSize),
                 days: toPersianDigits(stats.windowDays),
@@ -497,20 +505,20 @@ export function MarketPage({
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="rounded-sm bg-surface2 p-2">
-              <div className="text-[11px] text-muted">{t('market.statAvg')}</div>
+              <div className="text-xs text-muted">{t('market.statAvg')}</div>
               <div className="money text-sm tnum">{toman(stats.averageTotalRateToman)}</div>
             </div>
             <div className="rounded-sm bg-surface2 p-2">
-              <div className="text-[11px] text-muted">{t('market.statMax')}</div>
+              <div className="text-xs text-muted">{t('market.statMax')}</div>
               <div className="money text-sm tnum">{toman(stats.maxTotalRateToman)}</div>
             </div>
             <div className="rounded-sm bg-surface2 p-2">
-              <div className="text-[11px] text-muted">{t('market.statMin')}</div>
+              <div className="text-xs text-muted">{t('market.statMin')}</div>
               <div className="money text-sm tnum">{toman(stats.minTotalRateToman)}</div>
             </div>
           </div>
           {stats.side === 'SELL' && stats.byTier.some((row) => row.sampleSize > 0) ? (
-            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted tnum">
+            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted tnum">
               <span>{t('market.byTier')}</span>
               {stats.byTier
                 .filter((row) => row.sampleSize > 0)
@@ -526,9 +534,9 @@ export function MarketPage({
             </p>
           ) : null}
           {stats.side === 'SELL' ? (
-            <p className="mt-2 text-[11px] text-muted">{t('market.perLitreNote')}</p>
+            <p className="mt-2 text-xs text-muted">{t('market.perLitreNote')}</p>
           ) : null}
-          <p className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-muted tnum">
+          <p className="mt-0.5 flex items-center justify-between gap-2 text-xs text-muted tnum">
             <span>
               {tf('market.buyLitres', {
                 litres: litres(stats.buyLitres),
@@ -566,7 +574,13 @@ export function MarketPage({
         </div>
       ) : null}
 
-      {error ? <Notice tone="error">{error}</Notice> : null}
+      {error ? (
+        <ListError
+          message={error}
+          error={errorCause}
+          onRetry={reload}
+        />
+      ) : null}
       {loading ? <Skeleton rows={3} /> : null}
 
       {lotMessage ? <Notice tone="info">{lotMessage}</Notice> : null}

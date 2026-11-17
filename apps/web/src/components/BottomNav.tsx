@@ -46,7 +46,7 @@ export function BottomNav({ active, onNavigate }: BottomNavProps): JSX.Element {
                   onNavigate(item.key, item.href);
                 }}
                 aria-current={isActive ? 'page' : undefined}
-                className={`flex min-h-tap flex-col items-center justify-center gap-0.5 rounded-sm px-1 py-1 text-[0.6875rem] transition duration-fast ${
+                className={`flex min-h-tap flex-col items-center justify-center gap-0.5 rounded-sm px-1 py-1 text-xs transition duration-fast ${
                   isActive ? 'text-brand' : 'text-muted hover:text-ink'
                 }`}
               >

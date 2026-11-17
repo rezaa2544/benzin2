@@ -5,6 +5,7 @@ import { t } from '../lib/i18n.js';
 import { PriceTag } from './PriceTag.js';
 import { TierBadge } from './TierBadge.js';
 import { Icon } from './icons.js';
+import { StatusBadge } from './kit.js';
 
 export interface OrderCardProps {
   side: OrderSide;
@@ -68,7 +69,8 @@ export function OrderCard({
             <span className={`rounded-sm px-2 py-0.5 text-xs font-medium ${badge}`}>
               {view.side}
             </span>
-            <span className="chip">{view.status}</span>
+            {/* G-21: the status chip is the shared StatusBadge, so colour+word stay in one place. */}
+            <StatusBadge status={status} />
           </div>
           <div className="flex items-center gap-2 text-sm">
             <span className="font-bold tnum">{view.litres}</span>

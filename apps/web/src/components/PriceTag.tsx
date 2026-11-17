@@ -36,7 +36,7 @@ export function PriceTag({
         <span className="text-xs text-muted">{t('common.perLitre')}</span>
       </div>
       {fee > 0 ? (
-        <div className="text-[11px] text-muted tnum">
+        <div className="text-xs text-muted tnum">
           {t('order.priceBreakdown')
             .replace('{rate}', formatRate(rateToman))
             .replace('{fee}', formatRate(fee))}

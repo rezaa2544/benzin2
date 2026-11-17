@@ -42,11 +42,11 @@ export function DeliveryCodeCard({
     <div className="card mb-3" data-testid="delivery-code">
       <div className="mb-1 flex items-center justify-between">
         <p className="text-sm font-bold">{t('trade.deliveryCodeTitle')}</p>
-        <span className="text-[11px] text-muted tnum">
+        <span className="text-xs text-muted tnum">
           {formatJalaliDateTime(data.expiresAt)}
         </span>
       </div>
-      <p className="mb-2 text-[11px] text-muted">{t('trade.deliveryCodeLead')}</p>
+      <p className="mb-2 text-xs text-muted">{t('trade.deliveryCodeLead')}</p>
       <button
         type="button"
         // Tapping copies nothing on desktop and is harmless on mobile: it is a large tap target
@@ -64,7 +64,7 @@ export function DeliveryCodeCard({
           {t('trade.deliveryCodeLocked')} · {toPersianDigits(Math.ceil(lockedMs / 60_000))}′
         </p>
       ) : copied || data.attemptsRemaining < 3 ? (
-        <p className="mt-2 text-[11px] text-muted tnum">
+        <p className="mt-2 text-xs text-muted tnum">
           {tf('trade.deliveryCodeAttempts', { count: toPersianDigits(data.attemptsRemaining) })}
         </p>
       ) : null}

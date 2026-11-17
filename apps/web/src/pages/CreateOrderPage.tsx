@@ -305,7 +305,7 @@ export function CreateOrderPage({
               </div>
             ) : null}
             {isSell ? (
-              <p className="mt-1 text-[11px] text-muted">
+              <p className="mt-1 text-xs text-muted">
                 {t('create.summaryBreakdown')
                   .replace('{rate}', formatRate(rateValue ?? 0))
                   .replace('{fee}', formatRate(pumpFee))}
@@ -330,7 +330,7 @@ export function CreateOrderPage({
           {(field) => (
             <textarea
               {...field}
-              className="input min-h-[5rem] py-2"
+              className="input min-h-20 py-2"
               maxLength={240}
               value={values.note}
               onChange={(event) => update({ note: event.target.value })}

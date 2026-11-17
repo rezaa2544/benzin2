@@ -2,6 +2,8 @@ export interface ApiErrorShape {
   code: string;
   message: string;
   details?: Record<string, unknown>;
+  /** Fastify's request id; the server logs the same value, so it is the one thing support can search. */
+  requestId?: string;
 }
 
 export interface Tokens {
@@ -25,6 +27,11 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly details: Record<string, unknown> = {},
+    /**
+     * G-21: the tracking code the user reads out loud. The server already sends it with every
+     * error; dropping it here meant the UI could only say «خطا» and support had nothing to grep.
+     */
+    readonly requestId: string | null = null,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -113,6 +120,7 @@ export class ApiClient {
         envelope?.message ?? `HTTP ${response.status}`,
         response.status,
         envelope?.details ?? {},
+        envelope?.requestId ?? null,
       );
     }
     return payload as T;
@@ -152,11 +160,34 @@ function safeJson(text: string): unknown {
   }
 }
 
-/** Persian message for an error code, falling back to the server message then a generic line. */
+/**
+ * The tracking code for an error, short enough to read over the phone. Falls back to a locally
+ * generated code so *every* error has something to quote — a user staring at a dead screen with no
+ * code is the case this exists for.
+ */
+export function errorTracking(error: unknown): string {
+  if (error instanceof ApiError && error.requestId) {
+    return `#${error.requestId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+  }
+  return '#LOCAL';
+}
+
+const PERSIAN = /[\u0600-\u06FF]/;
+
+/**
+ * Persian message for an error code.
+ *
+ * G-21: the order is *mapped code → Persian server message → generic Persian line*. Handing the
+ * raw server message to the screen leaked English («Unexpected server error») into a Persian UI
+ * whenever the code was not in the local map, which is exactly what the spec forbids.
+ */
 export function errorMessage(error: unknown, map: Record<string, string>): string {
   if (error instanceof ApiError) {
     if (error.code === 'NETWORK') return map['NETWORK'] ?? 'شبکه در دسترس نیست';
-    return map[error.code] ?? error.message;
+    const mapped = map[error.code];
+    if (mapped) return mapped;
+    if (PERSIAN.test(error.message)) return error.message;
+    return map['UNKNOWN'] ?? 'خطای غیرمنتظره؛ دوباره تلاش کن.';
   }
-  return map['UNKNOWN'] ?? 'خطای غیرمنتظره';
+  return map['UNKNOWN'] ?? 'خطای غیرمنتظره؛ دوباره تلاش کن.';
 }

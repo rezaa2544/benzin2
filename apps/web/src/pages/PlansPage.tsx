@@ -11,7 +11,8 @@ import type {
 } from '../lib/types.js';
 import { useResource } from '../lib/useResource.js';
 import { t, tf } from '../lib/i18n.js';
-import { Notice, PageTitle, Skeleton } from './parts.js';
+import { ListError, Notice, PageTitle, Skeleton } from './parts.js';
+import { Button, EmptyState } from '../components/index.js';
 
 export interface PlansPageProps {
   api: ApiClient;
@@ -58,7 +59,7 @@ export function PlansPage({ api, config, paymentOutcome }: PlansPageProps): JSX.
     return { plans: plans.items, subscription: subscription.subscription, entitlement };
   }, [api]);
 
-  const { data, loading, error: loadError } = useResource(load, [api]);
+  const { data, loading, error: loadError, reload } = useResource(load, [api]);
 
   const buy = async (plan: PlanView): Promise<void> => {
     setBusyCode(plan.code);
@@ -108,7 +109,13 @@ export function PlansPage({ api, config, paymentOutcome }: PlansPageProps): JSX.
         </Notice>
       ) : null}
       {error ? <Notice tone="error">{error}</Notice> : null}
-      {loadError ? <Notice tone="error">{errorMessage(loadError, errorMap)}</Notice> : null}
+      {loadError ? (
+        <ListError
+          message={errorMessage(loadError, errorMap)}
+          error={loadError}
+          onRetry={reload}
+        />
+      ) : null}
 
       {loading ? (
         <Skeleton rows={2} />
@@ -223,7 +230,12 @@ export function PlansPage({ api, config, paymentOutcome }: PlansPageProps): JSX.
 
           <div className="flex flex-col gap-3">
             {(data?.plans.length ?? 0) === 0 ? (
-              <Notice tone="info">{t('plans.noPlans')}</Notice>
+              // G-21: an empty catalogue is a list state, not a passing note in the middle of a page.
+              <EmptyState
+                title={t('plans.noPlans')}
+                body={t('plans.noPlansBody')}
+                action={<Button onClick={reload}>{t('state.retry')}</Button>}
+              />
             ) : (
               data?.plans.map((plan) => (
                 <div key={plan.id} className="card">

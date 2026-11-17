@@ -7,7 +7,7 @@ import { useResource } from '../lib/useResource.js';
 import { t } from '../lib/i18n.js';
 import { ChatBubble } from '../components/ChatBubble.js';
 import { EmptyState } from '../components/EmptyState.js';
-import { Notice, PageTitle, Skeleton } from './parts.js';
+import { ListError, Notice, PageTitle, Skeleton } from './parts.js';
 
 export interface ChatPageProps {
   api: ApiClient;
@@ -40,7 +40,7 @@ function ConversationList({ api }: { api: ApiClient }): JSX.Element {
     () => api.get<{ items: ConversationView[] }>('/v1/chat/conversations', { limit: 20 }),
     [api],
   );
-  const { data, loading, error } = useResource(load, [api]);
+  const { data, loading, error, reload } = useResource(load, [api]);
 
   return (
     <div>
@@ -48,7 +48,7 @@ function ConversationList({ api }: { api: ApiClient }): JSX.Element {
       {loading ? (
         <Skeleton rows={2} />
       ) : error ? (
-        <Notice tone="error">{errorMessage(error, errorMap)}</Notice>
+        <ListError message={errorMessage(error, errorMap)} error={error} onRetry={reload} />
       ) : (data?.items.length ?? 0) === 0 ? (
         <EmptyState title={t('chat.empty')} body={t('chat.emptyBody')} icon="chat" />
       ) : (

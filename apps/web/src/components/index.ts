@@ -13,3 +13,18 @@ export { TierBadge, type TierBadgeProps } from './TierBadge.js';
 export { Toast, ToastStack, useToasts, type ToastItem, type ToastTone } from './Toast.js';
 export { VersionBadge, type VersionBadgeProps } from './VersionBadge.js';
 export { RebookBanner, type RebookHint } from './RebookBanner.js';
+export {
+  Avatar,
+  BottomSheet,
+  Button,
+  Card,
+  Countdown,
+  NumberStepper,
+  QuantityChip,
+  RadioCard,
+  RangeSlider,
+  SegmentedControl,
+  StatusBadge,
+  TextField,
+  type ButtonVariant,
+} from './kit.js';

@@ -8,7 +8,7 @@ import { useResource } from '../lib/useResource.js';
 import { t } from '../lib/i18n.js';
 import { OrderCard } from '../components/OrderCard.js';
 import { EmptyState } from '../components/EmptyState.js';
-import { Notice, PageTitle, Skeleton } from './parts.js';
+import { ListError, Notice, PageTitle, Skeleton } from './parts.js';
 
 export interface MyOrdersPageProps {
   api: ApiClient;
@@ -60,7 +60,11 @@ export function MyOrdersPage({ api }: MyOrdersPageProps): JSX.Element {
         orders.loading ? (
           <Skeleton rows={3} />
         ) : orders.error ? (
-          <Notice tone="error">{errorMessage(orders.error, errorMap)}</Notice>
+          <ListError
+            message={errorMessage(orders.error, errorMap)}
+            error={orders.error}
+            onRetry={orders.reload}
+          />
         ) : (orders.data?.items.length ?? 0) === 0 ? (
           <EmptyState
             title={t('myOrders.emptyOrders')}
@@ -90,7 +94,11 @@ export function MyOrdersPage({ api }: MyOrdersPageProps): JSX.Element {
       ) : reservations.loading ? (
         <Skeleton rows={3} />
       ) : reservations.error ? (
-        <Notice tone="error">{errorMessage(reservations.error, errorMap)}</Notice>
+        <ListError
+          message={errorMessage(reservations.error, errorMap)}
+          error={reservations.error}
+          onRetry={reservations.reload}
+        />
       ) : (reservations.data?.items.length ?? 0) === 0 ? (
         <EmptyState
           title={t('myOrders.emptyReservations')}

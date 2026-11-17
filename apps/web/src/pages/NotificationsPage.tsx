@@ -6,7 +6,7 @@ import type { NotificationList, NotificationView } from '../lib/types.js';
 import { useResource } from '../lib/useResource.js';
 import { t, tf } from '../lib/i18n.js';
 import { EmptyState } from '../components/EmptyState.js';
-import { Notice, PageTitle, Skeleton } from './parts.js';
+import { ListError, Notice, PageTitle, Skeleton } from './parts.js';
 
 export interface NotificationsPageProps {
   api: ApiClient;
@@ -95,7 +95,7 @@ export function NotificationsPage({ api, onUnreadChange }: NotificationsPageProp
       {loading ? (
         <Skeleton rows={3} />
       ) : error ? (
-        <Notice tone="error">{errorMessage(error, errorMap)}</Notice>
+        <ListError message={errorMessage(error, errorMap)} error={error} onRetry={reload} />
       ) : list.length === 0 ? (
         <EmptyState
           title={t('notifications.empty')}
@@ -118,7 +118,7 @@ export function NotificationsPage({ api, onUnreadChange }: NotificationsPageProp
                   )}
                 </div>
                 <p className="text-xs text-muted">{notification.bodyFa}</p>
-                <span className="mt-1 block text-[0.6875rem] text-muted tnum">
+                <span className="mt-1 block text-xs text-muted tnum">
                   {formatJalaliDateTime(notification.createdAt)}
                 </span>
               </button>

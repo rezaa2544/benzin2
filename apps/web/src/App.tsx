@@ -227,6 +227,12 @@ export function App(): JSX.Element {
     );
   }
 
+  // G-21: the style guide is a public route (`PUBLIC_ROUTES`), so it must render *before* the
+  // session gate — otherwise the review link silently bounced anyone signed out to /login.
+  if (route.name === 'styleGuide') {
+    return <StyleGuidePage theme={mode} onToggleTheme={toggleTheme} />;
+  }
+
   if (!session) return <LoginPage api={api} config={config} onAuthenticated={onAuthenticated} />;
 
   const filters: MarketFilters = filtersFromQuery(route.query);

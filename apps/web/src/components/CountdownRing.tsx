@@ -73,7 +73,7 @@ export function CountdownRing({
         >
           {formatCountdown(state.remainingMs)}
         </span>
-        {hintKey ? <span className="text-[0.6875rem] text-muted">{t(hintKey)}</span> : null}
+        {hintKey ? <span className="text-xs text-muted">{t(hintKey)}</span> : null}
       </div>
     </div>
   );

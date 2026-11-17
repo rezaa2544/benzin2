@@ -13,7 +13,7 @@ import { TIER_LABEL_FA } from '../lib/market.js';
 import { navigate } from '../lib/router.js';
 import { t } from '../lib/i18n.js';
 import { estimateEtaMinutes, readOrigin } from '../lib/geo.js';
-import { Notice, PageTitle, Skeleton } from './parts.js';
+import { ListError, Notice, PageTitle, Skeleton } from './parts.js';
 
 export interface OrderDetailPageProps {
   api: ApiClient;
@@ -47,6 +47,10 @@ export function OrderDetailPage({ api, user, orderId }: OrderDetailPageProps): J
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  // G-21: the thrown value and a reload trigger — the error card offers «تلاش دوباره».
+  const [cause, setCause] = useState<unknown>(null);
+  const [tick, setTick] = useState(0);
+  const reload = (): void => setTick((value) => value + 1);
 
   // G-07: a stored traveler point lets the detail card answer «چقدر دور است؟» as well.
   useEffect(() => {
@@ -60,8 +64,10 @@ export function OrderDetailPage({ api, user, orderId }: OrderDetailPageProps): J
           setError(null);
         }
       })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(errorMessage(cause, errorMap));
+      .catch((thrown: unknown) => {
+        if (cancelled) return;
+        setError(errorMessage(thrown, errorMap));
+        setCause(thrown);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -69,7 +75,7 @@ export function OrderDetailPage({ api, user, orderId }: OrderDetailPageProps): J
     return () => {
       cancelled = true;
     };
-  }, [api, orderId]);
+  }, [api, orderId, tick]);
 
   const reserve = async (): Promise<void> => {
     setBusy(true);
@@ -90,7 +96,7 @@ export function OrderDetailPage({ api, user, orderId }: OrderDetailPageProps): J
     return (
       <div>
         <PageTitle title={t('orderDetail.title')} />
-        <Notice tone="error">{error ?? t('errors.NOT_FOUND')}</Notice>
+        <ListError message={error ?? t('errors.NOT_FOUND')} error={cause} onRetry={reload} />
       </div>
     );
   }

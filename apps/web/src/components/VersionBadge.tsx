@@ -138,7 +138,7 @@ export function VersionBadge({ fixed = false }: VersionBadgeProps = {}): JSX.Ele
       onClick={check}
       title={tooltip}
       aria-label={`${t('shell.version.label')} ${version} — ${t(TONE_LABEL[tone])}`}
-      className={`flex h-6 items-center gap-1.5 rounded-full border border-line bg-surface/95 px-2 font-mono text-[0.625rem] leading-none text-muted shadow-sm transition hover:text-ink ${
+      className={`flex h-6 items-center gap-1.5 rounded-full border border-line bg-surface/95 px-2 font-mono text-xs leading-none text-muted shadow-sm transition hover:text-ink ${
         fixed ? 'fixed left-2 top-2 z-nav' : ''
       }`}
     >

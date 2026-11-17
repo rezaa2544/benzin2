@@ -204,7 +204,7 @@ export function MapPicker({
         )}
       </div>
 
-      <div className="mt-1 flex flex-wrap items-center justify-between gap-1 text-[11px] text-muted">
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-1 text-xs text-muted">
         <span>{hint ?? t('map.privacy')}</span>
         {value ? (
           <span className="tnum" dir="ltr">
@@ -212,7 +212,7 @@ export function MapPicker({
           </span>
         ) : null}
       </div>
-      {note ? <p className="mt-1 text-[11px] text-danger">{note}</p> : null}
+      {note ? <p className="mt-1 text-xs text-danger">{note}</p> : null}
     </div>
   );
 }

@@ -36,7 +36,7 @@ export function ChatBubble({
           <p dir="ltr" className="tnum text-base font-bold text-brand">
             {phone ?? text}
           </p>
-          <span className="mt-1 block text-[0.6875rem] text-muted tnum">
+          <span className="mt-1 block text-xs text-muted tnum">
             {formatJalaliTime(createdAt)}
           </span>
         </div>
@@ -52,7 +52,7 @@ export function ChatBubble({
         }`}
       >
         <p className="whitespace-pre-wrap break-words">{text}</p>
-        <span className={`mt-1 block text-[0.6875rem] tnum ${mine ? 'opacity-80' : 'text-muted'}`}>
+        <span className={`mt-1 block text-xs tnum ${mine ? 'opacity-80' : 'text-muted'}`}>
           {formatJalaliTime(createdAt)}
           {mine ? ` · ${t('common.you')}` : ''}
         </span>

@@ -45,7 +45,7 @@ export function AppShell({
             </span>
             <div className="flex flex-col">
               <span className="text-sm font-bold leading-tight">{t('app.name')}</span>
-              {title ? <span className="text-[0.6875rem] text-muted">{title}</span> : null}
+              {title ? <span className="text-xs text-muted">{title}</span> : null}
             </div>
           </div>
           <div className="flex items-center gap-1">
