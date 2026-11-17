@@ -55111,6 +55111,12 @@ var SETTING_DEFINITIONS = {
   // whether the buyer looks at the old `payment_cards` row or at these settings (G-11).
   "payment.card_number": { schema: external_exports.string().regex(/^\d{16}$/), default: "6037991234567890" },
   "payment.card_holder": { schema: external_exports.string().min(3).max(60), default: "\u0634\u0631\u06A9\u062A \u0628\u0646\u0632\u06CC\u0646" },
+  /**
+   * G-12 — how hard the worker tries to verify a gateway payment before a human looks at it.
+   * The callback lives in the buyer's browser, so a closed tab must not cost them the plan.
+   */
+  "payment.verify_max_attempts": { schema: external_exports.number().int().min(1).max(10), default: 3 },
+  "payment.verify_retry_minutes": { schema: external_exports.number().int().min(1).max(120), default: 10 },
   "trust.suspend_below_score": { schema: external_exports.number().int().min(0).max(99), default: 20 },
   "trust.suspend_hours": { schema: external_exports.number().int().min(1).max(720), default: 24 },
   "trust.window_days": { schema: external_exports.number().int().min(1).max(365), default: 180 },
@@ -57412,9 +57418,12 @@ var SandboxGatewayProvider = class {
   }
   kind = "GATEWAY";
   async init(input) {
+    const authority = `SBX-${input.paymentId}`;
     return {
-      redirectUrl: `${this.baseUrl}/${input.paymentId}`,
-      authority: `SBX-${input.paymentId}`,
+      // The authority is the last segment, exactly like Zarinpal's `StartPay/<authority>`, so the
+      // public callback can be exercised end-to-end in development (G-12).
+      redirectUrl: `${this.baseUrl}/${authority}`,
+      authority,
       destination: null,
       uniqueAmountToman: null
     };
@@ -57660,6 +57669,13 @@ var PaymentService = class {
       await this.repos.payments.transition(payment.id, "PENDING", "PENDING", {
         authority: init.authority
       });
+      if (input.method === "GATEWAY") {
+        await this.repos.payments.recordVerifyAttempt(payment.id, {
+          attempts: 0,
+          nextAt: new Date(now.getTime() + 2 * 6e4),
+          error: null
+        });
+      }
     }
     await this.repos.audit.append({
       actorId: user.id,
@@ -57741,6 +57757,189 @@ var PaymentService = class {
       });
     }
     return this.settle(payment, result.reference, user.id);
+  }
+  /**
+   * G-12 — the gateway sends the buyer's *browser* back to us, so this path has no session and no
+   * JSON body: Zarinpal appends `?Authority=…&Status=OK|NOK` to the callback URL we registered.
+   *
+   * Three things can go wrong and none of them may cost the buyer their money:
+   * - `Status=NOK` — the buyer cancelled; that is a clean FAILED, not an error.
+   * - verify throws (network, gateway 5xx) or answers "not verified yet" — the invoice stays
+   *   PENDING and is queued for the worker, which asks again up to `GATEWAY_VERIFY_ATTEMPTS` times.
+   * - the callback never arrives at all — the same queue picks it up from the reconciler, because
+   *   `startPurchase` scheduled the first check when it created the gateway invoice.
+   */
+  async handleGatewayReturn(input) {
+    const payment = await this.repos.payments.findByAuthority(input.authority);
+    if (!payment) return { outcome: "UNKNOWN", paymentId: null };
+    if (payment.status === "PAID") return { outcome: "PAID", paymentId: payment.id };
+    if (payment.status !== "PENDING") {
+      return { outcome: "FAILED", paymentId: payment.id };
+    }
+    if ((input.status ?? "").toUpperCase() === "NOK") {
+      const failed = await this.repos.payments.transition(payment.id, "PENDING", "FAILED", {
+        reference: "GATEWAY_CANCELLED"
+      });
+      if (failed) {
+        await this.repos.audit.append({
+          actorId: null,
+          action: "payment.failed",
+          entity: "payment",
+          entityId: payment.id,
+          metadata: { reason: "GATEWAY_CANCELLED", authority: input.authority }
+        });
+        await this.notifier.emit({
+          userId: payment.userId,
+          kind: "PAYMENT_FAILED",
+          params: { amount: formatToman(payment.amountToman) },
+          payload: { paymentId: payment.id, reason: "GATEWAY_CANCELLED" }
+        });
+      }
+      return { outcome: "FAILED", paymentId: payment.id };
+    }
+    const attempt = await this.attemptVerify(payment, payment.userId);
+    return { outcome: attempt.outcome, paymentId: payment.id };
+  }
+  /**
+   * One verification attempt plus the bookkeeping around it. Shared by the browser callback, the
+   * worker and the panel's "reconcile" button so all three behave identically.
+   */
+  async attemptVerify(payment, actorId) {
+    const provider = this.providerFor(payment.provider);
+    let result;
+    try {
+      result = await provider.verify({
+        paymentId: payment.id,
+        amountToman: payment.amountToman,
+        authority: payment.authority,
+        reference: null
+      });
+    } catch (error) {
+      return this.scheduleRetry(payment, error instanceof Error ? error.message : "verify failed");
+    }
+    if (result.ok) {
+      try {
+        await this.settle(payment, result.reference, actorId);
+      } catch (error) {
+        if (error instanceof AppError && (error.code === "PAYMENT_ALREADY_SETTLED" || error.code === "INVALID_STATE_TRANSITION")) {
+          return { outcome: "PAID" };
+        }
+        throw error;
+      }
+      await this.repos.payments.recordVerifyAttempt(payment.id, {
+        attempts: payment.verifyAttempts + 1,
+        nextAt: null,
+        error: null,
+        clear: true
+      });
+      return { outcome: "PAID" };
+    }
+    const reason = result.reason ?? "VERIFY_REJECTED";
+    const retryable = reason === "VERIFY_REJECTED" || reason === "NETWORK";
+    if (!retryable) {
+      await this.failPayment(payment, reason, actorId);
+      return { outcome: "FAILED" };
+    }
+    return this.scheduleRetry(payment, reason);
+  }
+  /** Queues the next attempt, or escalates to a human once the budget is spent. */
+  async scheduleRetry(payment, error) {
+    const config2 = await this.settings.get();
+    const maxAttempts = config2["payment.verify_max_attempts"];
+    const attempts = payment.verifyAttempts + 1;
+    if (attempts >= maxAttempts) {
+      await this.repos.payments.recordVerifyAttempt(payment.id, {
+        attempts,
+        nextAt: null,
+        error,
+        clear: true
+      });
+      const moved = await this.repos.payments.transition(payment.id, "PENDING", "NEEDS_REVIEW");
+      if (moved) {
+        await this.repos.audit.append({
+          actorId: null,
+          action: "payment.verify_exhausted",
+          entity: "payment",
+          entityId: payment.id,
+          metadata: { attempts, error, authority: payment.authority }
+        });
+        await this.notifier.emit({
+          userId: payment.userId,
+          kind: "PAYMENT_NEEDS_REVIEW",
+          params: {
+            amount: formatToman(payment.amountToman),
+            tracking: payment.reference ?? payment.authority ?? "\u2014"
+          },
+          payload: { paymentId: payment.id, reason: "VERIFY_EXHAUSTED" }
+        });
+      }
+      return { outcome: "PENDING" };
+    }
+    const delayMinutes = config2["payment.verify_retry_minutes"] * attempts;
+    await this.repos.payments.recordVerifyAttempt(payment.id, {
+      attempts,
+      nextAt: new Date(this.clock.now().getTime() + delayMinutes * 6e4),
+      error
+    });
+    return { outcome: "PENDING" };
+  }
+  async failPayment(payment, reason, actorId) {
+    const failed = await this.repos.payments.transition(payment.id, "PENDING", "FAILED", {
+      reference: reason
+    });
+    if (!failed) return;
+    await this.repos.audit.append({
+      actorId,
+      action: "payment.failed",
+      entity: "payment",
+      entityId: payment.id,
+      metadata: { reason }
+    });
+  }
+  /**
+   * G-12 worker step: re-verify the invoices whose last attempt failed for a reason that may pass.
+   * Idempotent — it re-reads each payment before acting and `settle` is compare-and-set.
+   */
+  async retryGatewayVerifications(limit = 50) {
+    const due = await this.repos.payments.listDueVerify(this.clock.now(), limit);
+    let paid = 0;
+    for (const payment of due) {
+      const fresh = await this.repos.payments.findById(payment.id);
+      if (!fresh || fresh.status !== "PENDING") continue;
+      const result = await this.attemptVerify(fresh, null);
+      if (result.outcome === "PAID") paid += 1;
+    }
+    return { retried: due.length, paid };
+  }
+  /** G-12 revenue report: what actually came in, by provider and by Tehran day. */
+  async revenue(from, to) {
+    const report = await this.repos.payments.revenue(from, to);
+    const labelFa = {
+      GATEWAY: "\u062F\u0631\u06AF\u0627\u0647 \u0628\u0627\u0646\u06A9\u06CC",
+      CARD_TO_CARD: "\u06A9\u0627\u0631\u062A\u200C\u0628\u0647\u200C\u06A9\u0627\u0631\u062A"
+    };
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      totalToman: report.totalPaidToman,
+      totalTomanLabelFa: formatToman(report.totalPaidToman),
+      paidCount: report.totalPaidCount,
+      pendingCount: report.pendingCount,
+      failedCount: report.failedCount,
+      byProvider: report.byProvider.map((row) => ({
+        provider: row.provider,
+        labelFa: labelFa[row.provider] ?? row.provider,
+        paidCount: row.paidCount,
+        paidToman: row.paidToman,
+        paidTomanLabelFa: formatToman(row.paidToman)
+      })),
+      byDay: report.byDay.map((row) => ({
+        day: row.day,
+        paidCount: row.paidCount,
+        paidToman: row.paidToman,
+        paidTomanLabelFa: formatToman(row.paidToman)
+      }))
+    };
   }
   async loadPayable(user, paymentId, method) {
     const payment = await this.repos.payments.findById(paymentId);
@@ -57900,6 +58099,7 @@ var PaymentService = class {
    * are activated, and finished subscriptions are closed — all idempotent.
    */
   async reconcile(limit = 200) {
+    const retry = await this.retryGatewayVerifications(Math.min(limit, 50));
     const now = this.clock.now();
     let expiredPayments = 0;
     for (const payment of await this.repos.payments.listPendingExpired(now, limit)) {
@@ -57942,7 +58142,13 @@ var PaymentService = class {
         payload: { subscriptionId: subscription.id }
       });
     }
-    return { expiredPayments, healedPayments, expiredSubscriptions };
+    return {
+      expiredPayments,
+      healedPayments,
+      expiredSubscriptions,
+      retriedVerifications: retry.retried,
+      verifiedPayments: retry.paid
+    };
   }
 };
 
@@ -59635,7 +59841,8 @@ function createScheduler(reservations2, orders2, reputation, payments2, _clock, 
       autoCompletedTrades: await reservations2.autoCompleteDueTrades(),
       // Trust suspensions are time-boxed; releasing them must not need an admin (E6-01).
       liftedSuspensions: await reputation.liftDueSuspensions(),
-      reconciledPayments: reconciled.expiredPayments + reconciled.healedPayments + reconciled.expiredSubscriptions,
+      // G-12: verifications the bank actually confirmed count as money moved, not bookkeeping.
+      reconciledPayments: reconciled.expiredPayments + reconciled.healedPayments + reconciled.expiredSubscriptions + reconciled.verifiedPayments,
       liftedListingPauses: ownerResponse ? await ownerResponse.liftDuePauses() : 0,
       refreshedResponseWindows: ownerResponse ? await ownerResponse.refreshStale() : 0
     };
@@ -59868,12 +60075,12 @@ async function buildApp(options) {
   const locations = new LocationService(repos2.zones);
   const distance = new DistanceService(routeProvider);
   const notifications2 = new NotificationService(repos2, settings2, sms2, clock);
-  const gateway = config2.PAYMENT_GATEWAY === "zarinpal" && config2.ZARINPAL_MERCHANT_ID ? new ZarinpalGatewayProvider({
+  const gateway = options.providers?.gateway ?? (config2.PAYMENT_GATEWAY === "zarinpal" && config2.ZARINPAL_MERCHANT_ID ? new ZarinpalGatewayProvider({
     merchantId: config2.ZARINPAL_MERCHANT_ID,
     callbackUrl: config2.PAYMENT_CALLBACK_URL,
     baseUrl: config2.ZARINPAL_BASE_URL
-  }) : new SandboxGatewayProvider();
-  const cardToCard = new CardToCardProvider(repos2.paymentCards, async () => {
+  }) : new SandboxGatewayProvider());
+  const cardToCard = options.providers?.cardToCard ?? new CardToCardProvider(repos2.paymentCards, async () => {
     const config3 = await settings2.get();
     const [card] = await repos2.paymentCards.list(true);
     return {
@@ -60251,6 +60458,28 @@ async function buildApp(options) {
     const body = parseInput(gatewayCallbackSchema, request.body ?? {});
     return payments2.handleGatewayCallback(currentUser(request), id, body);
   });
+  app2.get("/v1/payments/gateway/callback", async (request, reply) => {
+    const query2 = request.query ?? {};
+    const authority = (query2.Authority ?? "").trim();
+    const returnUrl = config2.PAYMENT_RETURN_URL;
+    const withOutcome = (outcome2, invoice) => {
+      const url = new URL(returnUrl);
+      url.searchParams.set("payment", outcome2);
+      if (invoice) url.searchParams.set("invoice", invoice);
+      return url.toString();
+    };
+    if (authority.length < 8) {
+      return reply.redirect(withOutcome("unknown", null), 302);
+    }
+    let result;
+    try {
+      result = await payments2.handleGatewayReturn({ authority, status: query2.Status ?? null });
+    } catch {
+      return reply.redirect(withOutcome("pending", null), 302);
+    }
+    const outcome = result.outcome === "PAID" ? "paid" : result.outcome === "FAILED" ? "failed" : result.outcome === "UNKNOWN" ? "unknown" : "pending";
+    return reply.redirect(withOutcome(outcome, result.paymentId), 302);
+  });
   app2.post("/v1/payments/card/deposits", async (request, reply) => {
     const secret = config2.CARD_WEBHOOK_SECRET;
     if (!secret) {
@@ -60435,6 +60664,16 @@ async function buildApp(options) {
       return payments2.deactivatePaymentCard(currentUser(request), id);
     }
   );
+  app2.get("/v1/admin/revenue", { preHandler: [requireAuth, requireRole("ADMIN", "OWNER")] }, async (request) => {
+    const query2 = request.query ?? {};
+    const days = query2.days ? Number(query2.days) : 30;
+    const to = query2.to ? new Date(query2.to) : clock.now();
+    const from = query2.from ? new Date(query2.from) : new Date(to.getTime() - Math.min(Math.max(days, 1), 366) * 864e5);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw AppError.validation("Invalid date range");
+    }
+    return payments2.revenue(from, to);
+  });
   app2.post(
     "/v1/admin/reconciliation",
     { preHandler: [requireAuth, requireRole("ADMIN", "OWNER")] },
@@ -60610,6 +60849,11 @@ var envSchema = external_exports.object({
   ZARINPAL_BASE_URL: external_exports.string().url().default("https://payment.zarinpal.com"),
   PAYMENT_CALLBACK_URL: external_exports.string().url().default("https://app.benzin.ir/payments/callback"),
   /**
+   * G-12 — where the *browser* is sent after the gateway callback. The callback itself is a GET
+   * from Zarinpal's redirect, so it must be a public HTTPS address; the key never lives here.
+   */
+  PAYMENT_RETURN_URL: external_exports.string().url().default("https://app.benzin.ir/plans"),
+  /**
    * G-11 — shared secret for the deposit webhook (`x-benzin-signature: sha256=<hmac>`).
    * Empty in development: the route then refuses every call, which is the safe default — an
    * unauthenticated money endpoint must never be open by accident.
@@ -60640,7 +60884,24 @@ function loadConfig(env = process.env) {
     const details = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Invalid environment configuration: ${details}`);
   }
-  return parsed.data;
+  return assertGatewaySafety(parsed.data);
+}
+function assertGatewaySafety(config2) {
+  if (config2.PAYMENT_GATEWAY !== "zarinpal") return config2;
+  if (!config2.ZARINPAL_MERCHANT_ID) {
+    throw new Error(
+      "PAYMENT_GATEWAY=zarinpal needs ZARINPAL_MERCHANT_ID in the server environment (never in the repo)"
+    );
+  }
+  for (const [name, url] of [
+    ["PAYMENT_CALLBACK_URL", config2.PAYMENT_CALLBACK_URL],
+    ["PAYMENT_RETURN_URL", config2.PAYMENT_RETURN_URL]
+  ]) {
+    if (!url.startsWith("https://")) {
+      throw new Error(`${name} must be an https:// URL when the real gateway is enabled (got ${url})`);
+    }
+  }
+  return config2;
 }
 
 // ../apps/api/src/infra/memory/index.ts
@@ -60727,7 +60988,10 @@ var MemoryMessageRepository = class {
   }
   async listByConversation(conversationId, options) {
     return [...this.byId.values()].filter((message) => message.conversationId === conversationId).filter(
-      (message) => options.after === null || message.createdAt.getTime() > options.after.getTime()
+      (message) => (
+        // `>=`: two messages can share a millisecond; a strict cursor would lose the second one.
+        options.after === null || message.createdAt.getTime() >= options.after.getTime()
+      )
     ).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()).slice(0, options.limit).map(clone);
   }
   async lastMessage(conversationId) {
@@ -60877,7 +61141,10 @@ var MemoryPaymentRepository = class {
       rawPayload: {},
       paidAt: null,
       expiresAt: input.expiresAt,
-      createdAt: at
+      createdAt: at,
+      verifyAttempts: 0,
+      nextVerifyAt: null,
+      lastVerifyError: null
     };
     this.byId.set(payment.id, clone2(payment));
     return clone2(payment);
@@ -60905,6 +61172,10 @@ var MemoryPaymentRepository = class {
     const payment = this.byId.get(id);
     if (!payment || payment.status !== expected) return null;
     payment.status = next;
+    if (next !== "PENDING") {
+      payment.nextVerifyAt = null;
+      payment.lastVerifyError = null;
+    }
     if (patch.paidAt !== void 0) payment.paidAt = patch.paidAt;
     if (patch.reference !== void 0) payment.reference = patch.reference;
     if (patch.authority !== void 0) payment.authority = patch.authority;
@@ -60921,6 +61192,49 @@ var MemoryPaymentRepository = class {
   async listAll(options) {
     const start = options.offset ?? 0;
     return [...this.byId.values()].filter((payment) => options.status === null || payment.status === options.status).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(start, start + options.limit).map(clone2);
+  }
+  async listDueVerify(now, limit) {
+    return [...this.byId.values()].filter(
+      (payment) => payment.status === "PENDING" && payment.nextVerifyAt !== null && payment.nextVerifyAt.getTime() <= now.getTime()
+    ).sort((a, b) => (a.nextVerifyAt?.getTime() ?? 0) - (b.nextVerifyAt?.getTime() ?? 0)).slice(0, limit).map(clone2);
+  }
+  async recordVerifyAttempt(id, input) {
+    const payment = this.byId.get(id);
+    if (!payment) return null;
+    payment.verifyAttempts = input.attempts;
+    payment.nextVerifyAt = input.clear ? null : input.nextAt;
+    payment.lastVerifyError = input.clear ? null : input.error;
+    return clone2(payment);
+  }
+  async revenue(from, to) {
+    const inWindow = [...this.byId.values()].filter((payment) => {
+      const at = payment.paidAt ?? payment.createdAt;
+      return at.getTime() >= from.getTime() && at.getTime() <= to.getTime();
+    });
+    const paid = inWindow.filter((payment) => payment.status === "PAID");
+    const perProvider = /* @__PURE__ */ new Map();
+    const perDay = /* @__PURE__ */ new Map();
+    for (const payment of paid) {
+      const provider = perProvider.get(payment.provider) ?? { paidToman: 0, paidCount: 0 };
+      provider.paidToman += payment.amountToman;
+      provider.paidCount += 1;
+      perProvider.set(payment.provider, provider);
+      const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tehran" }).format(
+        payment.paidAt ?? payment.createdAt
+      );
+      const bucket = perDay.get(day) ?? { paidToman: 0, paidCount: 0 };
+      bucket.paidToman += payment.amountToman;
+      bucket.paidCount += 1;
+      perDay.set(day, bucket);
+    }
+    return {
+      totalPaidToman: paid.reduce((sum, payment) => sum + payment.amountToman, 0),
+      totalPaidCount: paid.length,
+      byProvider: [...perProvider.entries()].map(([provider, value]) => ({ provider, ...value })).sort((a, b) => b.paidToman - a.paidToman),
+      byDay: [...perDay.entries()].map(([day, value]) => ({ day, ...value })).sort((a, b) => a.day.localeCompare(b.day)),
+      pendingCount: inWindow.filter((payment) => payment.status === "PENDING").length,
+      failedCount: inWindow.filter((payment) => payment.status === "FAILED").length
+    };
   }
   async summary(since) {
     const summary = {
@@ -68737,7 +69051,11 @@ var payments = pgTable(
     rawPayload: jsonb("raw_payload").notNull().default({}),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // G-12: the worker re-asks the gateway up to three times before a human looks at the invoice.
+    verifyAttempts: integer("verify_attempts").notNull().default(0),
+    nextVerifyAt: timestamp("next_verify_at", { withTimezone: true }),
+    lastVerifyError: text("last_verify_error")
   },
   (t) => [
     check("payments_amount_positive", sql`${t.amountToman} > 0`),
@@ -70057,7 +70375,8 @@ var PgSubscriptionRepository = class {
   }
 };
 var PAYMENT_COLUMNS = `id, user_id, subscription_id, provider, status, amount_toman, authority, reference,
-         unique_amount, raw_payload, paid_at, expires_at, created_at`;
+         unique_amount, raw_payload, paid_at, expires_at, created_at,
+         verify_attempts, next_verify_at, last_verify_error`;
 var toPayment = (row) => ({
   id: row.id,
   userId: row.user_id,
@@ -70071,7 +70390,10 @@ var toPayment = (row) => ({
   rawPayload: row.raw_payload,
   paidAt: row.paid_at,
   expiresAt: row.expires_at,
-  createdAt: row.created_at
+  createdAt: row.created_at,
+  verifyAttempts: Number(row.verify_attempts ?? 0),
+  nextVerifyAt: row.next_verify_at ?? null,
+  lastVerifyError: row.last_verify_error ?? null
 });
 var PgPaymentRepository = class {
   constructor(db) {
@@ -70187,6 +70509,78 @@ var PgPaymentRepository = class {
       [options.status, options.limit]
     );
     return rows.map(toPayment);
+  }
+  async listDueVerify(now, limit) {
+    const rows = await query(
+      this.db,
+      `SELECT ${PAYMENT_COLUMNS} FROM payments
+        WHERE status = 'PENDING' AND next_verify_at IS NOT NULL AND next_verify_at <= $1
+        ORDER BY next_verify_at ASC
+        LIMIT $2`,
+      [now, limit]
+    );
+    return rows.map(toPayment);
+  }
+  async recordVerifyAttempt(id, input) {
+    const row = await queryOne(
+      this.db,
+      `UPDATE payments
+          SET verify_attempts = $2,
+              next_verify_at = $3,
+              last_verify_error = $4
+        WHERE id = $1
+        RETURNING ${PAYMENT_COLUMNS}`,
+      [id, input.attempts, input.clear ? null : input.nextAt, input.clear ? null : input.error]
+    );
+    return row ? toPayment(row) : null;
+  }
+  async revenue(from, to) {
+    const [totals] = await query(
+      this.db,
+      `SELECT COALESCE(SUM(amount_toman) FILTER (WHERE status = 'PAID'), 0) AS paid_toman,
+              COUNT(*) FILTER (WHERE status = 'PAID')  AS paid_count,
+              COUNT(*) FILTER (WHERE status = 'PENDING') AS pending_count,
+              COUNT(*) FILTER (WHERE status = 'FAILED')  AS failed_count
+         FROM payments
+        WHERE COALESCE(paid_at, created_at) BETWEEN $1 AND $2`,
+      [from, to]
+    ).then((rows) => rows.length > 0 ? rows : [{ paid_toman: 0, paid_count: 0, pending_count: 0, failed_count: 0 }]);
+    const providers = await query(
+      this.db,
+      `SELECT provider, SUM(amount_toman) AS paid_toman, COUNT(*) AS paid_count
+         FROM payments
+        WHERE status = 'PAID' AND COALESCE(paid_at, created_at) BETWEEN $1 AND $2
+        GROUP BY provider
+        ORDER BY paid_toman DESC`,
+      [from, to]
+    );
+    const days = await query(
+      this.db,
+      `SELECT to_char((COALESCE(paid_at, created_at) AT TIME ZONE 'Asia/Tehran')::date, 'YYYY-MM-DD') AS day,
+              SUM(amount_toman) AS paid_toman,
+              COUNT(*) AS paid_count
+         FROM payments
+        WHERE status = 'PAID' AND COALESCE(paid_at, created_at) BETWEEN $1 AND $2
+        GROUP BY 1
+        ORDER BY 1 ASC`,
+      [from, to]
+    );
+    return {
+      totalPaidToman: Number(totals?.paid_toman ?? 0),
+      totalPaidCount: Number(totals?.paid_count ?? 0),
+      byProvider: providers.map((row) => ({
+        provider: row.provider,
+        paidToman: Number(row.paid_toman),
+        paidCount: Number(row.paid_count)
+      })),
+      byDay: days.map((row) => ({
+        day: row.day,
+        paidToman: Number(row.paid_toman),
+        paidCount: Number(row.paid_count)
+      })),
+      pendingCount: Number(totals?.pending_count ?? 0),
+      failedCount: Number(totals?.failed_count ?? 0)
+    };
   }
   async summary(since) {
     const row = await queryOne(
@@ -70438,7 +70832,7 @@ var PgMessageRepository = class {
     const rows = await query(
       this.db,
       `SELECT ${MESSAGE_COLUMNS} FROM messages
-        WHERE conversation_id = $1 AND ($2::timestamptz IS NULL OR created_at > $2)
+        WHERE conversation_id = $1 AND ($2::timestamptz IS NULL OR created_at >= $2)
         ORDER BY created_at ASC LIMIT $3`,
       [conversationId, options.after, options.limit]
     );
