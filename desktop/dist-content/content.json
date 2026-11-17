@@ -1,8 +1,8 @@
 {
-  "version": "0.4.0-f1202ad",
+  "version": "0.4.0-8befd4b",
   "file": "content.tar.gz",
-  "size": 1321137,
-  "sha256": "7484465252542f92dcf05a7bb2d622b6c0868d61f27c451ac152f881c4aa0133",
+  "size": 1321136,
+  "sha256": "d2fbc82f8caca9879fea9d6f3422a492206c17fc11446d3f8fa3d8f2cbea84a9",
   "files": 22,
-  "builtAt": "2026-11-17T17:40:33.829Z"
+  "builtAt": "2026-11-17T18:04:59.368Z"
 }
