@@ -55270,6 +55270,13 @@ var createPlanSchema = external_exports.object({
   durationDays: external_exports.number().int().min(1).max(365),
   /** Extra open-order slots the plan grants while it is active. */
   maxActiveOrders: external_exports.number().int().min(0).max(50).default(0),
+  /**
+   * G-26 — what the buyer gets. `monthlyReservations` is required so a new plan can never be
+   * created without the owner saying how many reservations it is worth; `null` means unlimited.
+   */
+  monthlyReservations: external_exports.number().int().min(0).max(1e3).nullable().default(null),
+  phoneVisible: external_exports.boolean().default(false),
+  singleUse: external_exports.boolean().default(false),
   isActive: external_exports.boolean().default(true)
 }).strict();
 var updatePlanSchema = external_exports.object({
@@ -55277,6 +55284,9 @@ var updatePlanSchema = external_exports.object({
   priceToman: external_exports.number().int().min(0).max(1e8).optional(),
   durationDays: external_exports.number().int().min(1).max(365).optional(),
   maxActiveOrders: external_exports.number().int().min(0).max(50).optional(),
+  monthlyReservations: external_exports.number().int().min(0).max(1e3).nullable().optional(),
+  phoneVisible: external_exports.boolean().optional(),
+  singleUse: external_exports.boolean().optional(),
   isActive: external_exports.boolean().optional()
 }).strict();
 var createPaymentCardSchema = external_exports.object({
@@ -55320,10 +55330,19 @@ var adminUserQuerySchema = external_exports.object({
   ...adminPaging
 }).strict();
 var updateProfileSchema = external_exports.object({
+  // G-19: the privacy switch must be usable on its own — a toggle that demands the name be
+  // re-sent is a toggle people learn not to touch.
   displayName: external_exports.string().trim().min(2).max(60).nullable().refine((value) => value === null || !/^[\d\s+\-()]+$/.test(value), {
     message: "DISPLAY_NAME_INVALID"
-  })
-}).strict();
+  }).optional(),
+  /**
+   * G-19 — «شماره‌ام را مخفی کن». When on, no counterparty ever receives the number, even after a
+   * confirmed trade; the in-app chat stays open, so the trade is never blocked.
+   */
+  phoneHidden: external_exports.boolean().optional()
+}).strict().refine((value) => value.displayName !== void 0 || value.phoneHidden !== void 0, {
+  message: "VALIDATION_ERROR"
+});
 var adminUpdateUserSchema = external_exports.object({
   role: external_exports.enum(USER_ROLES).optional(),
   displayName: external_exports.string().trim().min(2).max(60).nullable().optional(),
@@ -57500,7 +57519,11 @@ var toPlanView = (plan) => ({
   // G-15: a zero-priced plan reads «رایگان» instead of «۰ تومان».
   priceLabelFa: plan.priceToman === 0 ? "\u0631\u0627\u06CC\u06AF\u0627\u0646" : formatToman(plan.priceToman),
   durationDays: plan.durationDays,
-  maxActiveOrders: plan.maxActiveOrders
+  maxActiveOrders: plan.maxActiveOrders,
+  monthlyReservations: plan.monthlyReservations,
+  phoneVisible: plan.phoneVisible,
+  singleUse: plan.singleUse,
+  isActive: plan.isActive
 });
 var toPaymentView = (payment) => ({
   id: payment.id,
@@ -57564,6 +57587,9 @@ var PaymentService = class {
       durationDays: input.durationDays,
       priceToman: input.priceToman,
       maxActiveOrders: input.maxActiveOrders ?? 0,
+      monthlyReservations: input.monthlyReservations ?? null,
+      phoneVisible: input.phoneVisible ?? false,
+      singleUse: input.singleUse ?? false,
       isActive: input.isActive ?? true
     });
     await this.repos.audit.append({
@@ -58388,6 +58414,115 @@ var CardDepositService = class {
   }
 };
 
+// ../apps/api/src/modules/entitlements-service.ts
+var FREE_PLAN_CODE = "free";
+var EntitlementService = class {
+  constructor(repos2, settings2, clock) {
+    this.repos = repos2;
+    this.settings = settings2;
+    this.clock = clock;
+  }
+  /**
+   * The Tehran calendar month, because the allowance is a human promise («۳ رزرو در ماه»), not a
+   * rolling 30-day window nobody can check.
+   */
+  monthStart(now) {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tehran",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(now).split("-");
+    const utcMidnight = Date.parse(`${parts[0]}-${parts[1]}-01T00:00:00+03:30`);
+    return new Date(utcMidnight);
+  }
+  /** The plan that governs a buyer right now, plus the subscription backing it (if any). */
+  async resolve(userId) {
+    const now = this.clock.now();
+    const subscription = await this.repos.subscriptions.findActiveByUser(userId, now);
+    if (subscription) {
+      const plan = await this.repos.plans.findById(subscription.planId);
+      if (plan) return { plan, subscription, fallback: false };
+    }
+    const free = await this.repos.plans.findByCode(FREE_PLAN_CODE);
+    if (!free) {
+      throw new AppError("FREE_PLAN_MISSING", 500, "The free plan is missing from the catalogue");
+    }
+    return { plan: free, subscription: null, fallback: true };
+  }
+  async forUser(userId) {
+    const config2 = await this.settings.get();
+    const { plan, subscription, fallback } = await this.resolve(userId);
+    const used = await this.repos.reservations.countByTakerSince(userId, this.monthStart(this.clock.now()));
+    const requiresPaid = config2["subscription.required_for_orders"];
+    const monthlyLimit = fallback && requiresPaid ? 0 : plan.monthlyReservations;
+    const remaining = monthlyLimit === null ? null : Math.max(0, monthlyLimit - used);
+    return {
+      planCode: plan.code,
+      planNameFa: plan.nameFa,
+      source: fallback ? "FREE" : "SUBSCRIPTION",
+      active: !fallback,
+      endsAt: subscription ? subscription.endsAt.toISOString() : null,
+      phoneVisible: !fallback && plan.phoneVisible,
+      monthlyLimit,
+      usedThisMonth: used,
+      remaining,
+      singleUse: plan.singleUse,
+      needsPurchase: remaining !== null && remaining <= 0
+    };
+  }
+  /**
+   * The gate in front of `POST /v1/reservations`. Throws a specific, actionable error so the app
+   * can send the buyer to the plans page instead of showing a shrug.
+   */
+  async requireForReservation(user) {
+    const entitlement = await this.forUser(user.id);
+    if (entitlement.remaining !== null && entitlement.remaining <= 0) {
+      const paidPlans = (await this.repos.plans.listActive()).filter(
+        (plan) => plan.priceToman > 0 && !plan.singleUse
+      );
+      throw new AppError(
+        "RESERVATION_QUOTA_EXHAUSTED",
+        429,
+        entitlement.monthlyLimit === 0 ? "An active subscription is required to reserve" : "This month\u2019s reservations are used up",
+        {
+          planCode: entitlement.planCode,
+          monthlyLimit: entitlement.monthlyLimit,
+          usedThisMonth: entitlement.usedThisMonth,
+          cheapestPlanToman: paidPlans.length > 0 ? paidPlans[0].priceToman : null
+        }
+      );
+    }
+    const { subscription } = await this.resolve(user.id);
+    return {
+      ...entitlement,
+      subscriptionId: subscription?.id ?? null,
+      singleUse: entitlement.singleUse && subscription !== null
+    };
+  }
+  /**
+   * Called after the reservation row exists. A credit plan is spent here — consuming before the
+   * reservation is created would charge the buyer for a race they lost.
+   */
+  async recordUse(user, consumption) {
+    if (!consumption.singleUse || !consumption.subscriptionId) return;
+    const now = this.clock.now();
+    await this.repos.subscriptions.consume(consumption.subscriptionId, now);
+    await this.repos.audit.append({
+      actorId: user.id,
+      action: "subscription.consumed",
+      entity: "subscription",
+      entityId: consumption.subscriptionId,
+      metadata: { reason: "SINGLE_USE_RESERVATION" }
+    });
+  }
+  /** G-19: may this user see a counterparty's number at all? */
+  async phoneVisibleFor(userId) {
+    const entitlement = await this.forUser(userId);
+    return entitlement.phoneVisible;
+  }
+};
+
 // ../apps/api/src/modules/reputation-service.ts
 var toEventView = (event) => ({
   id: event.id,
@@ -58622,14 +58757,31 @@ var toReservationView = (reservation) => ({
   deliveryAttempts: Math.min(reservation.deliveryAttempts, DELIVERY_CODE_ATTEMPTS),
   deliveryLockedUntil: reservation.deliveryLockedUntil?.toISOString() ?? null
 });
+var NOOP_ENTITLEMENTS = {
+  async requireForReservation() {
+    return {
+      subscriptionId: null,
+      singleUse: false,
+      planCode: "free",
+      monthlyLimit: null,
+      usedThisMonth: 0
+    };
+  },
+  async recordUse() {
+  },
+  async phoneVisibleFor() {
+    return true;
+  }
+};
 var ReservationService = class {
-  constructor(repos2, settings2, clock, notifier = NOOP_NOTIFIER, reputation = NOOP_REPUTATION, ownerResponse = NOOP_OWNER_RESPONSE) {
+  constructor(repos2, settings2, clock, notifier = NOOP_NOTIFIER, reputation = NOOP_REPUTATION, ownerResponse = NOOP_OWNER_RESPONSE, entitlements = NOOP_ENTITLEMENTS) {
     this.repos = repos2;
     this.settings = settings2;
     this.clock = clock;
     this.notifier = notifier;
     this.reputation = reputation;
     this.ownerResponse = ownerResponse;
+    this.entitlements = entitlements;
   }
   /** One taker must not reserve twice at the same instant (E1-07). */
   takerLock = new KeyedLock();
@@ -58659,12 +58811,7 @@ var ReservationService = class {
     if (order.status !== "OPEN" || order.expiresAt.getTime() <= now.getTime()) {
       throw new AppError("ORDER_NOT_AVAILABLE", 409, "Order is no longer available");
     }
-    if (config2["subscription.required_for_orders"]) {
-      const subscription = await this.repos.subscriptions.findActiveByUser(taker.id, now);
-      if (!subscription) {
-        throw new AppError("SUBSCRIPTION_REQUIRED", 403, "An active subscription is required");
-      }
-    }
+    const entitlement = await this.entitlements.requireForReservation(taker);
     return this.takerLock.run(`taker:${taker.id}`, async () => {
       const active = await this.repos.reservations.findActiveByTaker(taker.id);
       if (active.length >= config2["reservation.max_active_per_user"]) {
@@ -58691,12 +58838,18 @@ var ReservationService = class {
         await this.repos.orders.transition(orderId, "RESERVED", "OPEN");
         throw new AppError("ORDER_NOT_AVAILABLE", 409, "Order is no longer available");
       }
+      await this.entitlements.recordUse(taker, entitlement);
       await this.repos.audit.append({
         actorId: taker.id,
         action: "reservation.requested",
         entity: "reservation",
         entityId: reservation.id,
-        metadata: { orderId }
+        metadata: {
+          orderId,
+          planCode: entitlement.planCode,
+          quotaUsed: entitlement.usedThisMonth + 1,
+          quotaLimit: entitlement.monthlyLimit
+        }
       });
       await this.notify(
         order.ownerId,
@@ -58973,8 +59126,16 @@ var ReservationService = class {
     return toReservationView(updated);
   }
   /**
-   * E4-05: phone numbers are a two-sided secret. They are released only after the owner
-   * accepted the request, and only to the two parties — every release is audited.
+   * E4-05 + G-19: phone numbers are a two-sided secret.
+   *
+   * Three rules stack, and all three must hold for a number to leave the server:
+   *  1. the caller is a party to a reservation the owner already accepted;
+   *  2. the caller's plan includes seeing numbers (the free plan does not — it sells browsing and
+   *     three reservations with the number hidden);
+   *  3. the person on the other end has not switched «شماره‌ام را مخفی کن» on.
+   *
+   * A hidden number is never serialised: the response says `hidden: true` and the app keeps the
+   * chat button, so privacy costs nobody the trade. Every call is audited either way.
    */
   async revealContact(actor, id) {
     const { reservation, order } = await this.load(id);
@@ -58988,22 +59149,37 @@ var ReservationService = class {
         status: reservation.status
       });
     }
+    if (!await this.entitlements.phoneVisibleFor(actor.id)) {
+      throw new AppError(
+        "PHONE_REQUIRES_SUBSCRIPTION",
+        402,
+        "Seeing a phone number is part of a paid plan",
+        { chatOnly: true }
+      );
+    }
     const owner = await this.repos.users.findById(order.ownerId);
     const taker = await this.repos.users.findById(reservation.takerId);
     if (!owner || !taker) throw AppError.notFound("NOT_FOUND", "Party disappeared");
+    const hidden = { owner: owner.phoneHidden, taker: taker.phoneHidden };
     await this.repos.audit.append({
       actorId: actor.id,
       action: "contact.revealed",
       entity: "reservation",
       entityId: id,
-      metadata: { orderId: order.id, by: isOwner ? "OWNER" : "TAKER" }
+      metadata: {
+        orderId: order.id,
+        by: isOwner ? "OWNER" : "TAKER",
+        hidden: Object.entries(hidden).filter(([, isHidden]) => isHidden).map(([side]) => side.toUpperCase())
+      }
     });
     return {
       reservationId: id,
       orderId: order.id,
       revealedAt: this.clock.now().toISOString(),
-      owner: { id: owner.id, phone: owner.phone },
-      taker: { id: taker.id, phone: taker.phone }
+      chatOnly: hidden.owner || hidden.taker,
+      hidden,
+      owner: { id: owner.id, phone: hidden.owner ? null : owner.phone },
+      taker: { id: taker.id, phone: hidden.taker ? null : taker.phone }
     };
   }
   /**
@@ -59281,14 +59457,20 @@ var ProfileService = class {
       throw AppError.forbidden("ACCOUNT_SUSPENDED", "This account cannot be edited");
     }
     const before = user.displayName;
-    user.displayName = input.displayName;
+    if (input.displayName !== void 0) user.displayName = input.displayName;
+    const hiddenBefore = user.phoneHidden;
+    if (input.phoneHidden !== void 0) user.phoneHidden = input.phoneHidden;
     const saved = await this.repos.users.save(user);
     await this.repos.audit.append({
       actorId: actor.id,
       action: "user.profile_updated",
       entity: "user",
       entityId: user.id,
-      metadata: { before, after: input.displayName }
+      metadata: {
+        before,
+        after: input.displayName,
+        ...hiddenBefore !== saved.phoneHidden ? { phoneHidden: saved.phoneHidden } : {}
+      }
     });
     return saved;
   }
@@ -60048,7 +60230,9 @@ var toPublicUser = (user) => ({
   phone: user.phone,
   displayName: user.displayName,
   role: user.role,
-  createdAt: user.createdAt.toISOString()
+  createdAt: user.createdAt.toISOString(),
+  // G-19: the owner of the profile must be able to see the switch's state.
+  phoneHidden: user.phoneHidden
 });
 async function buildApp(options) {
   const {
@@ -60102,13 +60286,15 @@ async function buildApp(options) {
   const profile = new ProfileService(repos2, reputation);
   const ownerResponse = new OwnerResponseService(repos2, clock, notifications2);
   const orders2 = new OrderService(repos2, settings2, clock, distance, locations, notifications2);
+  const entitlements = new EntitlementService(repos2, settings2, clock);
   const reservations2 = new ReservationService(
     repos2,
     settings2,
     clock,
     notifications2,
     reputation,
-    ownerResponse
+    ownerResponse,
+    entitlements
   );
   const events = { publish: (event) => hub.publisher.publish(event) };
   const hub = { publisher: NOOP_CHAT_EVENTS };
@@ -60150,7 +60336,8 @@ async function buildApp(options) {
     nodes,
     tradeMedian,
     ownerResponse,
-    cardDeposits: cardDeposits2
+    cardDeposits: cardDeposits2,
+    entitlements
   };
   const requireAuth = authenticate(auth);
   const app2 = (0, import_fastify.default)({
@@ -60445,6 +60632,11 @@ async function buildApp(options) {
     const started = await payments2.startPurchase(currentUser(request), body);
     return reply.status(201).send(started);
   });
+  app2.get(
+    "/v1/me/entitlements",
+    { preHandler: requireAuth },
+    async (request) => entitlements.forUser(currentUser(request).id)
+  );
   app2.get("/v1/payments/mine", { preHandler: requireAuth }, async (request) => {
     const query2 = parseInput(paginationSchema, request.query);
     return payments2.listMine(currentUser(request), query2.limit);
@@ -61067,7 +61259,8 @@ var MemorySubscriptionRepository = class {
       status: "PENDING",
       startsAt: input.startsAt,
       endsAt: input.endsAt,
-      createdAt: input.startsAt
+      createdAt: input.startsAt,
+      consumedAt: null
     };
     this.byId.set(subscription.id, clone2(subscription));
     return clone2(subscription);
@@ -61078,7 +61271,8 @@ var MemorySubscriptionRepository = class {
   }
   async findActiveByUser(userId, now) {
     const candidates = [...this.byId.values()].filter(
-      (subscription) => subscription.userId === userId && subscription.status === "ACTIVE" && subscription.endsAt.getTime() > now.getTime()
+      (subscription) => subscription.userId === userId && subscription.status === "ACTIVE" && // A spent credit plan must never extend an entitlement again (G-26).
+      subscription.consumedAt === null && subscription.endsAt.getTime() > now.getTime()
     ).sort((a, b) => b.endsAt.getTime() - a.endsAt.getTime());
     return candidates[0] ? clone2(candidates[0]) : null;
   }
@@ -61088,6 +61282,13 @@ var MemorySubscriptionRepository = class {
     subscription.status = "ACTIVE";
     subscription.startsAt = startsAt;
     subscription.endsAt = endsAt;
+    return clone2(subscription);
+  }
+  async consume(id, at) {
+    const subscription = this.byId.get(id);
+    if (!subscription) return null;
+    subscription.consumedAt = at;
+    this.byId.set(id, clone2(subscription));
     return clone2(subscription);
   }
   async listDueExpiry(now, limit) {
@@ -61520,6 +61721,7 @@ var MemoryUserRepository = class {
       status: "ACTIVE",
       suspendedUntil: null,
       createdAt: /* @__PURE__ */ new Date(),
+      phoneHidden: false,
       responseAnswered: 0,
       responseReceived: 0,
       responseRatePermille: null,
@@ -61819,10 +62021,20 @@ var MemoryOrderRepository = class {
 };
 var MemoryReservationRepository = class {
   byId = /* @__PURE__ */ new Map();
+  /**
+   * G-26: reservation timestamps must follow the application clock, not the wall clock, because
+   * the plan's monthly allowance is measured in that window. The factory wires it in; a repo built
+   * bare keeps `new Date()` so nothing else changes.
+   */
+  now = () => /* @__PURE__ */ new Date();
   /** G-10: the answer window needs the order's owner; Postgres joins, here the factory hands it over. */
   orders = null;
   attachOrders(orders2) {
     this.orders = orders2;
+  }
+  /** G-26: lets the app clock drive `createdAt`, so the monthly allowance is testable. */
+  useClock(now) {
+    this.now = now;
   }
   async countForOwnerWindow(ownerId, since) {
     let received = 0;
@@ -61856,6 +62068,12 @@ var MemoryReservationRepository = class {
   async countActiveByTaker(takerId) {
     return (await this.findActiveByTaker(takerId)).length;
   }
+  /** G-26: the monthly allowance counts every request, cancelled ones included. */
+  async countByTakerSince(takerId, since) {
+    return [...this.byId.values()].filter(
+      (reservation) => reservation.takerId === takerId && reservation.createdAt.getTime() >= since.getTime()
+    ).length;
+  }
   async listByTaker(takerId, limit) {
     return [...this.byId.values()].filter((reservation) => reservation.takerId === takerId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit).map(clone7);
   }
@@ -61866,7 +62084,7 @@ var MemoryReservationRepository = class {
       orderId: input.orderId,
       takerId: input.takerId,
       status: "PENDING_OWNER",
-      createdAt: /* @__PURE__ */ new Date(),
+      createdAt: this.now(),
       expiresAt: input.expiresAt,
       decidedAt: null,
       completedAt: null,
@@ -61978,9 +62196,10 @@ var MemoryProviderSettingsRepository = class {
     return clone7(stored);
   }
 };
-function createMemoryRepositories() {
+function createMemoryRepositories(clock) {
   const orders2 = new MemoryOrderRepository();
   const reservations2 = new MemoryReservationRepository();
+  if (clock) reservations2.useClock(clock.now.bind(clock));
   const users2 = new MemoryUserRepository();
   orders2.attachReservations(reservations2);
   orders2.attachUsers(users2);
@@ -68773,6 +68992,8 @@ var users = pgTable(
     reputation: integer("reputation").notNull().default(0),
     /** Trust suspension window (task E6-01); null when the account is unrestricted. */
     suspendedUntil: timestamp("suspended_until", { withTimezone: true }),
+    /** G-19: the user keeps their number private; the in-app chat stays the only contact path. */
+    phoneHidden: boolean("phone_hidden").notNull().default(false),
     /**
      * G-10 — answer rate over the last 30 days, stored as a projection so the market can sort on
      * it and the card can show it without recounting reservations. Nothing here is a penalty.
@@ -69015,6 +69236,11 @@ var plans = pgTable("plans", {
   durationDays: integer("duration_days").notNull(),
   priceToman: integer("price_toman").notNull(),
   maxActiveOrders: smallint("max_active_orders").notNull().default(2),
+  // G-26: what the plan actually sells — a monthly reservation allowance (null = unlimited),
+  // the right to see a counterparty's number, and whether the plan is spent by one reservation.
+  monthlyReservations: smallint("monthly_reservations"),
+  phoneVisible: boolean("phone_visible").notNull().default(false),
+  singleUse: boolean("single_use").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
 });
@@ -69027,7 +69253,9 @@ var subscriptions = pgTable(
     status: subscriptionStatus("status").notNull().default("PENDING"),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** G-26: a single-use credit subscription stops granting anything once this is set. */
+    consumedAt: timestamp("consumed_at", { withTimezone: true })
   },
   (t) => [
     check("subscriptions_window", sql`${t.endsAt} > ${t.startsAt}`),
@@ -69204,7 +69432,7 @@ var Conditions = class {
 // ../apps/api/src/infra/db/repositories/pg-identity.ts
 var USER_COLUMNS = `id, phone, display_name, role, status, suspended_until, created_at,
   response_answered, response_received, response_rate_permille, response_refreshed_at,
-  unanswered_streak, delisted_until`;
+  unanswered_streak, delisted_until, phone_hidden`;
 var toUser = (row) => ({
   id: row.id,
   phone: row.phone,
@@ -69213,6 +69441,7 @@ var toUser = (row) => ({
   status: row.status,
   suspendedUntil: row.suspended_until,
   createdAt: row.created_at,
+  phoneHidden: row.phone_hidden ?? false,
   responseAnswered: Number(row.response_answered ?? 0),
   responseReceived: Number(row.response_received ?? 0),
   responseRatePermille: row.response_rate_permille === null ? null : Number(row.response_rate_permille),
@@ -69306,7 +69535,7 @@ var PgUserRepository = class {
       `UPDATE users SET display_name = $2, role = $3, status = $4, suspended_until = $5,
          response_answered = $6, response_received = $7, response_rate_permille = $8,
          response_refreshed_at = $9, unanswered_streak = $10, delisted_until = $11,
-         updated_at = now()
+         phone_hidden = $12, updated_at = now()
         WHERE id = $1 RETURNING ${USER_COLUMNS}`,
       [
         user.id,
@@ -69319,7 +69548,8 @@ var PgUserRepository = class {
         user.responseRatePermille,
         user.responseRefreshedAt,
         user.unansweredStreak,
-        user.delistedUntil
+        user.delistedUntil,
+        user.phoneHidden
       ]
     );
     if (!row) throw new Error(`user ${user.id} not found`);
@@ -70042,6 +70272,14 @@ var PgReservationRepository = class {
       [takerId, [...ACTIVE_RESERVATION_STATUSES]]
     );
   }
+  /** G-26: the buyer's monthly allowance counts every request they started, cancelled or not. */
+  async countByTakerSince(takerId, since) {
+    return scalar(
+      this.db,
+      `SELECT count(*)::int AS value FROM reservations WHERE taker_id = $1 AND created_at >= $2`,
+      [takerId, since]
+    );
+  }
   async listByTaker(takerId, limit) {
     const rows = await query(
       this.db,
@@ -70165,9 +70403,13 @@ var toPlan = (row) => ({
   durationDays: Number(row.duration_days),
   priceToman: Number(row.price_toman),
   maxActiveOrders: Number(row.max_active_orders),
+  monthlyReservations: row.monthly_reservations === null ? null : Number(row.monthly_reservations),
+  phoneVisible: row.phone_visible,
+  singleUse: row.single_use,
   isActive: row.is_active
 });
-var PLAN_COLUMNS = `id, code, name_fa, duration_days, price_toman, max_active_orders, is_active`;
+var PLAN_COLUMNS = `id, code, name_fa, duration_days, price_toman, max_active_orders,
+  monthly_reservations, phone_visible, single_use, is_active`;
 var PgPlanRepository = class {
   constructor(db) {
     this.db = db;
@@ -70213,6 +70455,9 @@ var PgPlanRepository = class {
     if (patch.durationDays !== void 0) assign("duration_days", patch.durationDays);
     if (patch.priceToman !== void 0) assign("price_toman", patch.priceToman);
     if (patch.maxActiveOrders !== void 0) assign("max_active_orders", patch.maxActiveOrders);
+    if (patch.monthlyReservations !== void 0) assign("monthly_reservations", patch.monthlyReservations);
+    if (patch.phoneVisible !== void 0) assign("phone_visible", patch.phoneVisible);
+    if (patch.singleUse !== void 0) assign("single_use", patch.singleUse);
     if (patch.isActive !== void 0) assign("is_active", patch.isActive);
     if (sets.length === 0) {
       const current = await queryOne(
@@ -70241,11 +70486,14 @@ var PgPlanRepository = class {
   async upsert(plan) {
     const row = await queryOne(
       this.db,
-      `INSERT INTO plans (id, code, name_fa, duration_days, price_toman, max_active_orders, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO plans (id, code, name_fa, duration_days, price_toman, max_active_orders,
+                          monthly_reservations, phone_visible, single_use, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (code) DO UPDATE
          SET name_fa = EXCLUDED.name_fa, duration_days = EXCLUDED.duration_days,
              price_toman = EXCLUDED.price_toman, max_active_orders = EXCLUDED.max_active_orders,
+             monthly_reservations = EXCLUDED.monthly_reservations,
+             phone_visible = EXCLUDED.phone_visible, single_use = EXCLUDED.single_use,
              is_active = EXCLUDED.is_active
        RETURNING ${PLAN_COLUMNS}`,
       [
@@ -70255,6 +70503,9 @@ var PgPlanRepository = class {
         plan.durationDays,
         plan.priceToman,
         plan.maxActiveOrders,
+        plan.monthlyReservations,
+        plan.phoneVisible,
+        plan.singleUse,
         plan.isActive
       ]
     );
@@ -70262,7 +70513,7 @@ var PgPlanRepository = class {
     return toPlan(row);
   }
 };
-var SUBSCRIPTION_COLUMNS = `id, user_id, plan_id, status, starts_at, ends_at, created_at`;
+var SUBSCRIPTION_COLUMNS = `id, user_id, plan_id, status, starts_at, ends_at, created_at, consumed_at`;
 var toSubscription = (row) => ({
   id: row.id,
   userId: row.user_id,
@@ -70270,7 +70521,8 @@ var toSubscription = (row) => ({
   status: row.status,
   startsAt: row.starts_at,
   endsAt: row.ends_at,
-  createdAt: row.created_at
+  createdAt: row.created_at,
+  consumedAt: row.consumed_at
 });
 var PgSubscriptionRepository = class {
   constructor(db) {
@@ -70299,6 +70551,7 @@ var PgSubscriptionRepository = class {
       this.db,
       `SELECT ${SUBSCRIPTION_COLUMNS} FROM subscriptions
         WHERE user_id = $1 AND status = 'ACTIVE' AND starts_at <= $2 AND ends_at > $2
+          AND consumed_at IS NULL
         ORDER BY ends_at DESC LIMIT 1`,
       [userId, now]
     );
@@ -70310,6 +70563,15 @@ var PgSubscriptionRepository = class {
       `UPDATE subscriptions SET status = 'ACTIVE', starts_at = $2, ends_at = $3
         WHERE id = $1 RETURNING ${SUBSCRIPTION_COLUMNS}`,
       [id, startsAt, endsAt]
+    );
+    return row ? toSubscription(row) : null;
+  }
+  async consume(id, at) {
+    const row = await queryOne(
+      this.db,
+      `UPDATE subscriptions SET consumed_at = $2 WHERE id = $1 AND consumed_at IS NULL
+       RETURNING ${SUBSCRIPTION_COLUMNS}`,
+      [id, at]
     );
     return row ? toSubscription(row) : null;
   }
@@ -71507,6 +71769,10 @@ var SEED_PLANS = [
     durationDays: 30,
     priceToman: 0,
     maxActiveOrders: 0,
+    // «۳ رزرو در ماه با شمارهٔ مخفی» — browsing stays free, the number stays the paid part.
+    monthlyReservations: 3,
+    phoneVisible: false,
+    singleUse: false,
     isActive: true
   },
   {
@@ -71515,6 +71781,9 @@ var SEED_PLANS = [
     durationDays: 30,
     priceToman: 49e3,
     maxActiveOrders: 3,
+    monthlyReservations: null,
+    phoneVisible: true,
+    singleUse: false,
     isActive: true
   },
   {
@@ -71523,6 +71792,22 @@ var SEED_PLANS = [
     durationDays: 90,
     priceToman: 129e3,
     maxActiveOrders: 5,
+    monthlyReservations: null,
+    phoneVisible: true,
+    singleUse: false,
+    isActive: true
+  },
+  {
+    // G-26: «اعتباری (تک‌رزرو)» — one reservation without a subscription, for the light user.
+    // ASSUMPTION A15: the credit is valid 90 days, the same horizon as the quarterly plan.
+    code: "single",
+    nameFa: "\u0627\u0639\u062A\u0628\u0627\u0631\u06CC (\u062A\u06A9\u200C\u0631\u0632\u0631\u0648)",
+    durationDays: 90,
+    priceToman: 15e3,
+    maxActiveOrders: 0,
+    monthlyReservations: 1,
+    phoneVisible: true,
+    singleUse: true,
     isActive: true
   }
 ];
@@ -71532,7 +71817,8 @@ var SEED_SETTINGS = Object.fromEntries(
 var SEED_PLAN_IDS = {
   free: "3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e4e",
   monthly: "3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e4f",
-  quarterly: "3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e50"
+  quarterly: "3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e50",
+  single: "3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e52"
 };
 var SEED_PAYMENT_CARD = {
   id: "3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e51",
@@ -71763,7 +72049,7 @@ if (config.NODE_ENV === "production" && !config.DATABASE_URL) {
   process.exit(1);
 }
 var postgres = config.DATABASE_URL ? createPostgresRepositories(config.DATABASE_URL) : null;
-var repos = postgres ? postgres.repositories : createMemoryRepositories();
+var repos = postgres ? postgres.repositories : createMemoryRepositories(systemClock);
 var sms = createSmsSender(config);
 await applySeed(repos);
 if (config.NODE_ENV !== "production") {
