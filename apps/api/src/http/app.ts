@@ -50,7 +50,13 @@ import {
 } from '@benzin/shared';
 import type { Config } from '../config.js';
 import type { Clock, User } from '../domain/entities.js';
-import type { ChatEventPublisher, Repositories, RouteProvider, SmsSender } from '../ports.js';
+import type {
+  ChatEventPublisher,
+  PaymentProvider,
+  Repositories,
+  RouteProvider,
+  SmsSender,
+} from '../ports.js';
 import { NOOP_CHAT_EVENTS } from '../ports.js';
 import { AdminService } from '../modules/admin-service.js';
 import { AuthService } from '../modules/auth-service.js';
@@ -96,6 +102,11 @@ export interface BuildAppOptions {
    * id; the desktop bundle relies on the defaults derived from the config.
    */
   node?: { nodeId?: string; name?: string; role?: 'primary' | 'helper'; region?: string | null };
+  /**
+   * G-12: a test (or a deployment with its own bank adapter) can hand over the payment providers
+   * instead of the ones built from config. Nothing else about the service changes.
+   */
+  providers?: { gateway?: PaymentProvider; cardToCard?: PaymentProvider };
 }
 
 export interface BuiltApp {
@@ -148,15 +159,16 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
   const distance = new DistanceService(routeProvider);
   const notifications = new NotificationService(repos, settings, sms, clock);
   const gateway =
-    config.PAYMENT_GATEWAY === 'zarinpal' && config.ZARINPAL_MERCHANT_ID
+    options.providers?.gateway ??
+    (config.PAYMENT_GATEWAY === 'zarinpal' && config.ZARINPAL_MERCHANT_ID
       ? new ZarinpalGatewayProvider({
           merchantId: config.ZARINPAL_MERCHANT_ID,
           callbackUrl: config.PAYMENT_CALLBACK_URL,
           baseUrl: config.ZARINPAL_BASE_URL,
         })
-      : new SandboxGatewayProvider();
+      : new SandboxGatewayProvider());
   // G-11: the destination card comes from settings (editable in the panel), not from a constant.
-  const cardToCard = new CardToCardProvider(repos.paymentCards, async () => {
+  const cardToCard = options.providers?.cardToCard ?? new CardToCardProvider(repos.paymentCards, async () => {
     const config = await settings.get();
     const [card] = await repos.paymentCards.list(true);
     return {
@@ -619,6 +631,47 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     return payments.handleGatewayCallback(currentUser(request), id, body);
   });
 
+  /**
+   * G-12 — the real gateway callback.
+   *
+   * Zarinpal redirects the buyer's browser here with `?Authority=…&Status=OK|NOK`; there is no
+   * session and no JSON body, and the browser expects a page, not an error envelope. So the handler
+   * resolves the invoice → verifies with the bank → and answers with a 302 back into the app, where
+   * the plans screen shows the outcome. Every failure mode is a redirect too: a buyer who reaches
+   * this URL must always land somewhere they can understand.
+   */
+  app.get('/v1/payments/gateway/callback', async (request, reply) => {
+    const query = (request.query ?? {}) as { Authority?: string; Status?: string };
+    const authority = (query.Authority ?? '').trim();
+    const returnUrl = config.PAYMENT_RETURN_URL;
+    const withOutcome = (outcome: string, invoice: string | null): string => {
+      const url = new URL(returnUrl);
+      url.searchParams.set('payment', outcome);
+      if (invoice) url.searchParams.set('invoice', invoice);
+      return url.toString();
+    };
+
+    if (authority.length < 8) {
+      return reply.redirect(withOutcome('unknown', null), 302);
+    }
+    let result: Awaited<ReturnType<typeof payments.handleGatewayReturn>>;
+    try {
+      result = await payments.handleGatewayReturn({ authority, status: query.Status ?? null });
+    } catch {
+      // A verification that blows up is not a failed payment: the worker still owns the retry.
+      return reply.redirect(withOutcome('pending', null), 302);
+    }
+    const outcome =
+      result.outcome === 'PAID'
+        ? 'paid'
+        : result.outcome === 'FAILED'
+          ? 'failed'
+          : result.outcome === 'UNKNOWN'
+            ? 'unknown'
+            : 'pending';
+    return reply.redirect(withOutcome(outcome, result.paymentId), 302);
+  });
+
   // ------------------------------------------------- card-to-card (G-11)
   /**
    * The deposit webhook.
@@ -839,6 +892,23 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
       return payments.deactivatePaymentCard(currentUser(request), id);
     },
   );
+
+  /**
+   * G-12 — income report. Defaults to the last 30 days; the panel's revenue card reads it as is.
+   */
+  app.get('/v1/admin/revenue', { preHandler: [requireAuth, requireRole('ADMIN', 'OWNER')] }, async (request) => {
+    const query = (request.query ?? {}) as { from?: string; to?: string; days?: string };
+    const days = query.days ? Number(query.days) : 30;
+    // The window follows the application clock so a report and the sweeps always agree on "now".
+    const to = query.to ? new Date(query.to) : clock.now();
+    const from = query.from
+      ? new Date(query.from)
+      : new Date(to.getTime() - Math.min(Math.max(days, 1), 366) * 86_400_000);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw AppError.validation('Invalid date range');
+    }
+    return payments.revenue(from, to);
+  });
 
   app.post(
     '/v1/admin/reconciliation',

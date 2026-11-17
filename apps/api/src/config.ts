@@ -71,6 +71,11 @@ const envSchema = z.object({
   ZARINPAL_BASE_URL: z.string().url().default('https://payment.zarinpal.com'),
   PAYMENT_CALLBACK_URL: z.string().url().default('https://app.benzin.ir/payments/callback'),
   /**
+   * G-12 — where the *browser* is sent after the gateway callback. The callback itself is a GET
+   * from Zarinpal's redirect, so it must be a public HTTPS address; the key never lives here.
+   */
+  PAYMENT_RETURN_URL: z.string().url().default('https://app.benzin.ir/plans'),
+  /**
    * G-11 — shared secret for the deposit webhook (`x-benzin-signature: sha256=<hmac>`).
    * Empty in development: the route then refuses every call, which is the safe default — an
    * unauthenticated money endpoint must never be open by accident.
@@ -104,5 +109,31 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     const details = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
     throw new Error(`Invalid environment configuration: ${details}`);
   }
-  return parsed.data;
+  return assertGatewaySafety(parsed.data);
+}
+
+/**
+ * G-12 — production guard for the real gateway.
+ *
+ * Zarinpal only redirects to an HTTPS callback it can reach from the open internet, and a merchant
+ * id in the repository would be a leaked credential. Both mistakes are silent until someone tries
+ * to pay, so the server refuses to boot instead: a payment system that half-starts is worse than one
+ * that stops and says why.
+ */
+export function assertGatewaySafety(config: Config): Config {
+  if (config.PAYMENT_GATEWAY !== 'zarinpal') return config;
+  if (!config.ZARINPAL_MERCHANT_ID) {
+    throw new Error(
+      'PAYMENT_GATEWAY=zarinpal needs ZARINPAL_MERCHANT_ID in the server environment (never in the repo)',
+    );
+  }
+  for (const [name, url] of [
+    ['PAYMENT_CALLBACK_URL', config.PAYMENT_CALLBACK_URL],
+    ['PAYMENT_RETURN_URL', config.PAYMENT_RETURN_URL],
+  ] as const) {
+    if (!url.startsWith('https://')) {
+      throw new Error(`${name} must be an https:// URL when the real gateway is enabled (got ${url})`);
+    }
+  }
+  return config;
 }

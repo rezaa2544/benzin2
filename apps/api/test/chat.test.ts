@@ -122,7 +122,12 @@ describe('chat', () => {
     });
     expect(incremental.statusCode).toBe(200);
     const newer = json<{ items: { body: string }[] }>(incremental);
-    expect(newer.items.map((m) => m.body)).toEqual(['پمپ شلوغ است']);
+    // `after` is inclusive on purpose: two messages can share a millisecond, and an exclusive
+    // cursor silently drops the second one from every incremental read. The boundary message is
+    // therefore repeated, which is why the app merges by message id.
+    expect(newer.items.map((m) => m.body)).toEqual(['سلام، در مسیرم', 'پمپ شلوغ است']);
+    const ids = new Set(newer.items.map((m) => (m as { id?: string }).id));
+    expect(ids.size).toBe(newer.items.length);
   });
 
   it('treats a retried clientMessageId as the same message', async () => {

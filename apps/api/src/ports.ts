@@ -415,6 +415,25 @@ export interface PaymentRepository {
     patch?: Partial<Pick<Payment, 'paidAt' | 'reference' | 'authority'>>,
   ): Promise<Payment | null>;
   listPendingExpired(now: Date, limit: number): Promise<Payment[]>;
+  /**
+   * G-12: invoices whose gateway verification failed for a reason that may pass on the next try.
+   * The worker picks them up in `next_verify_at` order and gives up after three attempts.
+   */
+  listDueVerify(now: Date, limit: number): Promise<Payment[]>;
+  /** Records one verification attempt (success clears the queue entry). */
+  recordVerifyAttempt(
+    id: string,
+    input: { attempts: number; nextAt: Date | null; error: string | null; clear?: boolean },
+  ): Promise<Payment | null>;
+  /** G-12 revenue report: settled money per provider and per day inside the window. */
+  revenue(from: Date, to: Date): Promise<{
+    totalPaidToman: number;
+    totalPaidCount: number;
+    byProvider: { provider: PaymentMethod; paidToman: number; paidCount: number }[];
+    byDay: { day: string; paidToman: number; paidCount: number }[];
+    pendingCount: number;
+    failedCount: number;
+  }>;
   listByUser(userId: string, limit: number): Promise<Payment[]>;
   listAll(options: { status: PaymentStatus | null; limit: number }): Promise<Payment[]>;
   /** Revenue tiles: settled volume since `since` plus how many are waiting or failed. */

@@ -71,9 +71,12 @@ export class SandboxGatewayProvider implements PaymentProvider {
   constructor(private readonly baseUrl = 'https://sandbox.benzin.local/pay') {}
 
   async init(input: { paymentId: string }): Promise<PaymentInitResult> {
+    const authority = `SBX-${input.paymentId}`;
     return {
-      redirectUrl: `${this.baseUrl}/${input.paymentId}`,
-      authority: `SBX-${input.paymentId}`,
+      // The authority is the last segment, exactly like Zarinpal's `StartPay/<authority>`, so the
+      // public callback can be exercised end-to-end in development (G-12).
+      redirectUrl: `${this.baseUrl}/${authority}`,
+      authority,
       destination: null,
       uniqueAmountToman: null,
     };

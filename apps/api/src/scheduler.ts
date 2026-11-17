@@ -62,8 +62,12 @@ export function createScheduler(
       autoCompletedTrades: await reservations.autoCompleteDueTrades(),
       // Trust suspensions are time-boxed; releasing them must not need an admin (E6-01).
       liftedSuspensions: await reputation.liftDueSuspensions(),
+      // G-12: verifications the bank actually confirmed count as money moved, not bookkeeping.
       reconciledPayments:
-        reconciled.expiredPayments + reconciled.healedPayments + reconciled.expiredSubscriptions,
+        reconciled.expiredPayments +
+        reconciled.healedPayments +
+        reconciled.expiredSubscriptions +
+        reconciled.verifiedPayments,
       liftedListingPauses: ownerResponse ? await ownerResponse.liftDuePauses() : 0,
       refreshedResponseWindows: ownerResponse ? await ownerResponse.refreshStale() : 0,
     };

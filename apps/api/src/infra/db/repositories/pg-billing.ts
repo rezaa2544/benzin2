@@ -288,10 +288,14 @@ type PaymentRow = {
   paid_at: Date | null;
   expires_at: Date;
   created_at: Date;
+  verify_attempts: number;
+  next_verify_at: Date | null;
+  last_verify_error: string | null;
 };
 
 const PAYMENT_COLUMNS = `id, user_id, subscription_id, provider, status, amount_toman, authority, reference,
-         unique_amount, raw_payload, paid_at, expires_at, created_at`;
+         unique_amount, raw_payload, paid_at, expires_at, created_at,
+         verify_attempts, next_verify_at, last_verify_error`;
 
 const toPayment = (row: PaymentRow): Payment => ({
   id: row.id,
@@ -307,6 +311,9 @@ const toPayment = (row: PaymentRow): Payment => ({
   paidAt: row.paid_at,
   expiresAt: row.expires_at,
   createdAt: row.created_at,
+  verifyAttempts: Number(row.verify_attempts ?? 0),
+  nextVerifyAt: row.next_verify_at ?? null,
+  lastVerifyError: row.last_verify_error ?? null,
 });
 
 export class PgPaymentRepository implements PaymentRepository {
@@ -439,6 +446,104 @@ export class PgPaymentRepository implements PaymentRepository {
       [options.status, options.limit],
     );
     return rows.map(toPayment);
+  }
+
+  async listDueVerify(now: Date, limit: number): Promise<Payment[]> {
+    const rows = await query<PaymentRow>(
+      this.db,
+      `SELECT ${PAYMENT_COLUMNS} FROM payments
+        WHERE status = 'PENDING' AND next_verify_at IS NOT NULL AND next_verify_at <= $1
+        ORDER BY next_verify_at ASC
+        LIMIT $2`,
+      [now, limit],
+    );
+    return rows.map(toPayment);
+  }
+
+  async recordVerifyAttempt(
+    id: string,
+    input: { attempts: number; nextAt: Date | null; error: string | null; clear?: boolean },
+  ): Promise<Payment | null> {
+    const row = await queryOne<PaymentRow>(
+      this.db,
+      `UPDATE payments
+          SET verify_attempts = $2,
+              next_verify_at = $3,
+              last_verify_error = $4
+        WHERE id = $1
+        RETURNING ${PAYMENT_COLUMNS}`,
+      [id, input.attempts, input.clear ? null : input.nextAt, input.clear ? null : input.error],
+    );
+    return row ? toPayment(row) : null;
+  }
+
+  async revenue(from: Date, to: Date): Promise<{
+    totalPaidToman: number;
+    totalPaidCount: number;
+    byProvider: { provider: PaymentMethod; paidToman: number; paidCount: number }[];
+    byDay: { day: string; paidToman: number; paidCount: number }[];
+    pendingCount: number;
+    failedCount: number;
+  }> {
+    const [totals] = await query<{
+      paid_toman: string | number | null;
+      paid_count: string | number;
+      pending_count: string | number;
+      failed_count: string | number;
+    }>(
+      this.db,
+      `SELECT COALESCE(SUM(amount_toman) FILTER (WHERE status = 'PAID'), 0) AS paid_toman,
+              COUNT(*) FILTER (WHERE status = 'PAID')  AS paid_count,
+              COUNT(*) FILTER (WHERE status = 'PENDING') AS pending_count,
+              COUNT(*) FILTER (WHERE status = 'FAILED')  AS failed_count
+         FROM payments
+        WHERE COALESCE(paid_at, created_at) BETWEEN $1 AND $2`,
+      [from, to],
+    ).then((rows) => (rows.length > 0 ? rows : [{ paid_toman: 0, paid_count: 0, pending_count: 0, failed_count: 0 }]));
+
+    const providers = await query<{
+      provider: PaymentMethod;
+      paid_toman: string | number;
+      paid_count: string | number;
+    }>(
+      this.db,
+      `SELECT provider, SUM(amount_toman) AS paid_toman, COUNT(*) AS paid_count
+         FROM payments
+        WHERE status = 'PAID' AND COALESCE(paid_at, created_at) BETWEEN $1 AND $2
+        GROUP BY provider
+        ORDER BY paid_toman DESC`,
+      [from, to],
+    );
+
+    // `Asia/Tehran` so a payment at 23:30 local time lands on that local day, not the UTC one.
+    const days = await query<{ day: string; paid_toman: string | number; paid_count: string | number }>(
+      this.db,
+      `SELECT to_char((COALESCE(paid_at, created_at) AT TIME ZONE 'Asia/Tehran')::date, 'YYYY-MM-DD') AS day,
+              SUM(amount_toman) AS paid_toman,
+              COUNT(*) AS paid_count
+         FROM payments
+        WHERE status = 'PAID' AND COALESCE(paid_at, created_at) BETWEEN $1 AND $2
+        GROUP BY 1
+        ORDER BY 1 ASC`,
+      [from, to],
+    );
+
+    return {
+      totalPaidToman: Number(totals?.paid_toman ?? 0),
+      totalPaidCount: Number(totals?.paid_count ?? 0),
+      byProvider: providers.map((row) => ({
+        provider: row.provider,
+        paidToman: Number(row.paid_toman),
+        paidCount: Number(row.paid_count),
+      })),
+      byDay: days.map((row) => ({
+        day: row.day,
+        paidToman: Number(row.paid_toman),
+        paidCount: Number(row.paid_count),
+      })),
+      pendingCount: Number(totals?.pending_count ?? 0),
+      failedCount: Number(totals?.failed_count ?? 0),
+    };
   }
 
   async summary(since: Date): Promise<{

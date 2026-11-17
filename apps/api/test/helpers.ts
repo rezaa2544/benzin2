@@ -5,7 +5,7 @@ import { loadConfig } from '../src/config.js';
 import { createMemoryRepositories } from '../src/infra/memory/index.js';
 import { systemClock, type Clock } from '../src/domain/entities.js';
 import { applySeed, BANEH_ZONE } from '../src/infra/db/seed.js';
-import type { Repositories, RouteProvider, SmsSender } from '../src/ports.js';
+import type { PaymentProvider, Repositories, RouteProvider, SmsSender } from '../src/ports.js';
 import type { UserRole } from '@benzin/shared';
 import { signAccessToken } from '../src/modules/tokens.js';
 
@@ -83,6 +83,8 @@ export interface TestContextOptions {
    * still reading the codes the capturing sender recorded.
    */
   wrapSms?: (inner: CapturingSms) => SmsSender;
+  /** G-12: a fake gateway, so the real request/verify shapes are exercised without a bank. */
+  providers?: { gateway?: PaymentProvider; cardToCard?: PaymentProvider };
 }
 
 export async function createTestContext(
@@ -107,6 +109,7 @@ export async function createTestContext(
     clock,
     routeProvider: options.routeProvider ?? null,
     ...(options.node ? { node: options.node } : {}),
+    ...(options.providers ? { providers: options.providers } : {}),
   });
   const app = built.app;
   // Every test context starts from the same seed as development (zones, plans, settings).

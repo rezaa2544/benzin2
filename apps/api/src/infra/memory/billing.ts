@@ -179,6 +179,9 @@ export class MemoryPaymentRepository implements PaymentRepository {
       paidAt: null,
       expiresAt: input.expiresAt,
       createdAt: at,
+      verifyAttempts: 0,
+      nextVerifyAt: null,
+      lastVerifyError: null,
     };
     this.byId.set(payment.id, clone(payment));
     return clone(payment);
@@ -226,6 +229,11 @@ export class MemoryPaymentRepository implements PaymentRepository {
     const payment = this.byId.get(id);
     if (!payment || payment.status !== expected) return null;
     payment.status = next;
+    // G-12: a settled (or dead) invoice no longer needs a verification retry.
+    if (next !== 'PENDING') {
+      payment.nextVerifyAt = null;
+      payment.lastVerifyError = null;
+    }
     if (patch.paidAt !== undefined) payment.paidAt = patch.paidAt;
     if (patch.reference !== undefined) payment.reference = patch.reference;
     if (patch.authority !== undefined) payment.authority = patch.authority;
@@ -260,6 +268,75 @@ export class MemoryPaymentRepository implements PaymentRepository {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(start, start + options.limit)
       .map(clone);
+  }
+
+  async listDueVerify(now: Date, limit: number): Promise<Payment[]> {
+    return [...this.byId.values()]
+      .filter(
+        (payment) =>
+          payment.status === 'PENDING' &&
+          payment.nextVerifyAt !== null &&
+          payment.nextVerifyAt.getTime() <= now.getTime(),
+      )
+      .sort((a, b) => (a.nextVerifyAt?.getTime() ?? 0) - (b.nextVerifyAt?.getTime() ?? 0))
+      .slice(0, limit)
+      .map(clone);
+  }
+
+  async recordVerifyAttempt(
+    id: string,
+    input: { attempts: number; nextAt: Date | null; error: string | null; clear?: boolean },
+  ): Promise<Payment | null> {
+    const payment = this.byId.get(id);
+    if (!payment) return null;
+    payment.verifyAttempts = input.attempts;
+    payment.nextVerifyAt = input.clear ? null : input.nextAt;
+    payment.lastVerifyError = input.clear ? null : input.error;
+    return clone(payment);
+  }
+
+  async revenue(from: Date, to: Date): Promise<{
+    totalPaidToman: number;
+    totalPaidCount: number;
+    byProvider: { provider: Payment['provider']; paidToman: number; paidCount: number }[];
+    byDay: { day: string; paidToman: number; paidCount: number }[];
+    pendingCount: number;
+    failedCount: number;
+  }> {
+    const inWindow = [...this.byId.values()].filter((payment) => {
+      const at = payment.paidAt ?? payment.createdAt;
+      return at.getTime() >= from.getTime() && at.getTime() <= to.getTime();
+    });
+    const paid = inWindow.filter((payment) => payment.status === 'PAID');
+    const perProvider = new Map<Payment['provider'], { paidToman: number; paidCount: number }>();
+    const perDay = new Map<string, { paidToman: number; paidCount: number }>();
+    for (const payment of paid) {
+      const provider = perProvider.get(payment.provider) ?? { paidToman: 0, paidCount: 0 };
+      provider.paidToman += payment.amountToman;
+      provider.paidCount += 1;
+      perProvider.set(payment.provider, provider);
+
+      // The report is read in Tehran, so a payment at 23:30 local belongs to that local day.
+      const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tehran' }).format(
+        payment.paidAt ?? payment.createdAt,
+      );
+      const bucket = perDay.get(day) ?? { paidToman: 0, paidCount: 0 };
+      bucket.paidToman += payment.amountToman;
+      bucket.paidCount += 1;
+      perDay.set(day, bucket);
+    }
+    return {
+      totalPaidToman: paid.reduce((sum, payment) => sum + payment.amountToman, 0),
+      totalPaidCount: paid.length,
+      byProvider: [...perProvider.entries()]
+        .map(([provider, value]) => ({ provider, ...value }))
+        .sort((a, b) => b.paidToman - a.paidToman),
+      byDay: [...perDay.entries()]
+        .map(([day, value]) => ({ day, ...value }))
+        .sort((a, b) => a.day.localeCompare(b.day)),
+      pendingCount: inWindow.filter((payment) => payment.status === 'PENDING').length,
+      failedCount: inWindow.filter((payment) => payment.status === 'FAILED').length,
+    };
   }
 
   async summary(since: Date): Promise<{

@@ -310,6 +310,27 @@ await step('POST /v1/subscriptions (G-11 card destination from settings)', async
   return `مبلغ یکتا ${payload.uniqueAmountToman}، کارت ${payload.destination.cardNumber}`;
 });
 
+await step('GET /v1/payments/gateway/callback answers a browser with a redirect (G-12)', async () => {
+  // No token, no JSON: Zarinpal sends the buyer's browser here. A raw fetch with `redirect: manual`
+  // is the only way to see the 302 instead of following it into the app.
+  const response = await fetch(`${API}/v1/payments/gateway/callback?Authority=SMOKE-UNKNOWN-1&Status=OK`, {
+    redirect: 'manual',
+  });
+  expect(response.status === 302 || response.status === 301, `status ${response.status}`);
+  const location = response.headers.get('location') ?? '';
+  expect(location.includes('payment='), `location ${location}`);
+  return `HTTP ${response.status} → ${location.split('?')[1] ?? location}`;
+});
+
+await step('GET /v1/admin/revenue is staff-only and totals the window (G-12)', async () => {
+  const asStaff = await call('GET', '/v1/admin/revenue?days=30', { token: owner.token });
+  expect(typeof asStaff.payload?.totalTomanLabelFa === 'string', 'no Persian total in the report');
+  expect(Array.isArray(asStaff.payload?.byProvider), 'no per-provider split');
+  const asBuyer = await call('GET', '/v1/admin/revenue', { token: buyer.token });
+  expect(asBuyer.status === 403, `buyer got ${asBuyer.status}`);
+  return `${asStaff.payload.totalTomanLabelFa} در ${asStaff.payload.paidCount} پرداخت`;
+});
+
 await step('GET /v1/me/response (G-10, seller answer rate)', async () => {
   const { status, payload } = await call('GET', '/v1/me/response', { token: owner.token });
   expect(status === 200, `status ${status}: ${JSON.stringify(payload)}`);

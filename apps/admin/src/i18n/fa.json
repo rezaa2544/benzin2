@@ -125,7 +125,19 @@
     "depositReceived": "زمان دریافت",
     "depositAttach": "وصل به فاکتور",
     "depositAttached": "واریز به فاکتور وصل شد.",
-    "depositNone": "واریز بی‌صاحبی وجود ندارد."
+    "depositNone": "واریز بی‌صاحبی وجود ندارد.",
+    "revenueTitle": "گزارش درآمد",
+    "revenueLead": "پول واقعاً وصول‌شده در ۳۰ روز گذشته، به تفکیک روش پرداخت و روز.",
+    "revenueTotal": "جمع وصول‌شده",
+    "revenuePaid": "پرداخت‌شده",
+    "revenuePending": "در انتظار",
+    "revenueFailed": "ناموفق",
+    "revenueByProvider": "به تفکیک روش",
+    "revenueByDay": "روز",
+    "revenueDay": "تاریخ",
+    "revenueEmpty": "در این بازه پرداختی ثبت نشده است.",
+    "revenueRetry": "تلاش دوبارهٔ بررسی درگاه‌ها",
+    "revenueRetried": "بررسی دوباره انجام شد."
   },
   "subscriptions": {
     "title": "اشتراک‌ها",

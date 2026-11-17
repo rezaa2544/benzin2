@@ -84,6 +84,19 @@ export interface PaymentRow {
   createdAt: string;
 }
 
+/** G-12 — the income report the panel shows above the payment tables. */
+export interface RevenueReport {
+  from: string;
+  to: string;
+  totalToman: number;
+  totalTomanLabelFa: string;
+  paidCount: number;
+  pendingCount: number;
+  failedCount: number;
+  byProvider: { provider: string; labelFa: string; paidCount: number; paidToman: number; paidTomanLabelFa: string }[];
+  byDay: { day: string; paidCount: number; paidToman: number; paidTomanLabelFa: string }[];
+}
+
 /** G-11 — one bank transfer sitting in the deposit table. */
 export interface CardDepositRow {
   id: string;

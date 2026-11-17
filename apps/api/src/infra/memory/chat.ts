@@ -113,7 +113,8 @@ export class MemoryMessageRepository implements MessageRepository {
       .filter((message) => message.conversationId === conversationId)
       .filter(
         (message) =>
-          options.after === null || message.createdAt.getTime() > options.after.getTime(),
+          // `>=`: two messages can share a millisecond; a strict cursor would lose the second one.
+          options.after === null || message.createdAt.getTime() >= options.after.getTime(),
       )
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .slice(0, options.limit)

@@ -147,6 +147,14 @@ export interface Payment {
   paidAt: Date | null;
   readonly expiresAt: Date;
   readonly createdAt: Date;
+  /**
+   * G-12: how many times the worker has asked the gateway to verify this invoice, when it may ask
+   * again, and what went wrong last time. A callback that never arrives and a gateway that is
+   * briefly down both end up here instead of in a silent `PENDING` limbo.
+   */
+  verifyAttempts: number;
+  nextVerifyAt: Date | null;
+  lastVerifyError: string | null;
 }
 
 /** Destination card shown to the payer; never returned raw (task E7-07). */

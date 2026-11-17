@@ -16,7 +16,16 @@ export interface PlansPageProps {
   api: ApiClient;
   /** G-11: `cardMode` decides whether the buyer is asked for a tracking number. */
   config?: MetaConfig | null;
+  /** G-12: what the gateway callback put in the return URL (`paid` / `failed` / `pending`). */
+  paymentOutcome?: string | null;
 }
+
+const OUTCOME_KEYS: Record<string, string> = {
+  paid: 'plans.gatewayPaid',
+  failed: 'plans.gatewayFailed',
+  pending: 'plans.gatewayPending',
+  unknown: 'plans.gatewayUnknown',
+};
 
 const errorMap = {
   NETWORK: t('errors.NETWORK'),
@@ -27,7 +36,7 @@ const errorMap = {
 
 /** Subscription plans (E9-13). Card-to-card is the default method; the API returns the
  *  destination card and a Persian instruction the client shows verbatim. */
-export function PlansPage({ api, config }: PlansPageProps): JSX.Element {
+export function PlansPage({ api, config, paymentOutcome }: PlansPageProps): JSX.Element {
   const [pending, setPending] = useState<PaymentStartView | null>(null);
   const [busyCode, setBusyCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +97,12 @@ export function PlansPage({ api, config }: PlansPageProps): JSX.Element {
     <div>
       <PageTitle title={t('plans.title')} lead={t('plans.lead')} />
 
+      {/* G-12: the buyer came back from the bank — say what happened before anything else. */}
+      {paymentOutcome && OUTCOME_KEYS[paymentOutcome] ? (
+        <Notice tone={paymentOutcome === 'paid' ? 'success' : paymentOutcome === 'failed' ? 'error' : 'warning'}>
+          {t(OUTCOME_KEYS[paymentOutcome]!)}
+        </Notice>
+      ) : null}
       {error ? <Notice tone="error">{error}</Notice> : null}
       {loadError ? <Notice tone="error">{errorMessage(loadError, errorMap)}</Notice> : null}
 

@@ -1,13 +1,120 @@
 import { useState } from 'react';
 import { PAYMENT_STATUSES, type PaymentStatus } from '@benzin/shared';
 import type { ApiClient } from '../lib/api.js';
-import { fmtDateTime, fmtNumber, fmtToman, statusFa } from '../lib/format.js';
+import { fmtDate, fmtDateTime, fmtNumber, fmtToman, statusFa } from '../lib/format.js';
 import { useResource } from '../lib/useResource.js';
-import type { CardDepositRow, PaymentCardRow, PaymentRow } from '../lib/types.js';
+import type { CardDepositRow, PaymentCardRow, PaymentRow, RevenueReport } from '../lib/types.js';
 import { Badge, DataTable, Field, Modal, Notice } from '../components/ui.js';
 import fa from '../i18n/fa.json';
 
 /** E8-04 + E7-07: manual settlement of card-to-card transfers and destination cards. */
+/**
+ * G-12 — the income card.
+ *
+ * It answers the one question an operator actually asks after a launch («چقدر پول آمد؟») with the
+ * money that *settled*, split by method and by Tehran day, plus the retry button for gateway
+ * verifications the bank never confirmed. Numbers arrive pre-formatted so the panel cannot drift
+ * from the API on digits or separators.
+ */
+function RevenueCard({ api, onRetried }: { api: ApiClient; onRetried: () => void }): JSX.Element {
+  const report = useResource<RevenueReport>(() => api.get<RevenueReport>('/v1/admin/revenue', { days: 30 }), []);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const data = report.data;
+
+  const retry = async (): Promise<void> => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await api.post<{ retriedVerifications: number; verifiedPayments: number }>(
+        '/v1/admin/reconciliation',
+        {},
+      );
+      setMessage(
+        `${fa.payments.revenueRetried} (${fmtNumber(result.retriedVerifications)} بررسی، ${fmtNumber(result.verifiedPayments)} تأیید)`,
+      );
+      report.reload();
+      onRetried();
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : fa.app.error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-bold">{fa.payments.revenueTitle}</h2>
+          <p className="text-xs text-muted">{fa.payments.revenueLead}</p>
+        </div>
+        <button type="button" className="btn px-2 py-1 text-xs" disabled={busy} onClick={() => void retry()}>
+          {fa.payments.revenueRetry}
+        </button>
+      </div>
+
+      {message ? <Notice tone="info">{message}</Notice> : null}
+      {report.error ? <Notice tone="error">{report.error.message}</Notice> : null}
+      {report.loading && !data ? <Notice>{fa.app.loading}</Notice> : null}
+
+      {data ? (
+        <>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded-lg border border-line p-2">
+              <p className="text-xs text-muted">{fa.payments.revenueTotal}</p>
+              <p className="text-sm font-bold tnum" data-testid="revenue-total">
+                {data.totalTomanLabelFa}
+              </p>
+            </div>
+            <div className="rounded-lg border border-line p-2">
+              <p className="text-xs text-muted">{fa.payments.revenuePaid}</p>
+              <p className="text-sm font-bold tnum">{fmtNumber(data.paidCount)}</p>
+            </div>
+            <div className="rounded-lg border border-line p-2">
+              <p className="text-xs text-muted">{fa.payments.revenuePending}</p>
+              <p className="text-sm font-bold tnum">{fmtNumber(data.pendingCount)}</p>
+            </div>
+            <div className="rounded-lg border border-line p-2">
+              <p className="text-xs text-muted">{fa.payments.revenueFailed}</p>
+              <p className="text-sm font-bold tnum">{fmtNumber(data.failedCount)}</p>
+            </div>
+          </div>
+
+          {data.byProvider.length > 0 ? (
+            <div className="flex flex-wrap gap-2 text-xs" data-testid="revenue-providers">
+              {data.byProvider.map((row) => (
+                <span key={row.provider} className="chip">
+                  {row.labelFa}: {row.paidTomanLabelFa} ({fmtNumber(row.paidCount)})
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {data.byDay.length === 0 ? (
+            <Notice>{fa.payments.revenueEmpty}</Notice>
+          ) : (
+            <DataTable
+              rows={[...data.byDay].reverse()}
+              empty={fa.payments.revenueEmpty}
+              columns={[
+                {
+                  key: 'day',
+                  header: fa.payments.revenueDay,
+                  // The report is bucketed by Tehran day; the panel shows it as a Jalali date.
+                  render: (row) => <span className="tnum">{fmtDate(`${row.day}T00:00:00Z`)}</span>,
+                },
+                { key: 'count', header: fa.payments.revenuePaid, render: (row) => <span className="tnum">{fmtNumber(row.paidCount)}</span> },
+                { key: 'sum', header: fa.payments.revenueTotal, render: (row) => <span className="tnum">{row.paidTomanLabelFa}</span> },
+              ]}
+            />
+          )}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function DepositQueue({
   api,
   onAttached,
@@ -166,6 +273,13 @@ export function PaymentsPage({ api }: { api: ApiClient }): JSX.Element {
 
       {message ? <Notice tone="success">{message}</Notice> : null}
       {error ? <Notice tone="error">{error}</Notice> : null}
+
+      <RevenueCard
+        api={api}
+        onRetried={() => {
+          payments.reload();
+        }}
+      />
 
       <DepositQueue api={api} onAttached={() => payments.reload()} />
 

@@ -150,10 +150,13 @@ export class PgMessageRepository implements MessageRepository {
     conversationId: string,
     options: { after: Date | null; limit: number },
   ): Promise<Message[]> {
+    // G-12 hardening: the cursor is inclusive (>=), not strict (>). Two messages can share a
+    // millisecond, and a strictly-greater cursor silently drops the second one from every
+    // incremental read. Clients merge by message id, so repeating the boundary row is safe.
     const rows = await query<MessageRow>(
       this.db,
       `SELECT ${MESSAGE_COLUMNS} FROM messages
-        WHERE conversation_id = $1 AND ($2::timestamptz IS NULL OR created_at > $2)
+        WHERE conversation_id = $1 AND ($2::timestamptz IS NULL OR created_at >= $2)
         ORDER BY created_at ASC LIMIT $3`,
       [conversationId, options.after, options.limit],
     );

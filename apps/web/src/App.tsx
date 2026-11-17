@@ -324,7 +324,8 @@ export function App(): JSX.Element {
           />
         );
       case 'plans':
-        return <PlansPage api={api} config={config} />;
+        // G-12: the gateway sends the browser back with `?payment=paid|failed|pending`.
+        return <PlansPage api={api} config={config} paymentOutcome={route.query['payment'] ?? null} />;
       case 'styleGuide':
         return <StyleGuidePage theme={mode} onToggleTheme={toggleTheme} />;
       default:

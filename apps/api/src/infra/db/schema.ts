@@ -447,6 +447,10 @@ export const payments = pgTable(
     paidAt: timestamp('paid_at', { withTimezone: true }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    // G-12: the worker re-asks the gateway up to three times before a human looks at the invoice.
+    verifyAttempts: integer('verify_attempts').notNull().default(0),
+    nextVerifyAt: timestamp('next_verify_at', { withTimezone: true }),
+    lastVerifyError: text('last_verify_error'),
   },
   (t) => [
     check('payments_amount_positive', sql`${t.amountToman} > 0`),

@@ -73,6 +73,25 @@ export interface ReconciliationReport {
   expiredPayments: number;
   healedPayments: number;
   expiredSubscriptions: number;
+  /** G-12: gateway invoices the reconciler asked the bank about again. */
+  retriedVerifications: number;
+  verifiedPayments: number;
+}
+
+/**
+ * G-12 — the income report the panel shows. Every number is also pre-formatted in Persian digits,
+ * because the labels and the separators must not be the client's job.
+ */
+export interface RevenueReport {
+  from: string;
+  to: string;
+  totalToman: number;
+  totalTomanLabelFa: string;
+  paidCount: number;
+  pendingCount: number;
+  failedCount: number;
+  byProvider: { provider: Payment['provider']; labelFa: string; paidCount: number; paidToman: number; paidTomanLabelFa: string }[];
+  byDay: { day: string; paidCount: number; paidToman: number; paidTomanLabelFa: string }[];
 }
 
 const toPlanView = (plan: Plan): PlanView => ({
@@ -290,6 +309,15 @@ export class PaymentService {
       await this.repos.payments.transition(payment.id, 'PENDING', 'PENDING', {
         authority: init.authority,
       });
+      if (input.method === 'GATEWAY') {
+        // G-12: the callback lands in the buyer's browser and can be lost, so the worker asks the
+        // gateway itself a couple of minutes later. Attempt 0 costs nothing when the browser works.
+        await this.repos.payments.recordVerifyAttempt(payment.id, {
+          attempts: 0,
+          nextAt: new Date(now.getTime() + 2 * 60_000),
+          error: null,
+        });
+      }
     }
 
     await this.repos.audit.append({
@@ -397,6 +425,221 @@ export class PaymentService {
     }
 
     return this.settle(payment, result.reference, user.id);
+  }
+
+  /**
+   * G-12 — the gateway sends the buyer's *browser* back to us, so this path has no session and no
+   * JSON body: Zarinpal appends `?Authority=…&Status=OK|NOK` to the callback URL we registered.
+   *
+   * Three things can go wrong and none of them may cost the buyer their money:
+   * - `Status=NOK` — the buyer cancelled; that is a clean FAILED, not an error.
+   * - verify throws (network, gateway 5xx) or answers "not verified yet" — the invoice stays
+   *   PENDING and is queued for the worker, which asks again up to `GATEWAY_VERIFY_ATTEMPTS` times.
+   * - the callback never arrives at all — the same queue picks it up from the reconciler, because
+   *   `startPurchase` scheduled the first check when it created the gateway invoice.
+   */
+  async handleGatewayReturn(input: {
+    authority: string;
+    status: string | null;
+  }): Promise<{ outcome: 'PAID' | 'FAILED' | 'PENDING' | 'UNKNOWN'; paymentId: string | null }> {
+    const payment = await this.repos.payments.findByAuthority(input.authority);
+    if (!payment) return { outcome: 'UNKNOWN', paymentId: null };
+
+    // Replaying the same callback (the buyer refreshes the return page) must be a no-op.
+    if (payment.status === 'PAID') return { outcome: 'PAID', paymentId: payment.id };
+    if (payment.status !== 'PENDING') {
+      return { outcome: 'FAILED', paymentId: payment.id };
+    }
+
+    if ((input.status ?? '').toUpperCase() === 'NOK') {
+      const failed = await this.repos.payments.transition(payment.id, 'PENDING', 'FAILED', {
+        reference: 'GATEWAY_CANCELLED',
+      });
+      if (failed) {
+        await this.repos.audit.append({
+          actorId: null,
+          action: 'payment.failed',
+          entity: 'payment',
+          entityId: payment.id,
+          metadata: { reason: 'GATEWAY_CANCELLED', authority: input.authority },
+        });
+        await this.notifier.emit({
+          userId: payment.userId,
+          kind: 'PAYMENT_FAILED',
+          params: { amount: formatToman(payment.amountToman) },
+          payload: { paymentId: payment.id, reason: 'GATEWAY_CANCELLED' },
+        });
+      }
+      return { outcome: 'FAILED', paymentId: payment.id };
+    }
+
+    const attempt = await this.attemptVerify(payment, payment.userId);
+    return { outcome: attempt.outcome, paymentId: payment.id };
+  }
+
+  /**
+   * One verification attempt plus the bookkeeping around it. Shared by the browser callback, the
+   * worker and the panel's "reconcile" button so all three behave identically.
+   */
+  private async attemptVerify(
+    payment: Payment,
+    actorId: string | null,
+  ): Promise<{ outcome: 'PAID' | 'FAILED' | 'PENDING' }> {
+    const provider = this.providerFor(payment.provider);
+    let result: { ok: boolean; reference: string | null; reason: string | null };
+    try {
+      result = await provider.verify({
+        paymentId: payment.id,
+        amountToman: payment.amountToman,
+        authority: payment.authority,
+        reference: null,
+      });
+    } catch (error) {
+      // A thrown error is a transport problem, never a verdict: retry, then hand it to a human.
+      return this.scheduleRetry(payment, error instanceof Error ? error.message : 'verify failed');
+    }
+
+    if (result.ok) {
+      try {
+        await this.settle(payment, result.reference, actorId);
+      } catch (error) {
+        // Lost the race with another path that settled it: the callback is still a success.
+        if (
+          error instanceof AppError &&
+          (error.code === 'PAYMENT_ALREADY_SETTLED' || error.code === 'INVALID_STATE_TRANSITION')
+        ) {
+          return { outcome: 'PAID' };
+        }
+        throw error;
+      }
+      await this.repos.payments.recordVerifyAttempt(payment.id, {
+        attempts: payment.verifyAttempts + 1,
+        nextAt: null,
+        error: null,
+        clear: true,
+      });
+      return { outcome: 'PAID' };
+    }
+
+    const reason = result.reason ?? 'VERIFY_REJECTED';
+    // `GATEWAY_CODE_*` means the gateway answered; a missing authority means we never had a usable
+    // invoice. Both are verdicts, not blips, so they fail straight away instead of burning retries.
+    const retryable = reason === 'VERIFY_REJECTED' || reason === 'NETWORK';
+    if (!retryable) {
+      await this.failPayment(payment, reason, actorId);
+      return { outcome: 'FAILED' };
+    }
+    return this.scheduleRetry(payment, reason);
+  }
+
+  /** Queues the next attempt, or escalates to a human once the budget is spent. */
+  private async scheduleRetry(
+    payment: Payment,
+    error: string,
+  ): Promise<{ outcome: 'PENDING' }> {
+    const config = await this.settings.get();
+    const maxAttempts = config['payment.verify_max_attempts'];
+    const attempts = payment.verifyAttempts + 1;
+
+    if (attempts >= maxAttempts) {
+      // The money may well be in the bank, so this is never auto-failed: a person checks the
+      // gateway panel and confirms or rejects it (G-11 already built the review queue).
+      await this.repos.payments.recordVerifyAttempt(payment.id, {
+        attempts,
+        nextAt: null,
+        error,
+        clear: true,
+      });
+      const moved = await this.repos.payments.transition(payment.id, 'PENDING', 'NEEDS_REVIEW');
+      if (moved) {
+        await this.repos.audit.append({
+          actorId: null,
+          action: 'payment.verify_exhausted',
+          entity: 'payment',
+          entityId: payment.id,
+          metadata: { attempts, error, authority: payment.authority },
+        });
+        await this.notifier.emit({
+          userId: payment.userId,
+          kind: 'PAYMENT_NEEDS_REVIEW',
+          params: {
+            amount: formatToman(payment.amountToman),
+            tracking: payment.reference ?? payment.authority ?? '—',
+          },
+          payload: { paymentId: payment.id, reason: 'VERIFY_EXHAUSTED' },
+        });
+      }
+      return { outcome: 'PENDING' };
+    }
+
+    const delayMinutes = config['payment.verify_retry_minutes'] * attempts;
+    await this.repos.payments.recordVerifyAttempt(payment.id, {
+      attempts,
+      nextAt: new Date(this.clock.now().getTime() + delayMinutes * 60_000),
+      error,
+    });
+    return { outcome: 'PENDING' };
+  }
+
+  private async failPayment(payment: Payment, reason: string, actorId: string | null): Promise<void> {
+    const failed = await this.repos.payments.transition(payment.id, 'PENDING', 'FAILED', {
+      reference: reason,
+    });
+    if (!failed) return;
+    await this.repos.audit.append({
+      actorId,
+      action: 'payment.failed',
+      entity: 'payment',
+      entityId: payment.id,
+      metadata: { reason },
+    });
+  }
+
+  /**
+   * G-12 worker step: re-verify the invoices whose last attempt failed for a reason that may pass.
+   * Idempotent — it re-reads each payment before acting and `settle` is compare-and-set.
+   */
+  async retryGatewayVerifications(limit = 50): Promise<{ retried: number; paid: number }> {
+    const due = await this.repos.payments.listDueVerify(this.clock.now(), limit);
+    let paid = 0;
+    for (const payment of due) {
+      const fresh = await this.repos.payments.findById(payment.id);
+      if (!fresh || fresh.status !== 'PENDING') continue;
+      const result = await this.attemptVerify(fresh, null);
+      if (result.outcome === 'PAID') paid += 1;
+    }
+    return { retried: due.length, paid };
+  }
+
+  /** G-12 revenue report: what actually came in, by provider and by Tehran day. */
+  async revenue(from: Date, to: Date): Promise<RevenueReport> {
+    const report = await this.repos.payments.revenue(from, to);
+    const labelFa: Record<Payment['provider'], string> = {
+      GATEWAY: 'درگاه بانکی',
+      CARD_TO_CARD: 'کارت‌به‌کارت',
+    };
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      totalToman: report.totalPaidToman,
+      totalTomanLabelFa: formatToman(report.totalPaidToman),
+      paidCount: report.totalPaidCount,
+      pendingCount: report.pendingCount,
+      failedCount: report.failedCount,
+      byProvider: report.byProvider.map((row) => ({
+        provider: row.provider,
+        labelFa: labelFa[row.provider] ?? row.provider,
+        paidCount: row.paidCount,
+        paidToman: row.paidToman,
+        paidTomanLabelFa: formatToman(row.paidToman),
+      })),
+      byDay: report.byDay.map((row) => ({
+        day: row.day,
+        paidCount: row.paidCount,
+        paidToman: row.paidToman,
+        paidTomanLabelFa: formatToman(row.paidToman),
+      })),
+    };
   }
 
   private async loadPayable(
@@ -591,6 +834,9 @@ export class PaymentService {
    * are activated, and finished subscriptions are closed — all idempotent.
    */
   async reconcile(limit = 200): Promise<ReconciliationReport> {
+    // G-12 first: an invoice the bank has already been asked about must not be expired out from
+    // under a buyer whose money did leave the account.
+    const retry = await this.retryGatewayVerifications(Math.min(limit, 50));
     const now = this.clock.now();
     let expiredPayments = 0;
     for (const payment of await this.repos.payments.listPendingExpired(now, limit)) {
@@ -636,6 +882,12 @@ export class PaymentService {
       });
     }
 
-    return { expiredPayments, healedPayments, expiredSubscriptions };
+    return {
+      expiredPayments,
+      healedPayments,
+      expiredSubscriptions,
+      retriedVerifications: retry.retried,
+      verifiedPayments: retry.paid,
+    };
   }
 }

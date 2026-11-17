@@ -48,6 +48,12 @@ export const SETTING_DEFINITIONS = {
   // whether the buyer looks at the old `payment_cards` row or at these settings (G-11).
   'payment.card_number': { schema: z.string().regex(/^\d{16}$/), default: '6037991234567890' },
   'payment.card_holder': { schema: z.string().min(3).max(60), default: 'شرکت بنزین' },
+  /**
+   * G-12 — how hard the worker tries to verify a gateway payment before a human looks at it.
+   * The callback lives in the buyer's browser, so a closed tab must not cost them the plan.
+   */
+  'payment.verify_max_attempts': { schema: z.number().int().min(1).max(10), default: 3 },
+  'payment.verify_retry_minutes': { schema: z.number().int().min(1).max(120), default: 10 },
   'trust.suspend_below_score': { schema: z.number().int().min(0).max(99), default: 20 },
   'trust.suspend_hours': { schema: z.number().int().min(1).max(720), default: 24 },
   'trust.window_days': { schema: z.number().int().min(1).max(365), default: 180 },
@@ -148,6 +154,11 @@ export const SETTING_META: Record<SettingKey, { labelFa: string; group: SettingG
   },
   'payment.card_number': { labelFa: 'شمارهٔ کارت مقصد (۱۶ رقم)', group: 'PAYMENT' },
   'payment.card_holder': { labelFa: 'صاحب کارت مقصد', group: 'PAYMENT' },
+  'payment.verify_max_attempts': {
+    labelFa: 'حداکثر تلاش بررسی درگاه (سپس بازبینی اپراتور)',
+    group: 'PAYMENT',
+  },
+  'payment.verify_retry_minutes': { labelFa: 'فاصلهٔ تلاش‌های بررسی درگاه (دقیقه)', group: 'PAYMENT' },
   'trust.suspend_below_score': { labelFa: 'تعلیق زیر امتیاز', group: 'TRUST' },
   'trust.suspend_hours': { labelFa: 'مدت تعلیق (ساعت)', group: 'TRUST' },
   'trust.window_days': { labelFa: 'پنجره‌ی محاسبه‌ی اعتبار (روز)', group: 'TRUST' },
