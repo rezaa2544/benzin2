@@ -17,6 +17,8 @@ const OWNER_PHONE = process.env.SMOKE_OWNER ?? '09187888993';
 const BUYER_PHONE = process.env.SMOKE_BUYER ?? '09373210545';
 const OTP = process.env.SMOKE_OTP ?? '12345';
 const PLACE = { province: process.env.SMOKE_PROVINCE ?? 'کردستان', county: 'بانه' };
+// A per-run suffix, so repeated smoke runs against the same database never collide.
+const stamp = Date.now().toString(36).slice(-5);
 
 let passed = 0;
 const failures = [];
@@ -400,6 +402,60 @@ await step('GET /v1/admin/status (infra monitoring)', async () => {
   const { status, payload } = await call('GET', '/v1/admin/status', { token: owner.token });
   expect(status === 200, `status ${status}`);
   return `storage ${payload.storage?.mode ?? payload.mode ?? '?'}`;
+});
+
+await step('GET /v1/admin/infra shows a colour per subsystem (G-13)', async () => {
+  const { status, payload } = await call('GET', '/v1/admin/infra', { token: owner.token });
+  expect(status === 200, `status ${status}: ${JSON.stringify(payload)}`);
+  const keys = (payload.checks ?? []).map((check) => check.key);
+  for (const key of ['api', 'database', 'scheduler', 'sms', 'gateway']) {
+    expect(keys.includes(key), `the board is missing the ${key} check`);
+  }
+  const bad = (payload.checks ?? []).filter((check) => !['OK', 'WARN', 'DOWN'].includes(check.status));
+  expect(bad.length === 0, 'a check reported a colour the panel cannot draw');
+  expect(typeof payload.migrations?.count === 'number', 'migration version missing');
+  return `${payload.checks.length} check(s), ${payload.migrations.latest}, ${payload.counts.tradesToday} معاملهٔ امروز`;
+});
+
+await step('POST/PATCH/DELETE /v1/admin/infra keeps the credential on the server (G-13)', async () => {
+  const created = await call('POST', '/v1/admin/infra', {
+    token: owner.token,
+    body: { name: `کش ${stamp}`, kind: 'CACHE', address: '127.0.0.1:6379', secret: 'redis-pass' },
+  });
+  expect(created.status === 201, `status ${created.status}: ${JSON.stringify(created.payload)}`);
+  expect(created.payload.secretSet === true, 'the panel was not told a credential is stored');
+  expect(!JSON.stringify(created.payload).includes('redis-pass'), 'the credential came back to the panel');
+  const id = created.payload.id;
+  const patched = await call('PATCH', `/v1/admin/infra/${id}`, {
+    token: owner.token,
+    body: { isActive: false },
+  });
+  expect(patched.payload?.isActive === false, 'the active flag did not change');
+  expect(patched.payload?.secretSet === true, 'saving the form wiped the credential');
+  const removed = await call('DELETE', `/v1/admin/infra/${id}`, { token: owner.token });
+  expect(removed.status === 200, `status ${removed.status}`);
+  return 'created → edited → removed, secret never returned';
+});
+
+await step('a plan with a zero-day window is sold as «بدون انقضا» (G-26b)', async () => {
+  const created = await call('POST', '/v1/admin/plans', {
+    token: owner.token,
+    body: {
+      code: `forever${stamp}`,
+      nameFa: 'پلن دائمی تست',
+      priceToman: 12000,
+      durationDays: 0,
+      maxActiveOrders: 0,
+      monthlyReservations: 2,
+      phoneVisible: true,
+      singleUse: false,
+    },
+  });
+  expect(created.status === 201, `status ${created.status}: ${JSON.stringify(created.payload)}`);
+  expect(created.payload.durationDays === 0, 'the panel value did not survive the round trip');
+  const retired = await call('DELETE', `/v1/admin/plans/${created.payload.id}`, { token: owner.token });
+  expect(retired.status === 200, `retire failed: ${retired.status}`);
+  return 'durationDays 0 accepted and editable';
 });
 
 await step('GET /v1/admin/nodes (live node monitor, G-28)', async () => {

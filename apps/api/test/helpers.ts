@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppServices } from '../src/http/context.js';
+import type { Scheduler } from '../src/scheduler.js';
 import { buildApp } from '../src/http/app.js';
 import { loadConfig } from '../src/config.js';
 import { createMemoryRepositories } from '../src/infra/memory/index.js';
@@ -66,6 +67,8 @@ export interface TestContext {
   app: FastifyInstance;
   services: AppServices;
   repos: Repositories;
+  /** G-13: the same sweeper the production process runs, so a test can age the panel's clock. */
+  scheduler: Scheduler;
   sms: CapturingSms;
   clock: Clock;
   close(): Promise<void>;
@@ -116,7 +119,15 @@ export async function createTestContext(
   // Every test context starts from the same seed as development (zones, plans, settings).
   await applySeed(repos);
   await app.ready();
-  return { app, services: built.services, repos, sms, clock, close: () => app.close() };
+  return {
+    app,
+    services: built.services,
+    repos,
+    scheduler: built.scheduler,
+    sms,
+    clock,
+    close: () => app.close(),
+  };
 }
 
 /**

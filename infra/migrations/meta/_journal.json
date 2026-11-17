@@ -57,6 +57,48 @@
       "when": 1794700300000,
       "tag": "0007_node_telemetry",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794700400000,
+      "tag": "0008_delivery_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794700500000,
+      "tag": "0009_response_rate",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794700600000,
+      "tag": "0010_card_deposits",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794700700000,
+      "tag": "0011_gateway_verify",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794700800000,
+      "tag": "0012_buyer_entitlements",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794700900000,
+      "tag": "0013_infra_resources",
+      "breakpoints": true
     }
   ]
 }

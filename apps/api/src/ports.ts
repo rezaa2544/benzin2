@@ -15,6 +15,7 @@ import type {
 import type {
   AuditEntry,
   Conversation,
+  InfraResource,
   ReputationEvent,
   TradeRating,
   DeviceRecord,
@@ -184,6 +185,8 @@ export interface OrderRepository {
   search(query: OrderSearchQuery): Promise<{ items: Order[]; total: number }>;
   listByOwner(ownerId: string, limit: number): Promise<Order[]>;
   countOpenByOwner(ownerId: string, now: Date): Promise<number>;
+  /** G-13: orders created since an instant — the panel's «آگهی امروز» tile. */
+  countCreatedSince(since: Date): Promise<number>;
   /** Compare-and-set; returns null when the order is no longer in `expected`. */
   transition(
     id: string,
@@ -255,6 +258,8 @@ export interface ReservationRepository {
    * plan's monthly allowance. Cancelled requests still count, otherwise the quota is free to abuse.
    */
   countByTakerSince(takerId: string, since: Date): Promise<number>;
+  /** G-13: reservations started since an instant — the panel's «معاملهٔ امروز» tile. */
+  countCreatedSince(since: Date): Promise<number>;
   countActiveByTaker(takerId: string): Promise<number>;
   listByTaker(takerId: string, limit: number): Promise<Reservation[]>;
   /**
@@ -632,6 +637,22 @@ export interface ProviderSettingsRepository {
   ): Promise<ProviderSetting>;
 }
 
+export interface InfraResourceRepository {
+  list(): Promise<InfraResource[]>;
+  findById(id: string): Promise<InfraResource | null>;
+  findByName(name: string): Promise<InfraResource | null>;
+  create(
+    input: Pick<InfraResource, 'name' | 'kind' | 'address' | 'secret' | 'isActive' | 'updatedBy'>,
+    at: Date,
+  ): Promise<InfraResource>;
+  update(
+    id: string,
+    patch: Partial<Pick<InfraResource, 'name' | 'kind' | 'address' | 'secret' | 'isActive' | 'updatedBy'>>,
+    at: Date,
+  ): Promise<InfraResource | null>;
+  remove(id: string): Promise<boolean>;
+}
+
 export interface SettingsRepository {
   findAll(): Promise<SettingsRecord[]>;
   set(key: string, value: unknown, updatedBy: string | null): Promise<SettingsRecord>;
@@ -758,6 +779,8 @@ export interface Repositories {
   /** Card-to-card transfers received from the bank (G-11). */
   cardDeposits: CardDepositRepository;
   providerSettings: ProviderSettingsRepository;
+  /** G-13: the infrastructure inventory shown in the panel. */
+  infraResources: InfraResourceRepository;
   messages: MessageRepository;
   notifications: NotificationRepository;
   otps: OtpRepository;

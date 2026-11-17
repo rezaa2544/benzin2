@@ -23,6 +23,8 @@ import {
   nodeHeartbeatSchema,
   notificationQuerySchema,
   createPlanSchema,
+  createInfraResourceSchema,
+  updateInfraResourceSchema,
   orderSearchSchema,
   updatePlanSchema,
   paymentListSchema,
@@ -73,6 +75,7 @@ import {
 import { PaymentService } from '../modules/payment-service.js';
 import { CardDepositService, verifyDepositSignature } from '../modules/card-deposit-service.js';
 import { EntitlementService } from '../modules/entitlements-service.js';
+import { InfraService } from '../modules/infra-service.js';
 import { OwnerResponseService } from '../modules/owner-response-service.js';
 import { ReputationService } from '../modules/reputation-service.js';
 import { ReservationService } from '../modules/reservations-service.js';
@@ -238,6 +241,17 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
       nodes.recordJob('expiry-sweep', count, detail);
     },
   });
+  // G-13 — the infrastructure board reads the same scheduler the sweeps use, so «زمان‌بند» on the
+  // screen is the real last tick rather than a heartbeat invented for the dashboard.
+  const infra = new InfraService(repos, settings, clock, {
+    version: config.APP_VERSION,
+    mode: config.DATABASE_URL ? 'postgres' : 'memory',
+    nodeEnv: config.NODE_ENV,
+    tickIntervalMs: config.SCHEDULER_INTERVAL_MS,
+    lastTick: () => scheduler.lastTick(),
+    gatewayConfigured: Boolean(config.ZARINPAL_MERCHANT_ID) && Boolean(config.PAYMENT_RETURN_URL),
+  });
+
   const services: AppServices = {
     auth,
     chat,
@@ -255,6 +269,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     ownerResponse,
     cardDeposits,
     entitlements,
+    infra,
   };
   const requireAuth = authenticate(auth);
 
@@ -1015,6 +1030,40 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     const result = await scheduler.tick();
     return { ran: result !== null, result };
   });
+  // ------------------------------------------------------- infrastructure (task G-13)
+  // The health board and the inventory are one screen: during an incident the owner needs the
+  // colour of the check *and* the address of the thing behind it.
+  app.get('/v1/admin/infra', { preHandler: [...staffOnly] }, async () => infra.overview());
+
+  app.post(
+    '/v1/admin/infra',
+    { preHandler: [requireAuth, requireRole('ADMIN', 'OWNER')] },
+    async (request, reply) => {
+      const body = parseInput(createInfraResourceSchema, request.body);
+      const created = await infra.create(currentUser(request), body);
+      return reply.status(201).send(created);
+    },
+  );
+
+  app.patch(
+    '/v1/admin/infra/:id',
+    { preHandler: [requireAuth, requireRole('ADMIN', 'OWNER')] },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      const body = parseInput(updateInfraResourceSchema, request.body);
+      return infra.update(currentUser(request), id, body);
+    },
+  );
+
+  app.delete(
+    '/v1/admin/infra/:id',
+    { preHandler: [requireAuth, requireRole('ADMIN', 'OWNER')] },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      return infra.remove(currentUser(request), id);
+    },
+  );
+
   app.get('/v1/admin/status', { preHandler: [...staffOnly] }, async () => admin.systemStatus());
 
   // ------------------------------------------------------ node monitor (task G-28)

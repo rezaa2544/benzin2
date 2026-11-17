@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   AuditEntry,
   DeviceRecord,
+  InfraResource,
   Order,
   RefreshTokenRecord,
   ProviderSetting,
@@ -23,6 +24,7 @@ import type {
   NewRefreshToken,
   OtpRepository,
   ProviderSettingsRepository,
+  InfraResourceRepository,
   RefreshTokenRepository,
   CompletedTrade,
   CompletedTradeQuery,
@@ -402,6 +404,11 @@ export class MemoryOrderRepository implements OrderRepository {
       .map(clone);
   }
 
+  async countCreatedSince(since: Date): Promise<number> {
+    return [...this.byId.values()].filter((row) => row.createdAt.getTime() >= since.getTime())
+      .length;
+  }
+
   async countOpenByOwner(ownerId: string, now: Date): Promise<number> {
     return [...this.byId.values()].filter(
       (order) =>
@@ -598,6 +605,11 @@ export class MemoryReservationRepository implements ReservationRepository {
   }
 
   /** G-26: the monthly allowance counts every request, cancelled ones included. */
+  async countCreatedSince(since: Date): Promise<number> {
+    return [...this.byId.values()].filter((row) => row.createdAt.getTime() >= since.getTime())
+      .length;
+  }
+
   async countByTakerSince(takerId: string, since: Date): Promise<number> {
     return [...this.byId.values()].filter(
       (reservation) =>
@@ -758,6 +770,70 @@ export class MemoryAuditRepository implements AuditRepository {
 }
 
 /** Provider credentials edited from the panel; secrets are masked by the HTTP view. */
+/**
+ * G-13 — the infrastructure inventory, in memory. Same rules as Postgres: unique names, and an
+ * update that renames onto an existing row is a conflict the service never sends.
+ */
+export class MemoryInfraResourceRepository implements InfraResourceRepository {
+  private readonly byId = new Map<string, InfraResource>();
+
+  async list(): Promise<InfraResource[]> {
+    return [...this.byId.values()].sort((a, b) => a.name.localeCompare(b.name)).map(clone);
+  }
+
+  async findById(id: string): Promise<InfraResource | null> {
+    const found = this.byId.get(id);
+    return found ? clone(found) : null;
+  }
+
+  async findByName(name: string): Promise<InfraResource | null> {
+    const found = [...this.byId.values()].find((row) => row.name === name);
+    return found ? clone(found) : null;
+  }
+
+  async create(
+    input: Pick<InfraResource, 'name' | 'kind' | 'address' | 'secret' | 'isActive' | 'updatedBy'>,
+    at: Date,
+  ): Promise<InfraResource> {
+    const stored: InfraResource = {
+      id: randomUUID(),
+      name: input.name,
+      kind: input.kind,
+      address: input.address,
+      secret: input.secret,
+      isActive: input.isActive,
+      createdAt: at,
+      updatedAt: at,
+      updatedBy: input.updatedBy,
+    };
+    this.byId.set(stored.id, clone(stored));
+    return clone(stored);
+  }
+
+  async update(
+    id: string,
+    patch: Partial<Pick<InfraResource, 'name' | 'kind' | 'address' | 'secret' | 'isActive' | 'updatedBy'>>,
+    at: Date,
+  ): Promise<InfraResource | null> {
+    const existing = this.byId.get(id);
+    if (!existing) return null;
+    const next = clone(existing);
+    if (patch.name !== undefined) (next as { name: string }).name = patch.name;
+    if (patch.kind !== undefined) (next as { kind: InfraResource['kind'] }).kind = patch.kind;
+    if (patch.address !== undefined) (next as { address: string }).address = patch.address;
+    if (patch.secret !== undefined) (next as { secret: string | null }).secret = patch.secret;
+    if (patch.isActive !== undefined) next.isActive = patch.isActive;
+    if (patch.updatedBy !== undefined) (next as { updatedBy: string | null }).updatedBy = patch.updatedBy;
+    next.updatedAt = at;
+    this.byId.set(id, clone(next));
+    return clone(next);
+  }
+
+  async remove(id: string): Promise<boolean> {
+    return this.byId.delete(id);
+  }
+}
+
 export class MemoryProviderSettingsRepository implements ProviderSettingsRepository {
   private readonly byId = new Map<string, ProviderSetting>();
 
@@ -813,6 +889,7 @@ export function createMemoryRepositories(clock?: { now(): Date }): Repositories 
     paymentCards: new MemoryPaymentCardRepository(),
     cardDeposits: new MemoryCardDepositRepository(),
     providerSettings: new MemoryProviderSettingsRepository(),
+    infraResources: new MemoryInfraResourceRepository(),
     otps: new MemoryOtpRepository(),
     refreshTokens: new MemoryRefreshTokenRepository(),
     devices: new MemoryDeviceRepository(),

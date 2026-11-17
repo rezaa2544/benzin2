@@ -445,7 +445,8 @@
     "planSingle": "یک رزرو، بدون تمدید",
     "usedOf": "از",
     "remainingOf": "{remaining} از {limit} رزرو این ماه باقی مانده",
-    "unlimitedRemaining": "رزرو نامحدود · {used} رزرو تا امروز"
+    "unlimitedRemaining": "رزرو نامحدود · {used} رزرو تا امروز",
+    "noExpiry": "بدون انقضا"
   },
   "notifications": {
     "title": "اعلان‌ها",

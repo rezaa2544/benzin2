@@ -90,6 +90,10 @@ async function seed(db: NodePgDatabase<typeof schema>): Promise<void> {
         durationDays: plan.durationDays,
         priceToman: plan.priceToman,
         maxActiveOrders: plan.maxActiveOrders,
+        // G-26: seeding without these would create plans that grant nothing on a fresh database.
+        monthlyReservations: plan.monthlyReservations ?? null,
+        phoneVisible: plan.phoneVisible ?? false,
+        singleUse: plan.singleUse ?? false,
         isActive: plan.isActive,
       })
       .onConflictDoUpdate({
@@ -99,6 +103,9 @@ async function seed(db: NodePgDatabase<typeof schema>): Promise<void> {
           durationDays: plan.durationDays,
           priceToman: plan.priceToman,
           maxActiveOrders: plan.maxActiveOrders,
+          monthlyReservations: plan.monthlyReservations ?? null,
+          phoneVisible: plan.phoneVisible ?? false,
+          singleUse: plan.singleUse ?? false,
           isActive: plan.isActive,
         },
       });

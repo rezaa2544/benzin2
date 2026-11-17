@@ -15,6 +15,18 @@ import { randomUUID } from 'node:crypto';
 import type { NotificationEmitter, PaymentProvider, Repositories } from '../ports.js';
 import type { SettingsService } from './settings-service.js';
 
+/**
+ * G-26b — when a plan's window ends. `durationDays = 0` is the owner's way of saying «بدون انقضا»:
+ * a credit that stays valid until it is spent. The subscription table forbids an empty window, so
+ * "no expiry" is a century of runway rather than a null.
+ */
+const NO_EXPIRY_DAYS = 36_500;
+
+export function planWindowEnd(start: Date, durationDays: number): Date {
+  const days = durationDays > 0 ? durationDays : NO_EXPIRY_DAYS;
+  return new Date(start.getTime() + days * 86_400_000);
+}
+
 export interface PlanView {
   id: string;
   code: string;
@@ -297,7 +309,7 @@ export class PaymentService {
       userId: user.id,
       planId: plan.id,
       startsAt: now,
-      endsAt: new Date(now.getTime() + plan.durationDays * 86_400_000),
+      endsAt: planWindowEnd(now, plan.durationDays),
     });
 
     const payment = await this.createPaymentWithUniqueAmount({
@@ -704,7 +716,7 @@ export class PaymentService {
         const activated = await this.repos.subscriptions.activate(
           pending.id,
           now,
-          new Date(now.getTime() + plan.durationDays * 86_400_000),
+          planWindowEnd(now, plan.durationDays),
         );
         if (activated) {
           subscription = await this.toSubscriptionView(activated);
@@ -867,7 +879,7 @@ export class PaymentService {
       const activated = await this.repos.subscriptions.activate(
         subscription.id,
         payment.paidAt ?? now,
-        new Date((payment.paidAt ?? now).getTime() + plan.durationDays * 86_400_000),
+        planWindowEnd(payment.paidAt ?? now, plan.durationDays),
       );
       if (!activated) continue;
       healedPayments += 1;

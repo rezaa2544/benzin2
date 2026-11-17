@@ -232,7 +232,10 @@ export function PlansPage({ api, config, paymentOutcome }: PlansPageProps): JSX.
                     <span className="text-sm font-bold tnum">{plan.priceLabelFa}</span>
                   </div>
                   <p className="mb-1 text-xs text-muted tnum">
-                    {tf('plans.duration', { days: toPersianDigits(plan.durationDays) })} ·{' '}
+                    {plan.durationDays > 0
+                      ? tf('plans.duration', { days: toPersianDigits(plan.durationDays) })
+                      : t('plans.noExpiry')}{' '}
+                    ·{' '}
                     {tf('plans.orders', { count: toPersianDigits(plan.maxActiveOrders) })}
                   </p>
                   {/* G-26: the card says what the money actually buys. */}

@@ -219,6 +219,13 @@ export class PgOrderRepository implements OrderRepository {
     );
   }
 
+  /** G-13: orders created since an instant — the panel's «آگهی امروز» tile. */
+  async countCreatedSince(since: Date): Promise<number> {
+    return scalar(this.db, `SELECT count(*)::int AS value FROM orders WHERE created_at >= $1`, [
+      since,
+    ]);
+  }
+
   async transition(
     id: string,
     expected: OrderStatus,
@@ -514,6 +521,15 @@ export class PgReservationRepository implements ReservationRepository {
       this.db,
       `SELECT count(*)::int AS value FROM reservations WHERE taker_id = $1 AND status = ANY($2::reservation_status[])`,
       [takerId, [...ACTIVE_RESERVATION_STATUSES]],
+    );
+  }
+
+  /** G-13: reservations started since an instant — the panel's «معاملهٔ امروز» tile. */
+  async countCreatedSince(since: Date): Promise<number> {
+    return scalar(
+      this.db,
+      `SELECT count(*)::int AS value FROM reservations WHERE created_at >= $1`,
+      [since],
     );
   }
 

@@ -115,6 +115,40 @@ export interface Message {
   readonly createdAt: Date;
 }
 
+/** Kinds of infrastructure the owner registers from the panel (task G-13). */
+export type InfraKind = 'DATABASE' | 'CACHE' | 'STORAGE' | 'SMS' | 'GATEWAY' | 'API' | 'OTHER';
+
+export const INFRA_KINDS: readonly InfraKind[] = [
+  'DATABASE',
+  'CACHE',
+  'STORAGE',
+  'SMS',
+  'GATEWAY',
+  'API',
+  'OTHER',
+];
+
+/**
+ * G-13 — one box, service or vendor account the platform depends on.
+ *
+ * This is the owner's inventory, not a live probe: the address is where it lives and the secret is
+ * a credential only the server should ever hold. The panel never receives the secret back — it
+ * learns whether one is stored, which is all a person needs to decide to rotate it.
+ */
+export interface InfraResource {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: InfraKind;
+  /** Host, URL or DSN. Not a secret. */
+  readonly address: string;
+  /** Optional credential; never leaves the server in plain text. */
+  readonly secret: string | null;
+  isActive: boolean;
+  readonly createdAt: Date;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
 /** Sellable subscription plan (task E7-01). Prices are Toman, never Rial. */
 export interface Plan {
   readonly id: string;

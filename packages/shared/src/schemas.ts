@@ -313,7 +313,11 @@ export const createPlanSchema = z
       .regex(/^[a-z0-9_-]+$/, { message: 'CODE_INVALID' }),
     nameFa: z.string().trim().min(2).max(60),
     priceToman: z.number().int().min(0).max(100_000_000),
-    durationDays: z.number().int().min(1).max(365),
+    /**
+     * How long the plan's window lasts in days. `0` means «بدون انقضا» — a credit that only ends
+     * when it is spent. The owner sets both from the panel; nothing here is a product decision.
+     */
+    durationDays: z.number().int().min(0).max(3650),
     /** Extra open-order slots the plan grants while it is active. */
     maxActiveOrders: z.number().int().min(0).max(50).default(0),
     /**
@@ -333,7 +337,7 @@ export const updatePlanSchema = z
   .object({
     nameFa: z.string().trim().min(2).max(60).optional(),
     priceToman: z.number().int().min(0).max(100_000_000).optional(),
-    durationDays: z.number().int().min(1).max(365).optional(),
+    durationDays: z.number().int().min(0).max(3650).optional(),
     maxActiveOrders: z.number().int().min(0).max(50).optional(),
     monthlyReservations: z.number().int().min(0).max(1000).nullable().optional(),
     phoneVisible: z.boolean().optional(),
@@ -655,3 +659,32 @@ export const nodeHeartbeatSchema = z
   .strict();
 
 export type NodeHeartbeatInputSchema = z.infer<typeof nodeHeartbeatSchema>;
+
+/** G-13 — the infrastructure inventory edited from the panel. */
+export const infraKindSchema = z.enum([
+  'DATABASE',
+  'CACHE',
+  'STORAGE',
+  'SMS',
+  'GATEWAY',
+  'API',
+  'OTHER',
+]);
+
+export const createInfraResourceSchema = z
+  .object({
+    name: z.string().trim().min(2).max(60),
+    kind: infraKindSchema,
+    /** Host, URL or DSN — shown in the panel, so it must not carry a password. */
+    address: z.string().trim().min(2).max(300),
+    /** Optional credential. `null` clears it; omitting it on a patch keeps the stored one. */
+    secret: z.string().trim().max(500).nullable().optional(),
+    isActive: z.boolean().default(true),
+  })
+  .strict();
+
+export type CreateInfraResourceInput = z.infer<typeof createInfraResourceSchema>;
+
+export const updateInfraResourceSchema = createInfraResourceSchema.partial().strict();
+
+export type UpdateInfraResourceInput = z.infer<typeof updateInfraResourceSchema>;

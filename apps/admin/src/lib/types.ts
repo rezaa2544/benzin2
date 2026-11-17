@@ -299,3 +299,40 @@ export interface TradeMedian {
   byRegion: TradeMedianRegion[];
   generatedAt: string;
 }
+
+/** G-13 — the infrastructure board: checks with a colour, and the inventory behind them. */
+export type InfraStatus = 'OK' | 'WARN' | 'DOWN';
+
+export interface InfraCheckRow {
+  key: string;
+  labelFa: string;
+  status: InfraStatus;
+  detailFa: string;
+  checkedAt: string;
+}
+
+export interface InfraResourceRow {
+  id: string;
+  name: string;
+  kind: string;
+  address: string;
+  /** The credential itself never reaches the panel — only whether one is stored. */
+  secretSet: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string | null;
+}
+
+export interface InfraOverview {
+  version: string;
+  mode: 'postgres' | 'memory';
+  nodeEnv: string;
+  uptimeSeconds: number;
+  serverTime: string;
+  migrations: { latest: string | null; count: number; detailFa: string };
+  disk: { totalBytes: number; freeBytes: number; usedPercent: number } | null;
+  counts: { users: number; openOrders: number; ordersToday: number; tradesToday: number };
+  checks: InfraCheckRow[];
+  resources: InfraResourceRow[];
+}

@@ -27,6 +27,7 @@ import {
 } from './pg-social.js';
 import { PgZoneRepository } from './zones.js';
 import { PgNodeRepository } from './pg-nodes.js';
+import { PgInfraResourceRepository } from './pg-infra.js';
 
 /**
  * The Postgres adapter (task G-01): one `Pool` per process, one repository per port.
@@ -63,6 +64,7 @@ export function createPostgresRepositories(databaseUrl: string): PostgresHandle 
     paymentCards: new PgPaymentCardRepository(pool),
     cardDeposits: new PgCardDepositRepository(pool),
     providerSettings: new PgProviderSettingsRepository(pool),
+    infraResources: new PgInfraResourceRepository(pool),
     messages: new PgMessageRepository(pool),
     notifications: new PgNotificationRepository(pool),
     otps: new PgOtpRepository(pool),

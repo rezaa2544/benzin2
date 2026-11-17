@@ -15,6 +15,7 @@ import type { ReservationService } from '../modules/reservations-service.js';
 import type { SettingsService } from '../modules/settings-service.js';
 import type { StatsService } from '../modules/stats-service.js';
 import type { NodesService } from '../modules/nodes-service.js';
+import type { InfraService } from '../modules/infra-service.js';
 import type { CardDepositService } from '../modules/card-deposit-service.js';
 import type { OwnerResponseService } from '../modules/owner-response-service.js';
 import type { TradeMedianService } from '../modules/stats-service.js';
@@ -41,6 +42,8 @@ export interface AppServices {
   cardDeposits: CardDepositService;
   /** Buyer entitlements: plan allowance, phone visibility, credit consumption (G-26). */
   entitlements: EntitlementService;
+  /** Infrastructure board and inventory (G-13). */
+  infra: InfraService;
 }
 
 declare module 'fastify' {

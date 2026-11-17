@@ -26,6 +26,8 @@ const ROUTES: { pattern: string; page: PageId }[] = [
   { pattern: '/zones', page: 'zones' },
   { pattern: '/audit', page: 'audit' },
   { pattern: '/status', page: 'status' },
+  // G-13: the screen is «زیرساخت» to the owner; `/status` stays as the old bookmark.
+  { pattern: '/infra', page: 'status' },
   { pattern: '/nodes', page: 'nodes' },
   { pattern: '/market', page: 'market' },
 ];

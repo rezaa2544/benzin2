@@ -37,6 +37,9 @@ export const ERROR_CODES = [
   'EXTENSION_LIMIT_REACHED',
   'PLAN_CODE_TAKEN',
   'PLAN_NOT_FOUND',
+  /** G-13: two infrastructure rows cannot share a name. */
+  'INFRA_NAME_TAKEN',
+  'INFRA_NOT_FOUND',
   'FREE_PLAN_REQUIRED',
   'CONVERSATION_NOT_FOUND',
   'CONVERSATION_CLOSED',

@@ -144,7 +144,13 @@ export function PlansPage({ api }: { api: ApiClient }): JSX.Element {
                 header: fa.plans.price,
                 render: (row) => (row.priceToman === 0 ? fa.plans.free : fmtNumber(row.priceToman)),
               },
-              { key: 'days', header: fa.plans.days, render: (row) => fmtNumber(row.durationDays) },
+              {
+                key: 'days',
+                header: fa.plans.days,
+                // G-26b: zero is a real setting («بدون انقضا»), not a missing value.
+                render: (row) =>
+                  row.durationDays > 0 ? fmtNumber(row.durationDays) : fa.plans.noExpiry,
+              },
               {
                 key: 'quota',
                 header: fa.plans.quota,
@@ -227,7 +233,7 @@ export function PlansPage({ api }: { api: ApiClient }): JSX.Element {
               }
             />
           </Field>
-          <Field label={fa.plans.days}>
+          <Field label={fa.plans.days} hint={fa.plans.daysHint}>
             <input
               className="input tnum"
               dir="ltr"

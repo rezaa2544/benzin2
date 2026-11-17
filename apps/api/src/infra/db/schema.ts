@@ -411,6 +411,31 @@ export const plans = pgTable('plans', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * G-13 — the owner's infrastructure inventory. Names are unique because the panel is a list people
+ * read, and two rows called «پیامک» would be indistinguishable after an incident.
+ */
+export const infraResources = pgTable(
+  'infra_resources',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull().unique(),
+    kind: text('kind').notNull(),
+    address: text('address').notNull(),
+    secret: text('secret'),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => [
+    check(
+      'infra_resources_kind_check',
+      sql`${t.kind} in ('DATABASE', 'CACHE', 'STORAGE', 'SMS', 'GATEWAY', 'API', 'OTHER')`,
+    ),
+  ],
+);
+
 export const subscriptions = pgTable(
   'subscriptions',
   {
