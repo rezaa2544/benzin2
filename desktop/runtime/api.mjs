@@ -10186,10 +10186,10 @@ var require_transport = __commonJS({
   "../node_modules/.pnpm/pino@10.4.0/node_modules/pino/lib/transport.js"(exports, module) {
     "use strict";
     var { createRequire } = __require("module");
-    var { existsSync } = __require("node:fs");
+    var { existsSync: existsSync2 } = __require("node:fs");
     var getCallers = require_caller();
     var { join, isAbsolute, sep } = __require("node:path");
-    var { fileURLToPath } = __require("node:url");
+    var { fileURLToPath: fileURLToPath2 } = __require("node:url");
     var sleep = require_atomic_sleep();
     var onExit = require_on_exit_leak_free();
     var ThreadStream = require_thread_stream();
@@ -10256,12 +10256,12 @@ var require_transport = __commonJS({
       let path = unquoted;
       if (path.startsWith("file://")) {
         try {
-          path = fileURLToPath(path);
+          path = fileURLToPath2(path);
         } catch {
           return false;
         }
       }
-      return isAbsolute(path) && !existsSync(path);
+      return isAbsolute(path) && !existsSync2(path);
     }
     function stripQuotes(value) {
       const first = value[0];
@@ -55267,7 +55267,11 @@ var createPlanSchema = external_exports.object({
   code: external_exports.string().trim().min(2).max(32).regex(/^[a-z0-9_-]+$/, { message: "CODE_INVALID" }),
   nameFa: external_exports.string().trim().min(2).max(60),
   priceToman: external_exports.number().int().min(0).max(1e8),
-  durationDays: external_exports.number().int().min(1).max(365),
+  /**
+   * How long the plan's window lasts in days. `0` means «بدون انقضا» — a credit that only ends
+   * when it is spent. The owner sets both from the panel; nothing here is a product decision.
+   */
+  durationDays: external_exports.number().int().min(0).max(3650),
   /** Extra open-order slots the plan grants while it is active. */
   maxActiveOrders: external_exports.number().int().min(0).max(50).default(0),
   /**
@@ -55282,7 +55286,7 @@ var createPlanSchema = external_exports.object({
 var updatePlanSchema = external_exports.object({
   nameFa: external_exports.string().trim().min(2).max(60).optional(),
   priceToman: external_exports.number().int().min(0).max(1e8).optional(),
-  durationDays: external_exports.number().int().min(1).max(365).optional(),
+  durationDays: external_exports.number().int().min(0).max(3650).optional(),
   maxActiveOrders: external_exports.number().int().min(0).max(50).optional(),
   monthlyReservations: external_exports.number().int().min(0).max(1e3).nullable().optional(),
   phoneVisible: external_exports.boolean().optional(),
@@ -55444,6 +55448,25 @@ var nodeHeartbeatSchema = external_exports.object({
   uptimeSeconds: external_exports.number().int().min(0).optional(),
   active: external_exports.boolean().optional()
 }).strict();
+var infraKindSchema = external_exports.enum([
+  "DATABASE",
+  "CACHE",
+  "STORAGE",
+  "SMS",
+  "GATEWAY",
+  "API",
+  "OTHER"
+]);
+var createInfraResourceSchema = external_exports.object({
+  name: external_exports.string().trim().min(2).max(60),
+  kind: infraKindSchema,
+  /** Host, URL or DSN — shown in the panel, so it must not carry a password. */
+  address: external_exports.string().trim().min(2).max(300),
+  /** Optional credential. `null` clears it; omitting it on a patch keeps the stored one. */
+  secret: external_exports.string().trim().max(500).nullable().optional(),
+  isActive: external_exports.boolean().default(true)
+}).strict();
+var updateInfraResourceSchema = createInfraResourceSchema.partial().strict();
 
 // ../packages/shared/dist/state-machine.js
 var ALL_ACTORS = ["OWNER", "TAKER", "SYSTEM", "ADMIN"];
@@ -57511,6 +57534,11 @@ var ZarinpalGatewayProvider = class {
 
 // ../apps/api/src/modules/payment-service.ts
 import { randomUUID } from "node:crypto";
+var NO_EXPIRY_DAYS = 36500;
+function planWindowEnd(start, durationDays) {
+  const days = durationDays > 0 ? durationDays : NO_EXPIRY_DAYS;
+  return new Date(start.getTime() + days * 864e5);
+}
 var toPlanView = (plan) => ({
   id: plan.id,
   code: plan.code,
@@ -57673,7 +57701,7 @@ var PaymentService = class {
       userId: user.id,
       planId: plan.id,
       startsAt: now,
-      endsAt: new Date(now.getTime() + plan.durationDays * 864e5)
+      endsAt: planWindowEnd(now, plan.durationDays)
     });
     const payment = await this.createPaymentWithUniqueAmount({
       userId: user.id,
@@ -58004,7 +58032,7 @@ var PaymentService = class {
         const activated = await this.repos.subscriptions.activate(
           pending.id,
           now,
-          new Date(now.getTime() + plan.durationDays * 864e5)
+          planWindowEnd(now, plan.durationDays)
         );
         if (activated) {
           subscription = await this.toSubscriptionView(activated);
@@ -58143,7 +58171,7 @@ var PaymentService = class {
       const activated = await this.repos.subscriptions.activate(
         subscription.id,
         payment.paidAt ?? now,
-        new Date((payment.paidAt ?? now).getTime() + plan.durationDays * 864e5)
+        planWindowEnd(payment.paidAt ?? now, plan.durationDays)
       );
       if (!activated) continue;
       healedPayments += 1;
@@ -58520,6 +58548,252 @@ var EntitlementService = class {
   async phoneVisibleFor(userId) {
     const entitlement = await this.forUser(userId);
     return entitlement.phoneVisible;
+  }
+};
+
+// ../apps/api/src/modules/infra-service.ts
+import { existsSync, readdirSync, statfsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+var MIGRATIONS_DIR = (() => {
+  const candidates = ["../../../../infra/migrations", "../../../infra/migrations"];
+  for (const candidate of candidates) {
+    try {
+      const path = fileURLToPath(new URL(candidate, import.meta.url));
+      if (existsSync(path)) return path;
+    } catch {
+    }
+  }
+  return null;
+})();
+var InfraService = class {
+  constructor(repos2, settings2, clock, options) {
+    this.repos = repos2;
+    this.settings = settings2;
+    this.clock = clock;
+    this.options = options;
+    this.startedAt = options.startedAt ?? Date.now();
+  }
+  startedAt;
+  get tickIntervalMs() {
+    return this.options.tickIntervalMs ?? 6e4;
+  }
+  /** Tehran midnight, because «امروز» on this dashboard means the owner's day, not UTC's. */
+  todayStart() {
+    const date2 = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tehran",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(this.clock.now());
+    return new Date(Date.parse(`${date2}T00:00:00+03:30`));
+  }
+  migrationStatus() {
+    if (!MIGRATIONS_DIR) {
+      return { latest: null, count: 0, detailFa: "\u067E\u0648\u0634\u0647\u0654 \u0645\u0647\u0627\u062C\u0631\u062A \u062F\u0631 \u0627\u06CC\u0646 \u0628\u0633\u062A\u0647 \u0646\u06CC\u0633\u062A" };
+    }
+    try {
+      const files = readdirSync(MIGRATIONS_DIR).filter((name) => name.endsWith(".sql")).sort();
+      const latest = files.length > 0 ? (files[files.length - 1] ?? "").replace(/\.sql$/, "") : null;
+      return {
+        latest,
+        count: files.length,
+        detailFa: latest ? `${files.length} \u0645\u0647\u0627\u062C\u0631\u062A\u060C \u0622\u062E\u0631\u06CC\u0646: ${latest}` : "\u0647\u06CC\u0686 \u0645\u0647\u0627\u062C\u0631\u062A\u06CC \u0646\u06CC\u0633\u062A"
+      };
+    } catch {
+      return { latest: null, count: 0, detailFa: "\u0646\u0633\u062E\u0647\u0654 \u0645\u0647\u0627\u062C\u0631\u062A \u062E\u0648\u0627\u0646\u062F\u0647 \u0646\u0634\u062F" };
+    }
+  }
+  diskStatus() {
+    try {
+      const stats = statfsSync(process.cwd());
+      const totalBytes = stats.blocks * stats.bsize;
+      const freeBytes = stats.bavail * stats.bsize;
+      const usedPercent = totalBytes > 0 ? Math.round((totalBytes - freeBytes) / totalBytes * 100) : 0;
+      return { totalBytes, freeBytes, usedPercent };
+    } catch {
+      return null;
+    }
+  }
+  async checks(now) {
+    const config2 = await this.settings.get();
+    const providers = await this.repos.providerSettings.list();
+    const zones2 = await this.repos.zones.listAll();
+    const activeProviders = providers.filter((provider) => provider.isActive);
+    const smsProvider = activeProviders.find((provider) => provider.kind === "SMS");
+    const gatewayProvider = activeProviders.find(
+      (provider) => provider.kind === "PAYMENT"
+    );
+    const checkedAt = now.toISOString();
+    const last = this.options.lastTick?.() ?? null;
+    const ageMs = last ? now.getTime() - last.at.getTime() : null;
+    const scheduler2 = (() => {
+      if (ageMs === null) {
+        return {
+          key: "scheduler",
+          labelFa: "\u0632\u0645\u0627\u0646\u200C\u0628\u0646\u062F",
+          status: "WARN",
+          detailFa: "\u0647\u0646\u0648\u0632 \u0627\u062C\u0631\u0627 \u0646\u0634\u062F\u0647 (\u062F\u0631 \u0627\u0648\u0644\u06CC\u0646 \u062F\u0642\u06CC\u0642\u0647 \u067E\u0633 \u0627\u0632 \u0631\u0627\u0647\u200C\u0627\u0646\u062F\u0627\u0632\u06CC \u0637\u0628\u06CC\u0639\u06CC \u0627\u0633\u062A)",
+          checkedAt
+        };
+      }
+      const status = ageMs <= this.tickIntervalMs * 2 ? "OK" : ageMs <= this.tickIntervalMs * 10 ? "WARN" : "DOWN";
+      const seconds = Math.round(ageMs / 1e3);
+      return {
+        key: "scheduler",
+        labelFa: "\u0632\u0645\u0627\u0646\u200C\u0628\u0646\u062F",
+        status,
+        detailFa: `\u0622\u062E\u0631\u06CC\u0646 \u0627\u062C\u0631\u0627 ${seconds} \u062B\u0627\u0646\u06CC\u0647 \u067E\u06CC\u0634`,
+        checkedAt
+      };
+    })();
+    return [
+      {
+        key: "api",
+        labelFa: "API",
+        status: "OK",
+        detailFa: `\u0628\u0627\u0644\u0627 \xB7 ${Math.round((now.getTime() - this.startedAt) / 1e3)} \u062B\u0627\u0646\u06CC\u0647 \u0627\u0632 \u0631\u0627\u0647\u200C\u0627\u0646\u062F\u0627\u0632\u06CC`,
+        checkedAt
+      },
+      {
+        key: "database",
+        labelFa: "\u062F\u0627\u062F\u0647",
+        status: this.options.mode === "postgres" ? "OK" : "WARN",
+        detailFa: this.options.mode === "postgres" ? "PostgreSQL \u0645\u062A\u0635\u0644" : "\u062D\u0627\u0641\u0638\u0647\u0654 \u0645\u0648\u0642\u062A \u2014 \u0628\u0627 \u0647\u0631 \u0631\u06CC\u200C\u0627\u0633\u062A\u0627\u0631\u062A \u067E\u0627\u06A9 \u0645\u06CC\u200C\u0634\u0648\u062F",
+        checkedAt
+      },
+      scheduler2,
+      {
+        key: "sms",
+        labelFa: "\u067E\u0646\u0644 \u067E\u06CC\u0627\u0645\u06A9",
+        status: config2["notification.sms_enabled"] && smsProvider ? "OK" : "WARN",
+        detailFa: !config2["notification.sms_enabled"] ? "\u067E\u06CC\u0627\u0645\u06A9 \u062F\u0631 \u062A\u0646\u0638\u06CC\u0645\u0627\u062A \u062E\u0627\u0645\u0648\u0634 \u0627\u0633\u062A" : smsProvider ? `\u0641\u0639\u0627\u0644 \u0627\u0632 \u0637\u0631\u06CC\u0642 ${smsProvider.provider}` : "\u0627\u0631\u0627\u0626\u0647\u200C\u062F\u0647\u0646\u062F\u0647\u0654 \u067E\u06CC\u0627\u0645\u06A9 \u0641\u0639\u0627\u0644\u06CC \u062B\u0628\u062A \u0646\u0634\u062F\u0647",
+        checkedAt
+      },
+      {
+        key: "gateway",
+        labelFa: "\u062F\u0631\u06AF\u0627\u0647 \u067E\u0631\u062F\u0627\u062E\u062A",
+        status: this.options.gatewayConfigured ? "OK" : "WARN",
+        detailFa: this.options.gatewayConfigured ? `\u062A\u0646\u0638\u06CC\u0645 \u0634\u062F\u0647${gatewayProvider ? ` \xB7 ${gatewayProvider.provider}` : ""}` : "\u0645\u0631\u0686\u0646\u062A \u06CC\u0627 \u0622\u062F\u0631\u0633 \u0628\u0627\u0632\u06AF\u0634\u062A \u062A\u0646\u0638\u06CC\u0645 \u0646\u0634\u062F\u0647",
+        checkedAt
+      },
+      {
+        key: "zones",
+        labelFa: "\u0634\u0647\u0631\u0647\u0627",
+        status: zones2.length > 0 ? "OK" : "WARN",
+        detailFa: zones2.length > 0 ? `${zones2.length} \u0634\u0647\u0631 \u062A\u0639\u0631\u06CC\u0641 \u0634\u062F\u0647` : "\u0647\u06CC\u0686 \u0634\u0647\u0631\u06CC \u062A\u0639\u0631\u06CC\u0641 \u0646\u0634\u062F\u0647",
+        checkedAt
+      }
+    ];
+  }
+  async overview() {
+    const now = this.clock.now();
+    const since = this.todayStart();
+    const [checks, resources, userCounts, orderCounts, ordersToday, tradesToday] = await Promise.all([
+      this.checks(now),
+      this.repos.infraResources.list(),
+      this.repos.users.countByStatus(),
+      this.repos.orders.countByStatus(),
+      this.repos.orders.countCreatedSince(since),
+      this.repos.reservations.countCreatedSince(since)
+    ]);
+    return {
+      version: this.options.version,
+      mode: this.options.mode,
+      nodeEnv: this.options.nodeEnv,
+      uptimeSeconds: Math.round((now.getTime() - this.startedAt) / 1e3),
+      serverTime: now.toISOString(),
+      migrations: this.migrationStatus(),
+      disk: this.diskStatus(),
+      counts: {
+        users: userCounts.ACTIVE + userCounts.SUSPENDED + userCounts.BANNED,
+        openOrders: orderCounts.OPEN + orderCounts.RESERVED,
+        ordersToday,
+        tradesToday
+      },
+      checks,
+      resources: resources.map((resource) => this.toView(resource))
+    };
+  }
+  // ------------------------------------------------------------------ CRUD
+  toView(resource) {
+    return {
+      id: resource.id,
+      name: resource.name,
+      kind: resource.kind,
+      address: resource.address,
+      secretSet: Boolean(resource.secret && resource.secret.length > 0),
+      isActive: resource.isActive,
+      createdAt: resource.createdAt.toISOString(),
+      updatedAt: resource.updatedAt.toISOString(),
+      updatedBy: resource.updatedBy
+    };
+  }
+  async create(actor, input) {
+    const clash = await this.repos.infraResources.findByName(input.name);
+    if (clash) {
+      throw new AppError("INFRA_NAME_TAKEN", 409, "\u0632\u06CC\u0631\u0633\u0627\u062E\u062A\u06CC \u0628\u0627 \u0627\u06CC\u0646 \u0646\u0627\u0645 \u0627\u0632 \u0642\u0628\u0644 \u062B\u0628\u062A \u0634\u062F\u0647 \u0627\u0633\u062A");
+    }
+    const created = await this.repos.infraResources.create(
+      {
+        name: input.name,
+        kind: input.kind,
+        address: input.address,
+        secret: input.secret ?? null,
+        isActive: input.isActive,
+        updatedBy: actor.id
+      },
+      this.clock.now()
+    );
+    await this.audit(actor, "infra.created", created);
+    return this.toView(created);
+  }
+  async update(actor, id, input) {
+    const existing = await this.repos.infraResources.findById(id);
+    if (!existing) throw new AppError("INFRA_NOT_FOUND", 404, "\u0632\u06CC\u0631\u0633\u0627\u062E\u062A \u067E\u06CC\u062F\u0627 \u0646\u0634\u062F");
+    if (input.name && input.name !== existing.name) {
+      const clash = await this.repos.infraResources.findByName(input.name);
+      if (clash) {
+        throw new AppError("INFRA_NAME_TAKEN", 409, "\u0632\u06CC\u0631\u0633\u0627\u062E\u062A\u06CC \u0628\u0627 \u0627\u06CC\u0646 \u0646\u0627\u0645 \u0627\u0632 \u0642\u0628\u0644 \u062B\u0628\u062A \u0634\u062F\u0647 \u0627\u0633\u062A");
+      }
+    }
+    const updated = await this.repos.infraResources.update(
+      id,
+      // An omitted secret keeps the stored one: the panel shows «تنظیم شده» and never the value,
+      // so a form save must not silently wipe a credential it was never given.
+      { ...input, secret: input.secret === void 0 ? void 0 : input.secret, updatedBy: actor.id },
+      this.clock.now()
+    );
+    if (!updated) throw new AppError("INFRA_NOT_FOUND", 404, "\u0632\u06CC\u0631\u0633\u0627\u062E\u062A \u067E\u06CC\u062F\u0627 \u0646\u0634\u062F");
+    await this.audit(actor, "infra.updated", updated);
+    return this.toView(updated);
+  }
+  async remove(actor, id) {
+    const existing = await this.repos.infraResources.findById(id);
+    if (!existing) throw new AppError("INFRA_NOT_FOUND", 404, "\u0632\u06CC\u0631\u0633\u0627\u062E\u062A \u067E\u06CC\u062F\u0627 \u0646\u0634\u062F");
+    await this.repos.infraResources.remove(id);
+    await this.repos.audit.append({
+      actorId: actor.id,
+      action: "infra.deleted",
+      entity: "infra_resource",
+      entityId: id,
+      metadata: { name: existing.name, kind: existing.kind }
+    });
+    return { removed: true };
+  }
+  async audit(actor, action, resource) {
+    await this.repos.audit.append({
+      actorId: actor.id,
+      action,
+      entity: "infra_resource",
+      entityId: resource.id,
+      metadata: {
+        name: resource.name,
+        kind: resource.kind,
+        isActive: resource.isActive,
+        // Never the secret, only whether one is stored.
+        secretSet: Boolean(resource.secret)
+      }
+    });
   }
 };
 
@@ -60321,6 +60595,14 @@ async function buildApp(options) {
       nodes.recordJob("expiry-sweep", count, detail);
     }
   });
+  const infra = new InfraService(repos2, settings2, clock, {
+    version: config2.APP_VERSION,
+    mode: config2.DATABASE_URL ? "postgres" : "memory",
+    nodeEnv: config2.NODE_ENV,
+    tickIntervalMs: config2.SCHEDULER_INTERVAL_MS,
+    lastTick: () => scheduler2.lastTick(),
+    gatewayConfigured: Boolean(config2.ZARINPAL_MERCHANT_ID) && Boolean(config2.PAYMENT_RETURN_URL)
+  });
   const services2 = {
     auth,
     chat,
@@ -60337,7 +60619,8 @@ async function buildApp(options) {
     tradeMedian,
     ownerResponse,
     cardDeposits: cardDeposits2,
-    entitlements
+    entitlements,
+    infra
   };
   const requireAuth = authenticate(auth);
   const app2 = (0, import_fastify.default)({
@@ -60933,6 +61216,33 @@ async function buildApp(options) {
     const result = await scheduler2.tick();
     return { ran: result !== null, result };
   });
+  app2.get("/v1/admin/infra", { preHandler: [...staffOnly] }, async () => infra.overview());
+  app2.post(
+    "/v1/admin/infra",
+    { preHandler: [requireAuth, requireRole("ADMIN", "OWNER")] },
+    async (request, reply) => {
+      const body = parseInput(createInfraResourceSchema, request.body);
+      const created = await infra.create(currentUser(request), body);
+      return reply.status(201).send(created);
+    }
+  );
+  app2.patch(
+    "/v1/admin/infra/:id",
+    { preHandler: [requireAuth, requireRole("ADMIN", "OWNER")] },
+    async (request) => {
+      const { id } = request.params;
+      const body = parseInput(updateInfraResourceSchema, request.body);
+      return infra.update(currentUser(request), id, body);
+    }
+  );
+  app2.delete(
+    "/v1/admin/infra/:id",
+    { preHandler: [requireAuth, requireRole("ADMIN", "OWNER")] },
+    async (request) => {
+      const { id } = request.params;
+      return infra.remove(currentUser(request), id);
+    }
+  );
   app2.get("/v1/admin/status", { preHandler: [...staffOnly] }, async () => admin.systemStatus());
   app2.get("/v1/admin/nodes", { preHandler: [...staffOnly] }, async () => nodes.overview());
   const nodeTokenGuard = async (request) => {
@@ -61940,6 +62250,9 @@ var MemoryOrderRepository = class {
   async listByOwner(ownerId, limit) {
     return [...this.byId.values()].filter((order) => order.ownerId === ownerId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit).map(clone7);
   }
+  async countCreatedSince(since) {
+    return [...this.byId.values()].filter((row) => row.createdAt.getTime() >= since.getTime()).length;
+  }
   async countOpenByOwner(ownerId, now) {
     return [...this.byId.values()].filter(
       (order) => order.ownerId === ownerId && (order.status === "OPEN" || order.status === "RESERVED") && order.expiresAt.getTime() > now.getTime()
@@ -62069,6 +62382,9 @@ var MemoryReservationRepository = class {
     return (await this.findActiveByTaker(takerId)).length;
   }
   /** G-26: the monthly allowance counts every request, cancelled ones included. */
+  async countCreatedSince(since) {
+    return [...this.byId.values()].filter((row) => row.createdAt.getTime() >= since.getTime()).length;
+  }
   async countByTakerSince(takerId, since) {
     return [...this.byId.values()].filter(
       (reservation) => reservation.takerId === takerId && reservation.createdAt.getTime() >= since.getTime()
@@ -62170,6 +62486,52 @@ var MemoryAuditRepository = class {
     };
   }
 };
+var MemoryInfraResourceRepository = class {
+  byId = /* @__PURE__ */ new Map();
+  async list() {
+    return [...this.byId.values()].sort((a, b) => a.name.localeCompare(b.name)).map(clone7);
+  }
+  async findById(id) {
+    const found = this.byId.get(id);
+    return found ? clone7(found) : null;
+  }
+  async findByName(name) {
+    const found = [...this.byId.values()].find((row) => row.name === name);
+    return found ? clone7(found) : null;
+  }
+  async create(input, at) {
+    const stored = {
+      id: randomUUID6(),
+      name: input.name,
+      kind: input.kind,
+      address: input.address,
+      secret: input.secret,
+      isActive: input.isActive,
+      createdAt: at,
+      updatedAt: at,
+      updatedBy: input.updatedBy
+    };
+    this.byId.set(stored.id, clone7(stored));
+    return clone7(stored);
+  }
+  async update(id, patch, at) {
+    const existing = this.byId.get(id);
+    if (!existing) return null;
+    const next = clone7(existing);
+    if (patch.name !== void 0) next.name = patch.name;
+    if (patch.kind !== void 0) next.kind = patch.kind;
+    if (patch.address !== void 0) next.address = patch.address;
+    if (patch.secret !== void 0) next.secret = patch.secret;
+    if (patch.isActive !== void 0) next.isActive = patch.isActive;
+    if (patch.updatedBy !== void 0) next.updatedBy = patch.updatedBy;
+    next.updatedAt = at;
+    this.byId.set(id, clone7(next));
+    return clone7(next);
+  }
+  async remove(id) {
+    return this.byId.delete(id);
+  }
+};
 var MemoryProviderSettingsRepository = class {
   byId = /* @__PURE__ */ new Map();
   async list() {
@@ -62216,6 +62578,7 @@ function createMemoryRepositories(clock) {
     paymentCards: new MemoryPaymentCardRepository(),
     cardDeposits: new MemoryCardDepositRepository(),
     providerSettings: new MemoryProviderSettingsRepository(),
+    infraResources: new MemoryInfraResourceRepository(),
     otps: new MemoryOtpRepository(),
     refreshTokens: new MemoryRefreshTokenRepository(),
     devices: new MemoryDeviceRepository(),
@@ -68901,6 +69264,7 @@ __export(schema_exports, {
   conversations: () => conversations,
   deliveryMethod: () => deliveryMethod,
   devices: () => devices,
+  infraResources: () => infraResources,
   messages: () => messages,
   nodeHeartbeats: () => nodeHeartbeats,
   notificationChannel: () => notificationChannel,
@@ -69244,6 +69608,26 @@ var plans = pgTable("plans", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
 });
+var infraResources = pgTable(
+  "infra_resources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull().unique(),
+    kind: text("kind").notNull(),
+    address: text("address").notNull(),
+    secret: text("secret"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" })
+  },
+  (t) => [
+    check(
+      "infra_resources_kind_check",
+      sql`${t.kind} in ('DATABASE', 'CACHE', 'STORAGE', 'SMS', 'GATEWAY', 'API', 'OTHER')`
+    )
+  ]
+);
 var subscriptions = pgTable(
   "subscriptions",
   {
@@ -70050,6 +70434,12 @@ var PgOrderRepository = class {
       [ownerId, now]
     );
   }
+  /** G-13: orders created since an instant — the panel's «آگهی امروز» tile. */
+  async countCreatedSince(since) {
+    return scalar(this.db, `SELECT count(*)::int AS value FROM orders WHERE created_at >= $1`, [
+      since
+    ]);
+  }
   async transition(id, expected, next, patch) {
     const row = await queryOne(
       this.db,
@@ -70270,6 +70660,14 @@ var PgReservationRepository = class {
       this.db,
       `SELECT count(*)::int AS value FROM reservations WHERE taker_id = $1 AND status = ANY($2::reservation_status[])`,
       [takerId, [...ACTIVE_RESERVATION_STATUSES]]
+    );
+  }
+  /** G-13: reservations started since an instant — the panel's «معاملهٔ امروز» tile. */
+  async countCreatedSince(since) {
+    return scalar(
+      this.db,
+      `SELECT count(*)::int AS value FROM reservations WHERE created_at >= $1`,
+      [since]
     );
   }
   /** G-26: the buyer's monthly allowance counts every request they started, cancelled or not. */
@@ -71447,6 +71845,88 @@ var PgNodeRepository = class {
   }
 };
 
+// ../apps/api/src/infra/db/repositories/pg-infra.ts
+var COLUMNS2 = "id, name, kind, address, secret, is_active, created_at, updated_at, updated_by";
+var toEntity = (row) => ({
+  id: row.id,
+  name: row.name,
+  kind: row.kind,
+  address: row.address,
+  secret: row.secret,
+  isActive: row.is_active,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  updatedBy: row.updated_by
+});
+var PgInfraResourceRepository = class {
+  constructor(db) {
+    this.db = db;
+  }
+  async list() {
+    const rows = await query(this.db, `SELECT ${COLUMNS2} FROM infra_resources ORDER BY name`);
+    return rows.map(toEntity);
+  }
+  async findById(id) {
+    const row = await queryOne(
+      this.db,
+      `SELECT ${COLUMNS2} FROM infra_resources WHERE id = $1`,
+      [id]
+    );
+    return row ? toEntity(row) : null;
+  }
+  async findByName(name) {
+    const row = await queryOne(
+      this.db,
+      `SELECT ${COLUMNS2} FROM infra_resources WHERE name = $1`,
+      [name]
+    );
+    return row ? toEntity(row) : null;
+  }
+  async create(input, at) {
+    const row = await queryOne(
+      this.db,
+      `INSERT INTO infra_resources (name, kind, address, secret, is_active, created_at, updated_at, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $6, $7)
+       RETURNING ${COLUMNS2}`,
+      [input.name, input.kind, input.address, input.secret, input.isActive, at, input.updatedBy]
+    );
+    if (!row) throw new Error("infra resource insert returned no row");
+    return toEntity(row);
+  }
+  async update(id, patch, at) {
+    const sets = [];
+    const values = [];
+    const assign = (column, value) => {
+      values.push(value);
+      sets.push(`${column} = $${values.length}`);
+    };
+    if (patch.name !== void 0) assign("name", patch.name);
+    if (patch.kind !== void 0) assign("kind", patch.kind);
+    if (patch.address !== void 0) assign("address", patch.address);
+    if (patch.secret !== void 0) assign("secret", patch.secret);
+    if (patch.isActive !== void 0) assign("is_active", patch.isActive);
+    if (patch.updatedBy !== void 0) assign("updated_by", patch.updatedBy);
+    if (sets.length === 0) return this.findById(id);
+    values.push(at);
+    sets.push(`updated_at = $${values.length}`);
+    values.push(id);
+    const row = await queryOne(
+      this.db,
+      `UPDATE infra_resources SET ${sets.join(", ")} WHERE id = $${values.length} RETURNING ${COLUMNS2}`,
+      values
+    );
+    return row ? toEntity(row) : null;
+  }
+  async remove(id) {
+    const rows = await query(
+      this.db,
+      "DELETE FROM infra_resources WHERE id = $1 RETURNING id",
+      [id]
+    );
+    return rows.length > 0;
+  }
+};
+
 // ../apps/api/src/infra/db/repositories/index.ts
 function createPostgresRepositories(databaseUrl) {
   const pool = new Pool({
@@ -71467,6 +71947,7 @@ function createPostgresRepositories(databaseUrl) {
     paymentCards: new PgPaymentCardRepository(pool),
     cardDeposits: new PgCardDepositRepository(pool),
     providerSettings: new PgProviderSettingsRepository(pool),
+    infraResources: new PgInfraResourceRepository(pool),
     messages: new PgMessageRepository(pool),
     notifications: new PgNotificationRepository(pool),
     otps: new PgOtpRepository(pool),
