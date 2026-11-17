@@ -55097,6 +55097,17 @@ var SETTING_DEFINITIONS = {
   "dispute.auto_review_hours": { schema: external_exports.number().int().min(1).max(168), default: 24 },
   "geo.default_radius_km": { schema: external_exports.number().min(1).max(200), default: 15 },
   "subscription.required_for_orders": { schema: external_exports.boolean(), default: false },
+  /**
+   * G-14: the text a one-time code travels in when a provider has no approved template. The
+   * `{code}` placeholder is required and enforced where the message is built — a template without
+   * it would send a code-less SMS that looks delivered.
+   */
+  "notification.sms_otp_message": {
+    schema: external_exports.string().trim().min(5).max(160).refine((value) => value.includes("{code}"), {
+      message: "OTP_TEMPLATE_MISSING_CODE"
+    }),
+    default: "\u06A9\u062F \u0648\u0631\u0648\u062F \u0634\u0645\u0627 \u0628\u0647 \u0628\u0646\u0632\u06CC\u0646: {code}"
+  },
   "payment.card_to_card_ttl_minutes": { schema: external_exports.number().int().min(15).max(1440), default: 120 },
   "payment.gateway_ttl_minutes": { schema: external_exports.number().int().min(5).max(180), default: 30 },
   "payment.unique_suffix_max": { schema: external_exports.number().int().min(1).max(999), default: 999 },
@@ -55467,6 +55478,11 @@ var createInfraResourceSchema = external_exports.object({
   isActive: external_exports.boolean().default(true)
 }).strict();
 var updateInfraResourceSchema = createInfraResourceSchema.partial().strict();
+var smsTestSchema = external_exports.object({
+  phone: iranMobileSchema,
+  /** Omit (or `auto`) to walk the whole chain so the failover itself is exercised. */
+  provider: external_exports.string().trim().regex(/^(auto|console|smsir|kavenegar)$/, { message: "PROVIDER_INVALID" }).optional()
+}).strict();
 
 // ../packages/shared/dist/state-machine.js
 var ALL_ACTORS = ["OWNER", "TAKER", "SYSTEM", "ADMIN"];
@@ -55781,7 +55797,8 @@ var toProviderView = (setting) => ({
   config: maskSecrets(setting.config)
 });
 var AdminService = class {
-  constructor(repos2, settings2, clock, notifier, reputation, sms2, env) {
+  constructor(repos2, settings2, clock, notifier, reputation, sms2, env, onSmsProvidersChanged = () => {
+  }) {
     this.repos = repos2;
     this.settings = settings2;
     this.clock = clock;
@@ -55789,6 +55806,7 @@ var AdminService = class {
     this.reputation = reputation;
     this.sms = sms2;
     this.env = env;
+    this.onSmsProvidersChanged = onSmsProvidersChanged;
   }
   startedAt = Date.now();
   async notify(userId, kind, params, payload = {}) {
@@ -56232,6 +56250,7 @@ var AdminService = class {
       kind: saved.kind,
       isActive: saved.isActive
     });
+    if (saved.kind === "SMS") this.onSmsProvidersChanged();
     return toProviderView(saved);
   }
   /** E8-06: proves the stored credentials work without leaving the panel. */
@@ -58797,6 +58816,489 @@ var InfraService = class {
   }
 };
 
+// ../apps/api/src/infra/sms/index.ts
+var SmsTransportError = class extends Error {
+  constructor(provider, status, message, raw = null) {
+    super(message);
+    this.provider = provider;
+    this.status = status;
+    this.raw = raw;
+    this.name = "SmsTransportError";
+  }
+};
+var DEFAULT_OTP_MESSAGE = "\u06A9\u062F \u0648\u0631\u0648\u062F \u0634\u0645\u0627 \u0628\u0647 \u0628\u0646\u0632\u06CC\u0646: {code}";
+var formatOtpMessage = (template, code) => template.replaceAll("{code}", code);
+var normalizeMobile = (phone) => phone.replace(/^0+/, "");
+var ConsoleSmsSender = class {
+  constructor(logger = (m) => console.info(m), otpMessage = DEFAULT_OTP_MESSAGE) {
+    this.logger = logger;
+    this.otpMessage = otpMessage;
+  }
+  name = "console";
+  attempts = [];
+  async send(phone, message) {
+    this.logger(`[sms] \u2192 ${phone}: ${message}`);
+  }
+  async sendCode(phone, code) {
+    await this.send(phone, formatOtpMessage(this.otpMessage, code));
+  }
+};
+var FailoverSmsSender = class {
+  constructor(transports, onAttempt = () => {
+  }, otpMessage = DEFAULT_OTP_MESSAGE) {
+    this.transports = transports;
+    this.onAttempt = onAttempt;
+    this.otpMessage = otpMessage;
+  }
+  async send(phone, message) {
+    await this.deliver(phone, (transport) => ({
+      mode: "text",
+      run: () => transport.send(phone, message)
+    }));
+  }
+  async sendCode(phone, code) {
+    await this.deliver(
+      phone,
+      (transport) => transport.sendCode ? { mode: "template", run: () => transport.sendCode(phone, code) } : {
+        mode: "text",
+        run: () => transport.send(phone, formatOtpMessage(this.otpMessage, code))
+      }
+    );
+  }
+  /**
+   * G-14: the same walk, but it reports instead of throwing — the panel's «ارسال آزمایشی» needs the
+   * attempts even when the last provider also said no.
+   */
+  async sendWithAttempts(phone, message) {
+    const attempts = [];
+    const outcome = await this.walk(phone, () => ({
+      mode: "text",
+      run: (transport) => transport.send(phone, message)
+    }), attempts);
+    return { delivered: outcome.delivered, attempts };
+  }
+  async walk(phone, plan, attempts) {
+    for (const transport of this.transports) {
+      const attempt = plan(transport);
+      try {
+        const result = await attempt.run(transport);
+        attempts.push({
+          provider: transport.name,
+          ok: true,
+          status: null,
+          error: null,
+          mode: attempt.mode,
+          raw: result?.raw ?? null
+        });
+        this.onAttempt(attempts[attempts.length - 1]);
+        return { delivered: true };
+      } catch (error) {
+        attempts.push({
+          provider: transport.name,
+          ok: false,
+          status: error instanceof SmsTransportError ? error.status : null,
+          error: error instanceof Error ? error.message : String(error),
+          mode: attempt.mode,
+          raw: error instanceof SmsTransportError ? error.raw ?? null : null
+        });
+        this.onAttempt(attempts[attempts.length - 1]);
+      }
+    }
+    return { delivered: false };
+  }
+  async deliver(phone, plan) {
+    const attempts = [];
+    const outcome = await this.walk(phone, plan, attempts);
+    if (!outcome.delivered) {
+      throw new AppError("SMS_UNAVAILABLE", 503, "No SMS provider accepted the message", {
+        phone,
+        attempts
+      });
+    }
+  }
+};
+var SmsIrTransport = class {
+  constructor(options) {
+    this.options = options;
+  }
+  name = "smsir";
+  get http() {
+    return this.options.fetchImpl ?? globalThis.fetch;
+  }
+  async send(phone, message) {
+    const base = this.options.baseUrl ?? "https://api.sms.ir";
+    const line2 = /^\d+$/.test(this.options.lineNumber) ? Number(this.options.lineNumber) : this.options.lineNumber;
+    const response = await this.http(`${base}/v1/send/bulk`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        "x-api-key": this.options.apiKey
+      },
+      body: JSON.stringify({
+        lineNumber: line2,
+        messageText: message,
+        mobiles: [normalizeMobile(phone)]
+      }),
+      signal: AbortSignal.timeout(this.options.timeoutMs ?? 5e3)
+    });
+    return { raw: await this.expectAccepted(response) };
+  }
+  /** `POST /v1/send/verify` — the code is filled into an approved template on a service line. */
+  async sendCode(phone, code) {
+    if (!this.options.templateId) {
+      throw new SmsTransportError(this.name, null, "no OTP template configured");
+    }
+    const base = this.options.baseUrl ?? "https://api.sms.ir";
+    const response = await this.http(`${base}/v1/send/verify`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        "x-api-key": this.options.apiKey
+      },
+      body: JSON.stringify({
+        mobile: normalizeMobile(phone),
+        templateId: this.options.templateId,
+        parameters: [{ name: this.options.templateParameter ?? "code", value: code }]
+      }),
+      signal: AbortSignal.timeout(this.options.timeoutMs ?? 5e3)
+    });
+    return { raw: await this.expectAccepted(response) };
+  }
+  async expectAccepted(response) {
+    const body = await response.text();
+    if (!response.ok)
+      throw new SmsTransportError(this.name, response.status, `http ${response.status}`, body);
+    if (!/"status"\s*:\s*1(?!\d)/.test(body)) {
+      throw new SmsTransportError(this.name, response.status, "rejected by provider", body);
+    }
+    return body;
+  }
+};
+var KavenegarTransport = class {
+  constructor(options) {
+    this.options = options;
+  }
+  name = "kavenegar";
+  get http() {
+    return this.options.fetchImpl ?? globalThis.fetch;
+  }
+  get base() {
+    return this.options.baseUrl ?? "https://api.kavenegar.com";
+  }
+  get keyedPath() {
+    return `/v1/${encodeURIComponent(this.options.apiKey)}`;
+  }
+  async send(phone, message) {
+    const query2 = new URLSearchParams({
+      receptor: phone,
+      sender: this.options.sender,
+      message
+    });
+    const response = await this.http(`${this.base}${this.keyedPath}/sms/send.json?${query2}`, {
+      method: "GET",
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(this.options.timeoutMs ?? 5e3)
+    });
+    return { raw: await this.expectAccepted(response) };
+  }
+  /** `GET /v1/{key}/verify/lookup.json?receptor&token&template` — token is the code. */
+  async sendCode(phone, code) {
+    if (!this.options.template) {
+      throw new SmsTransportError(this.name, null, "no OTP template configured");
+    }
+    const query2 = new URLSearchParams({
+      receptor: phone,
+      token: code,
+      template: this.options.template
+    });
+    const response = await this.http(`${this.base}${this.keyedPath}/verify/lookup.json?${query2}`, {
+      method: "GET",
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(this.options.timeoutMs ?? 5e3)
+    });
+    return { raw: await this.expectAccepted(response) };
+  }
+  async expectAccepted(response) {
+    const body = await response.text();
+    if (!response.ok)
+      throw new SmsTransportError(this.name, response.status, `http ${response.status}`, body);
+    if (!/"status"\s*:\s*200(?!\d)/.test(body)) {
+      throw new SmsTransportError(this.name, response.status, "rejected by provider", body);
+    }
+    return body;
+  }
+};
+var buildTransport = (name, config2, deps) => {
+  if (name === "console") {
+    const sender = new ConsoleSmsSender(deps.log);
+    return { name: "console", send: (phone, message) => sender.send(phone, message) };
+  }
+  if (name === "smsir") {
+    if (!config2.SMS_API_KEY || !config2.SMS_SENDER_LINE) {
+      throw new Error("SMS_PROVIDERS includes smsir but SMS_API_KEY / SMS_SENDER_LINE are missing");
+    }
+    return new SmsIrTransport({
+      apiKey: config2.SMS_API_KEY,
+      lineNumber: config2.SMS_SENDER_LINE,
+      ...config2.SMS_IR_TEMPLATE_ID ? { templateId: config2.SMS_IR_TEMPLATE_ID } : {},
+      ...config2.SMS_IR_TEMPLATE_PARAMETER ? { templateParameter: config2.SMS_IR_TEMPLATE_PARAMETER } : {},
+      ...config2.SMS_IR_BASE_URL ? { baseUrl: config2.SMS_IR_BASE_URL } : {},
+      ...deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {},
+      ...config2.SMS_TIMEOUT_MS ? { timeoutMs: config2.SMS_TIMEOUT_MS } : {}
+    });
+  }
+  if (name === "kavenegar") {
+    if (!config2.KAVENEGAR_API_KEY || !config2.KAVENEGAR_SENDER_LINE) {
+      throw new Error(
+        "SMS_PROVIDERS includes kavenegar but KAVENEGAR_API_KEY / KAVENEGAR_SENDER_LINE are missing"
+      );
+    }
+    return new KavenegarTransport({
+      apiKey: config2.KAVENEGAR_API_KEY,
+      sender: config2.KAVENEGAR_SENDER_LINE,
+      ...config2.KAVENEGAR_TEMPLATE ? { template: config2.KAVENEGAR_TEMPLATE } : {},
+      ...config2.KAVENEGAR_BASE_URL ? { baseUrl: config2.KAVENEGAR_BASE_URL } : {},
+      ...deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {},
+      ...config2.SMS_TIMEOUT_MS ? { timeoutMs: config2.SMS_TIMEOUT_MS } : {}
+    });
+  }
+  throw new Error(`Unknown SMS provider "${name}" in SMS_PROVIDERS`);
+};
+var createSmsSender = (config2, deps = {}) => {
+  const log = deps.log ?? ((message) => console.info(message));
+  const names = config2.SMS_PROVIDERS.map((name) => name.trim()).filter(Boolean);
+  if (names.length === 0) throw new Error("SMS_PROVIDERS must list at least one provider");
+  const otpMessage = config2.SMS_OTP_MESSAGE ?? DEFAULT_OTP_MESSAGE;
+  if (!otpMessage.includes("{code}")) {
+    throw new Error("SMS_OTP_MESSAGE must contain the {code} placeholder");
+  }
+  const transports = names.map((name) => buildTransport(name, config2, { ...deps, log }));
+  return new FailoverSmsSender(
+    transports,
+    (attempt) => {
+      const mode = `(${attempt.mode})`;
+      if (attempt.ok) {
+        log(`[sms] delivered via ${attempt.provider} ${mode}`);
+        return;
+      }
+      log(`[sms] ${attempt.provider} failed ${mode}: ${attempt.error ?? "unknown error"}`);
+    },
+    otpMessage
+  );
+};
+
+// ../apps/api/src/modules/sms-service.ts
+var fallbackTransport = (fallback) => ({
+  name: "default",
+  send: (phone, message) => fallback.send(phone, message).then(() => ({ raw: "default chain" })),
+  sendCode: (phone, code) => fallback.sendCode(phone, code).then(() => ({ raw: "default chain" }))
+});
+var SmsService = class {
+  constructor(repos2, settings2, clock, options) {
+    this.repos = repos2;
+    this.settings = settings2;
+    this.clock = clock;
+    this.options = options;
+  }
+  cached = null;
+  attempts = [];
+  lastOtpMessage = DEFAULT_OTP_MESSAGE;
+  /** Drops the cached chain; the next send re-reads the panel. Called after every provider save. */
+  refresh() {
+    this.cached = null;
+  }
+  /** G-14: the OTP text is a panel setting; a template without `{code}` is ignored, not obeyed. */
+  async otpMessage() {
+    const config2 = await this.settings.get();
+    const configured = config2["notification.sms_otp_message"];
+    const candidate = typeof configured === "string" && configured.trim().length > 0 ? configured : DEFAULT_OTP_MESSAGE;
+    this.lastOtpMessage = candidate.includes("{code}") ? candidate : DEFAULT_OTP_MESSAGE;
+    return this.lastOtpMessage;
+  }
+  async smsSettings() {
+    const all = await this.repos.providerSettings.list();
+    return all.filter((row) => row.kind === "SMS").sort((a, b) => this.priorityOf(b) - this.priorityOf(a) || a.provider.localeCompare(b.provider));
+  }
+  priorityOf(setting) {
+    const value = setting.config["priority"];
+    return typeof value === "number" ? value : 0;
+  }
+  transportFor(setting) {
+    const apiKey = String(setting.config["apiKey"] ?? "");
+    const senderLine = String(setting.config["sender"] ?? "");
+    const template = setting.config["template"];
+    const baseUrl = setting.config["baseUrl"];
+    if (!apiKey) return null;
+    try {
+      if (setting.provider === "smsir") {
+        if (!senderLine) return null;
+        return new SmsIrTransport({
+          apiKey,
+          lineNumber: senderLine,
+          ...typeof template === "string" && template.trim() !== "" ? { templateId: Number(template) } : {},
+          ...typeof setting.config["templateParameter"] === "string" ? { templateParameter: setting.config["templateParameter"] } : {},
+          ...typeof baseUrl === "string" && baseUrl ? { baseUrl } : {},
+          ...this.options.fetchImpl ? { fetchImpl: this.options.fetchImpl } : {},
+          ...this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}
+        });
+      }
+      if (setting.provider === "kavenegar") {
+        if (!senderLine) return null;
+        return new KavenegarTransport({
+          apiKey,
+          sender: senderLine,
+          ...typeof template === "string" && template.trim() !== "" ? { template } : {},
+          ...typeof baseUrl === "string" && baseUrl ? { baseUrl } : {},
+          ...this.options.fetchImpl ? { fetchImpl: this.options.fetchImpl } : {},
+          ...this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}
+        });
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+  async chain() {
+    if (this.cached) return this.cached;
+    const rows = (await this.smsSettings()).filter((row) => row.isActive);
+    const transports = [];
+    for (const row of rows) {
+      const transport = this.transportFor(row);
+      if (transport) transports.push(transport);
+    }
+    if (transports.length === 0) {
+      this.cached = {
+        sender: new FailoverSmsSender([], () => {
+        }, await this.otpMessage()),
+        source: "ENV"
+      };
+      return this.cached;
+    }
+    transports.push(fallbackTransport(this.options.fallback));
+    this.cached = {
+      sender: new FailoverSmsSender(
+        transports,
+        (attempt) => {
+          this.attempts = [attempt, ...this.attempts].slice(0, 20);
+          const log = this.options.log ?? ((line2) => console.info(line2));
+          log(
+            attempt.ok ? `[sms] delivered via ${attempt.provider} (${attempt.mode})` : `[sms] ${attempt.provider} failed (${attempt.mode}): ${attempt.error ?? "unknown"}`
+          );
+        },
+        await this.otpMessage()
+      ),
+      source: "PANEL"
+    };
+    return this.cached;
+  }
+  async delegate() {
+    const built = await this.chain();
+    return built.source === "PANEL" ? built.sender : this.options.fallback;
+  }
+  async send(phone, message) {
+    await (await this.delegate()).send(phone, message);
+  }
+  async sendCode(phone, code) {
+    await (await this.delegate()).sendCode(phone, code);
+  }
+  async status() {
+    const config2 = await this.settings.get();
+    const rows = await this.smsSettings();
+    const built = await this.chain();
+    return {
+      enabled: config2["notification.sms_enabled"],
+      source: built.source,
+      otpMessage: this.lastOtpMessage,
+      chain: [
+        ...rows.map((row) => ({
+          provider: row.provider,
+          priority: this.priorityOf(row),
+          isActive: row.isActive,
+          keySet: Boolean(String(row.config["apiKey"] ?? "")),
+          sender: typeof row.config["sender"] === "string" ? row.config["sender"] : null,
+          template: typeof row.config["template"] === "string" && row.config["template"] !== "" ? row.config["template"] : null
+        })),
+        // The default chain is part of the chain whether or not it has a row: it is the last resort.
+        { provider: "default", priority: 0, isActive: true, keySet: true, sender: null, template: null }
+      ],
+      lastAttempts: this.attempts
+    };
+  }
+  /**
+   * «ارسال آزمایشی»: walks the real chain — or only the named provider, so a broken second link can
+   * be tested without turning the first one off — and reports the provider's own answer.
+   */
+  async testSend(actor, phone, provider) {
+    const message = "\u067E\u06CC\u0627\u0645 \u0622\u0632\u0645\u0627\u06CC\u0634\u06CC \u0628\u0646\u0632\u06CC\u0646: \u062A\u0646\u0638\u06CC\u0645\u0627\u062A \u067E\u0646\u0644 \u067E\u06CC\u0627\u0645\u06A9 \u062F\u0631\u0633\u062A \u0627\u0633\u062A.";
+    const rows = (await this.smsSettings()).filter((row) => row.isActive);
+    let sender = null;
+    if (provider && provider !== "auto") {
+      const row = rows.find((candidate) => candidate.provider === provider);
+      if (!row) {
+        return {
+          delivered: false,
+          attempts: [],
+          message: "\u0627\u06CC\u0646 \u0627\u0631\u0627\u0626\u0647\u200C\u062F\u0647\u0646\u062F\u0647 \u062F\u0631 \u067E\u0646\u0644 \u0641\u0639\u0627\u0644 \u0646\u06CC\u0633\u062A"
+        };
+      }
+      if (provider === "console") {
+        await this.options.fallback.send(phone, message);
+        const attempt = {
+          provider: "default",
+          ok: true,
+          status: null,
+          error: null,
+          mode: "text",
+          raw: "default chain"
+        };
+        return { delivered: true, attempts: [attempt], message };
+      }
+      const transport = this.transportFor(row);
+      if (!transport) {
+        return {
+          delivered: false,
+          attempts: [],
+          message: "\u06A9\u0644\u06CC\u062F \u06CC\u0627 \u0634\u0645\u0627\u0631\u0647\u0654 \u062E\u0637 \u0627\u06CC\u0646 \u0627\u0631\u0627\u0626\u0647\u200C\u062F\u0647\u0646\u062F\u0647 \u062F\u0631 \u067E\u0646\u0644 \u062B\u0628\u062A \u0646\u0634\u062F\u0647 \u0627\u0633\u062A"
+        };
+      }
+      sender = new FailoverSmsSender([transport], () => {
+      }, await this.otpMessage());
+    } else {
+      const built = await this.chain();
+      sender = built.source === "PANEL" ? built.sender : new FailoverSmsSender(
+        [fallbackTransport(this.options.fallback)],
+        () => {
+        },
+        await this.otpMessage()
+      );
+    }
+    const result = await sender.sendWithAttempts(phone, message);
+    await this.repos.audit.append({
+      actorId: actor.id,
+      action: "sms.tested",
+      entity: "provider",
+      entityId: provider && provider !== "auto" ? provider : "chain",
+      metadata: {
+        phone,
+        delivered: result.delivered,
+        attempts: result.attempts.map((attempt) => ({
+          provider: attempt.provider,
+          ok: attempt.ok,
+          status: attempt.status,
+          mode: attempt.mode
+        }))
+      }
+    });
+    return { ...result, message };
+  }
+  /** The panel's «ارسال آزمایشی» result must be attributable to a moment in time. */
+  testedAt() {
+    return this.clock.now().toISOString();
+  }
+};
+
 // ../apps/api/src/modules/reputation-service.ts
 var toEventView = (event) => ({
   id: event.id,
@@ -60512,16 +61014,22 @@ async function buildApp(options) {
   const {
     config: config2,
     repos: repos2,
-    sms: sms2,
     clock,
     routeProvider = null,
     sweepLock: sweepLock2 = createProcessSweepLock()
   } = options;
   const settings2 = new SettingsService(repos2);
+  const smsDelivery = new SmsService(repos2, settings2, clock, {
+    fallback: options.sms,
+    ...options.smsFetch ? { fetchImpl: options.smsFetch } : {},
+    log: (line2) => {
+      if (config2.LOG_LEVEL !== "silent") console.info(line2);
+    }
+  });
   const auth = new AuthService(
     repos2,
     settings2,
-    sms2,
+    smsDelivery,
     clock,
     {
       secret: config2.JWT_SECRET,
@@ -60532,7 +61040,7 @@ async function buildApp(options) {
   );
   const locations = new LocationService(repos2.zones);
   const distance = new DistanceService(routeProvider);
-  const notifications2 = new NotificationService(repos2, settings2, sms2, clock);
+  const notifications2 = new NotificationService(repos2, settings2, smsDelivery, clock);
   const gateway = options.providers?.gateway ?? (config2.PAYMENT_GATEWAY === "zarinpal" && config2.ZARINPAL_MERCHANT_ID ? new ZarinpalGatewayProvider({
     merchantId: config2.ZARINPAL_MERCHANT_ID,
     callbackUrl: config2.PAYMENT_CALLBACK_URL,
@@ -60575,11 +61083,21 @@ async function buildApp(options) {
   const chat = new ChatService(repos2, settings2, clock, notifications2, events);
   const stats = new StatsService(repos2, settings2, clock);
   const tradeMedian = new TradeMedianService(repos2, clock);
-  const admin = new AdminService(repos2, settings2, clock, notifications2, reputation, sms2, {
-    nodeEnv: config2.NODE_ENV,
-    mode: config2.DATABASE_URL ? "postgres" : "memory",
-    version: config2.APP_VERSION
-  });
+  const admin = new AdminService(
+    repos2,
+    settings2,
+    clock,
+    notifications2,
+    reputation,
+    smsDelivery,
+    {
+      nodeEnv: config2.NODE_ENV,
+      mode: config2.DATABASE_URL ? "postgres" : "memory",
+      version: config2.APP_VERSION
+    },
+    // G-14: a saved key starts working on the next message, without a restart.
+    () => smsDelivery.refresh()
+  );
   const nodes = new NodesService(repos2, clock, {
     nodeId: options.node?.nodeId ?? config2.NODE_ID ?? `${config2.NODE_ROLE}-${hostSlug()}`,
     name: options.node?.name ?? config2.NODE_NAME ?? `\u0628\u0646\u0632\u06CC\u0646 \u2014 ${config2.NODE_ROLE === "helper" ? "\u06A9\u0645\u06A9\u06CC" : "\u0627\u0635\u0644\u06CC"}`,
@@ -60620,7 +61138,8 @@ async function buildApp(options) {
     ownerResponse,
     cardDeposits: cardDeposits2,
     entitlements,
-    infra
+    infra,
+    sms: smsDelivery
   };
   const requireAuth = authenticate(auth);
   const app2 = (0, import_fastify.default)({
@@ -61286,6 +61805,15 @@ async function buildApp(options) {
         throw AppError.notFound("PROVIDER_NOT_FOUND", "Unknown provider kind");
       }
       return admin.testProvider(currentUser(request), kind, provider, body.phone);
+    }
+  );
+  app2.get("/v1/admin/sms", { preHandler: [...staffOnly] }, async () => services2.sms.status());
+  app2.post(
+    "/v1/admin/sms/test",
+    { preHandler: [...staffOnly] },
+    async (request) => {
+      const body = parseInput(smsTestSchema, request.body ?? {});
+      return services2.sms.testSend(currentUser(request), body.phone, body.provider);
     }
   );
   app2.get("/v1/admin/zones", { preHandler: [...staffOnly] }, async () => admin.listZones());
@@ -71968,258 +72496,6 @@ function createPostgresRepositories(databaseUrl) {
     }
   };
 }
-
-// ../apps/api/src/infra/sms/index.ts
-var SmsTransportError = class extends Error {
-  constructor(provider, status, message) {
-    super(message);
-    this.provider = provider;
-    this.status = status;
-    this.name = "SmsTransportError";
-  }
-};
-var DEFAULT_OTP_MESSAGE = "\u06A9\u062F \u0648\u0631\u0648\u062F \u0634\u0645\u0627 \u0628\u0647 \u0628\u0646\u0632\u06CC\u0646: {code}";
-var formatOtpMessage = (template, code) => template.replaceAll("{code}", code);
-var normalizeMobile = (phone) => phone.replace(/^0+/, "");
-var ConsoleSmsSender = class {
-  constructor(logger = (m) => console.info(m), otpMessage = DEFAULT_OTP_MESSAGE) {
-    this.logger = logger;
-    this.otpMessage = otpMessage;
-  }
-  name = "console";
-  attempts = [];
-  async send(phone, message) {
-    this.logger(`[sms] \u2192 ${phone}: ${message}`);
-  }
-  async sendCode(phone, code) {
-    await this.send(phone, formatOtpMessage(this.otpMessage, code));
-  }
-};
-var FailoverSmsSender = class {
-  constructor(transports, onAttempt = () => {
-  }, otpMessage = DEFAULT_OTP_MESSAGE) {
-    this.transports = transports;
-    this.onAttempt = onAttempt;
-    this.otpMessage = otpMessage;
-  }
-  async send(phone, message) {
-    await this.deliver(phone, (transport) => ({
-      mode: "text",
-      run: () => transport.send(phone, message)
-    }));
-  }
-  async sendCode(phone, code) {
-    await this.deliver(
-      phone,
-      (transport) => transport.sendCode ? { mode: "template", run: () => transport.sendCode(phone, code) } : {
-        mode: "text",
-        run: () => transport.send(phone, formatOtpMessage(this.otpMessage, code))
-      }
-    );
-  }
-  async deliver(phone, plan) {
-    const attempts = [];
-    for (const transport of this.transports) {
-      const attempt = plan(transport);
-      try {
-        await attempt.run();
-        const success = {
-          provider: transport.name,
-          ok: true,
-          status: null,
-          error: null,
-          mode: attempt.mode
-        };
-        attempts.push(success);
-        this.onAttempt(success);
-        return;
-      } catch (error) {
-        const failure = {
-          provider: transport.name,
-          ok: false,
-          status: error instanceof SmsTransportError ? error.status : null,
-          error: error instanceof Error ? error.message : String(error),
-          mode: attempt.mode
-        };
-        attempts.push(failure);
-        this.onAttempt(failure);
-      }
-    }
-    throw new AppError("SMS_UNAVAILABLE", 503, "No SMS provider accepted the message", {
-      phone,
-      attempts
-    });
-  }
-};
-var SmsIrTransport = class {
-  constructor(options) {
-    this.options = options;
-  }
-  name = "smsir";
-  get http() {
-    return this.options.fetchImpl ?? globalThis.fetch;
-  }
-  async send(phone, message) {
-    const base = this.options.baseUrl ?? "https://api.sms.ir";
-    const line2 = /^\d+$/.test(this.options.lineNumber) ? Number(this.options.lineNumber) : this.options.lineNumber;
-    const response = await this.http(`${base}/v1/send/bulk`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-        "x-api-key": this.options.apiKey
-      },
-      body: JSON.stringify({
-        lineNumber: line2,
-        messageText: message,
-        mobiles: [normalizeMobile(phone)]
-      }),
-      signal: AbortSignal.timeout(this.options.timeoutMs ?? 5e3)
-    });
-    await this.expectAccepted(response);
-  }
-  /** `POST /v1/send/verify` — the code is filled into an approved template on a service line. */
-  async sendCode(phone, code) {
-    if (!this.options.templateId) {
-      throw new SmsTransportError(this.name, null, "no OTP template configured");
-    }
-    const base = this.options.baseUrl ?? "https://api.sms.ir";
-    const response = await this.http(`${base}/v1/send/verify`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-        "x-api-key": this.options.apiKey
-      },
-      body: JSON.stringify({
-        mobile: normalizeMobile(phone),
-        templateId: this.options.templateId,
-        parameters: [{ name: this.options.templateParameter ?? "code", value: code }]
-      }),
-      signal: AbortSignal.timeout(this.options.timeoutMs ?? 5e3)
-    });
-    await this.expectAccepted(response);
-  }
-  async expectAccepted(response) {
-    const body = await response.text();
-    if (!response.ok)
-      throw new SmsTransportError(this.name, response.status, `http ${response.status}`);
-    if (!/"status"\s*:\s*1(?!\d)/.test(body)) {
-      throw new SmsTransportError(this.name, response.status, "rejected by provider");
-    }
-  }
-};
-var KavenegarTransport = class {
-  constructor(options) {
-    this.options = options;
-  }
-  name = "kavenegar";
-  get http() {
-    return this.options.fetchImpl ?? globalThis.fetch;
-  }
-  get base() {
-    return this.options.baseUrl ?? "https://api.kavenegar.com";
-  }
-  get keyedPath() {
-    return `/v1/${encodeURIComponent(this.options.apiKey)}`;
-  }
-  async send(phone, message) {
-    const query2 = new URLSearchParams({
-      receptor: phone,
-      sender: this.options.sender,
-      message
-    });
-    const response = await this.http(`${this.base}${this.keyedPath}/sms/send.json?${query2}`, {
-      method: "GET",
-      headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(this.options.timeoutMs ?? 5e3)
-    });
-    await this.expectAccepted(response);
-  }
-  /** `GET /v1/{key}/verify/lookup.json?receptor&token&template` — token is the code. */
-  async sendCode(phone, code) {
-    if (!this.options.template) {
-      throw new SmsTransportError(this.name, null, "no OTP template configured");
-    }
-    const query2 = new URLSearchParams({
-      receptor: phone,
-      token: code,
-      template: this.options.template
-    });
-    const response = await this.http(`${this.base}${this.keyedPath}/verify/lookup.json?${query2}`, {
-      method: "GET",
-      headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(this.options.timeoutMs ?? 5e3)
-    });
-    await this.expectAccepted(response);
-  }
-  async expectAccepted(response) {
-    const body = await response.text();
-    if (!response.ok)
-      throw new SmsTransportError(this.name, response.status, `http ${response.status}`);
-    if (!/"status"\s*:\s*200(?!\d)/.test(body)) {
-      throw new SmsTransportError(this.name, response.status, "rejected by provider");
-    }
-  }
-};
-var buildTransport = (name, config2, deps) => {
-  if (name === "console") {
-    const sender = new ConsoleSmsSender(deps.log);
-    return { name: "console", send: (phone, message) => sender.send(phone, message) };
-  }
-  if (name === "smsir") {
-    if (!config2.SMS_API_KEY || !config2.SMS_SENDER_LINE) {
-      throw new Error("SMS_PROVIDERS includes smsir but SMS_API_KEY / SMS_SENDER_LINE are missing");
-    }
-    return new SmsIrTransport({
-      apiKey: config2.SMS_API_KEY,
-      lineNumber: config2.SMS_SENDER_LINE,
-      ...config2.SMS_IR_TEMPLATE_ID ? { templateId: config2.SMS_IR_TEMPLATE_ID } : {},
-      ...config2.SMS_IR_TEMPLATE_PARAMETER ? { templateParameter: config2.SMS_IR_TEMPLATE_PARAMETER } : {},
-      ...config2.SMS_IR_BASE_URL ? { baseUrl: config2.SMS_IR_BASE_URL } : {},
-      ...deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {},
-      ...config2.SMS_TIMEOUT_MS ? { timeoutMs: config2.SMS_TIMEOUT_MS } : {}
-    });
-  }
-  if (name === "kavenegar") {
-    if (!config2.KAVENEGAR_API_KEY || !config2.KAVENEGAR_SENDER_LINE) {
-      throw new Error(
-        "SMS_PROVIDERS includes kavenegar but KAVENEGAR_API_KEY / KAVENEGAR_SENDER_LINE are missing"
-      );
-    }
-    return new KavenegarTransport({
-      apiKey: config2.KAVENEGAR_API_KEY,
-      sender: config2.KAVENEGAR_SENDER_LINE,
-      ...config2.KAVENEGAR_TEMPLATE ? { template: config2.KAVENEGAR_TEMPLATE } : {},
-      ...config2.KAVENEGAR_BASE_URL ? { baseUrl: config2.KAVENEGAR_BASE_URL } : {},
-      ...deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {},
-      ...config2.SMS_TIMEOUT_MS ? { timeoutMs: config2.SMS_TIMEOUT_MS } : {}
-    });
-  }
-  throw new Error(`Unknown SMS provider "${name}" in SMS_PROVIDERS`);
-};
-var createSmsSender = (config2, deps = {}) => {
-  const log = deps.log ?? ((message) => console.info(message));
-  const names = config2.SMS_PROVIDERS.map((name) => name.trim()).filter(Boolean);
-  if (names.length === 0) throw new Error("SMS_PROVIDERS must list at least one provider");
-  const otpMessage = config2.SMS_OTP_MESSAGE ?? DEFAULT_OTP_MESSAGE;
-  if (!otpMessage.includes("{code}")) {
-    throw new Error("SMS_OTP_MESSAGE must contain the {code} placeholder");
-  }
-  const transports = names.map((name) => buildTransport(name, config2, { ...deps, log }));
-  return new FailoverSmsSender(
-    transports,
-    (attempt) => {
-      const mode = `(${attempt.mode})`;
-      if (attempt.ok) {
-        log(`[sms] delivered via ${attempt.provider} ${mode}`);
-        return;
-      }
-      log(`[sms] ${attempt.provider} failed ${mode}: ${attempt.error ?? "unknown error"}`);
-    },
-    otpMessage
-  );
-};
 
 // ../apps/api/src/domain/entities.ts
 var systemClock = { now: () => /* @__PURE__ */ new Date() };
