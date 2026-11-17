@@ -193,6 +193,40 @@ export interface ProviderRow {
   config: Record<string, unknown>;
 }
 
+/** G-14: the chain the platform will actually walk, and where it came from. */
+export interface SmsChainLink {
+  provider: string;
+  priority: number;
+  isActive: boolean;
+  keySet: boolean;
+  sender: string | null;
+  template: string | null;
+}
+
+export interface SmsPanel {
+  enabled: boolean;
+  source: 'PANEL' | 'ENV' | 'CONSOLE';
+  otpMessage: string;
+  chain: SmsChainLink[];
+  lastAttempts: SmsAttemptRow[];
+}
+
+/** What one provider answered — printed verbatim, because that is the acceptance criterion. */
+export interface SmsAttemptRow {
+  provider: string;
+  ok: boolean;
+  status: number | null;
+  error: string | null;
+  mode: 'template' | 'text';
+  raw: string | null;
+}
+
+export interface SmsTestResult {
+  delivered: boolean;
+  message: string;
+  attempts: SmsAttemptRow[];
+}
+
 export interface ZoneRow {
   id: string;
   slug: string;

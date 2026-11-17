@@ -25,6 +25,7 @@ import {
   createPlanSchema,
   createInfraResourceSchema,
   updateInfraResourceSchema,
+  smsTestSchema,
   orderSearchSchema,
   updatePlanSchema,
   paymentListSchema,
@@ -76,6 +77,8 @@ import { PaymentService } from '../modules/payment-service.js';
 import { CardDepositService, verifyDepositSignature } from '../modules/card-deposit-service.js';
 import { EntitlementService } from '../modules/entitlements-service.js';
 import { InfraService } from '../modules/infra-service.js';
+import { SmsService } from '../modules/sms-service.js';
+import type { FetchLike } from '../infra/sms/index.js';
 import { OwnerResponseService } from '../modules/owner-response-service.js';
 import { ReputationService } from '../modules/reputation-service.js';
 import { ReservationService } from '../modules/reservations-service.js';
@@ -111,6 +114,11 @@ export interface BuildAppOptions {
    * instead of the ones built from config. Nothing else about the service changes.
    */
   providers?: { gateway?: PaymentProvider; cardToCard?: PaymentProvider };
+  /**
+   * G-14: a fake HTTP layer for the SMS providers, so a test can watch the chain fail over and read
+   * the provider's response without touching the network.
+   */
+  smsFetch?: FetchLike;
 }
 
 export interface BuiltApp {
@@ -143,16 +151,24 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
   const {
     config,
     repos,
-    sms,
     clock,
     routeProvider = null,
     sweepLock = createProcessSweepLock(),
   } = options;
   const settings = new SettingsService(repos);
+  // G-14: the chain is panel-driven at runtime; `sms` (env/console) stays as the fallback link so a
+  // deployment that has configured nothing keeps behaving exactly as before.
+  const smsDelivery = new SmsService(repos, settings, clock, {
+    fallback: options.sms,
+    ...(options.smsFetch ? { fetchImpl: options.smsFetch } : {}),
+    log: (line) => {
+      if (config.LOG_LEVEL !== 'silent') console.info(line);
+    },
+  });
   const auth = new AuthService(
     repos,
     settings,
-    sms,
+    smsDelivery,
     clock,
     {
       secret: config.JWT_SECRET,
@@ -163,7 +179,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
   );
   const locations = new LocationService(repos.zones);
   const distance = new DistanceService(routeProvider);
-  const notifications = new NotificationService(repos, settings, sms, clock);
+  const notifications = new NotificationService(repos, settings, smsDelivery, clock);
   const gateway =
     options.providers?.gateway ??
     (config.PAYMENT_GATEWAY === 'zarinpal' && config.ZARINPAL_MERCHANT_ID
@@ -219,11 +235,23 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
   const stats = new StatsService(repos, settings, clock);
   // G-08: the number the home screen anchors on — median of *closed* trades, not asking prices.
   const tradeMedian = new TradeMedianService(repos, clock);
-  const admin = new AdminService(repos, settings, clock, notifications, reputation, sms, {
-    nodeEnv: config.NODE_ENV,
-    mode: config.DATABASE_URL ? 'postgres' : 'memory',
-    version: config.APP_VERSION,
-  });
+  // G-14: the admin service tests the *panel* chain, so a saved key is verified against the real
+  // provider before anyone trusts it.
+  const admin = new AdminService(
+    repos,
+    settings,
+    clock,
+    notifications,
+    reputation,
+    smsDelivery,
+    {
+      nodeEnv: config.NODE_ENV,
+      mode: config.DATABASE_URL ? 'postgres' : 'memory',
+      version: config.APP_VERSION,
+    },
+    // G-14: a saved key starts working on the next message, without a restart.
+    () => smsDelivery.refresh(),
+  );
   const nodes = new NodesService(repos, clock, {
     nodeId: options.node?.nodeId ?? config.NODE_ID ?? `${config.NODE_ROLE}-${hostSlug()}`,
     name: options.node?.name ?? config.NODE_NAME ?? `بنزین — ${config.NODE_ROLE === 'helper' ? 'کمکی' : 'اصلی'}`,
@@ -270,6 +298,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     cardDeposits,
     entitlements,
     infra,
+    sms: smsDelivery,
   };
   const requireAuth = authenticate(auth);
 
@@ -1120,6 +1149,20 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
         throw AppError.notFound('PROVIDER_NOT_FOUND', 'Unknown provider kind');
       }
       return admin.testProvider(currentUser(request), kind, provider, body.phone);
+    },
+  );
+
+
+  // ------------------------------------------------------------ SMS panel (task G-14)
+  // The chain the platform will actually walk, what it holds, and a button that proves it works.
+  app.get('/v1/admin/sms', { preHandler: [...staffOnly] }, async () => services.sms.status());
+
+  app.post(
+    '/v1/admin/sms/test',
+    { preHandler: [...staffOnly] },
+    async (request) => {
+      const body = parseInput(smsTestSchema, request.body ?? {});
+      return services.sms.testSend(currentUser(request), body.phone, body.provider);
     },
   );
 

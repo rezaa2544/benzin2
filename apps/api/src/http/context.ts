@@ -16,6 +16,7 @@ import type { SettingsService } from '../modules/settings-service.js';
 import type { StatsService } from '../modules/stats-service.js';
 import type { NodesService } from '../modules/nodes-service.js';
 import type { InfraService } from '../modules/infra-service.js';
+import type { SmsService } from '../modules/sms-service.js';
 import type { CardDepositService } from '../modules/card-deposit-service.js';
 import type { OwnerResponseService } from '../modules/owner-response-service.js';
 import type { TradeMedianService } from '../modules/stats-service.js';
@@ -44,6 +45,8 @@ export interface AppServices {
   entitlements: EntitlementService;
   /** Infrastructure board and inventory (G-13). */
   infra: InfraService;
+  /** The SMS chain, keys and templates, kept in the panel (G-14). */
+  sms: SmsService;
 }
 
 declare module 'fastify' {

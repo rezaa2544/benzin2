@@ -34,6 +34,17 @@ export const SETTING_DEFINITIONS = {
   'dispute.auto_review_hours': { schema: z.number().int().min(1).max(168), default: 24 },
   'geo.default_radius_km': { schema: z.number().min(1).max(200), default: 15 },
   'subscription.required_for_orders': { schema: z.boolean(), default: false },
+  /**
+   * G-14: the text a one-time code travels in when a provider has no approved template. The
+   * `{code}` placeholder is required and enforced where the message is built — a template without
+   * it would send a code-less SMS that looks delivered.
+   */
+  'notification.sms_otp_message': {
+    schema: z.string().trim().min(5).max(160).refine((value) => value.includes('{code}'), {
+      message: 'OTP_TEMPLATE_MISSING_CODE',
+    }),
+    default: 'کد ورود شما به بنزین: {code}',
+  },
   'payment.card_to_card_ttl_minutes': { schema: z.number().int().min(15).max(1440), default: 120 },
   'payment.gateway_ttl_minutes': { schema: z.number().int().min(5).max(180), default: 30 },
   'payment.unique_suffix_max': { schema: z.number().int().min(1).max(999), default: 999 },
@@ -129,6 +140,10 @@ export const SETTING_META: Record<SettingKey, { labelFa: string; group: SettingG
   'trade.auto_complete_hours': { labelFa: 'تکمیل خودکار معامله (ساعت)', group: 'TRADE' },
   'chat.max_message_length': { labelFa: 'حداکثر طول پیام', group: 'CHAT' },
   'notification.sms_enabled': { labelFa: 'ارسال پیامک فعال باشد', group: 'CHAT' },
+  'notification.sms_otp_message': {
+    labelFa: 'متن پیامک کد ورود',
+    group: 'CHAT',
+  },
   'chat.quick_replies': { labelFa: 'پاسخ‌های آماده', group: 'CHAT' },
   'otp.length': { labelFa: 'طول کد یک‌بارمصرف', group: 'AUTH' },
   'otp.ttl_seconds': { labelFa: 'اعتبار کد (ثانیه)', group: 'AUTH' },

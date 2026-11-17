@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppServices } from '../src/http/context.js';
 import type { Scheduler } from '../src/scheduler.js';
+import type { FetchLike } from '../src/infra/sms/index.js';
 import { buildApp } from '../src/http/app.js';
 import { loadConfig } from '../src/config.js';
 import { createMemoryRepositories } from '../src/infra/memory/index.js';
@@ -88,7 +89,20 @@ export interface TestContextOptions {
   wrapSms?: (inner: CapturingSms) => SmsSender;
   /** G-12: a fake gateway, so the real request/verify shapes are exercised without a bank. */
   providers?: { gateway?: PaymentProvider; cardToCard?: PaymentProvider };
+  /**
+   * G-14: the SMS chain is panel-driven, so a test that saves a provider row would otherwise try to
+   * reach sms.ir. The default fake refuses every request instantly, which is also the honest way to
+   * prove the failover link works.
+   */
+  smsFetch?: FetchLike;
 }
+
+/** A provider that is always down: instant, deterministic, and never touches the network. */
+export const offlineSmsFetch: FetchLike = async () => ({
+  ok: false,
+  status: 503,
+  text: async () => '{"status":0,"message":"offline in tests"}',
+});
 
 export async function createTestContext(
   clock: Clock = systemClock,
@@ -114,6 +128,7 @@ export async function createTestContext(
     routeProvider: options.routeProvider ?? null,
     ...(options.node ? { node: options.node } : {}),
     ...(options.providers ? { providers: options.providers } : {}),
+    smsFetch: options.smsFetch ?? offlineSmsFetch,
   });
   const app = built.app;
   // Every test context starts from the same seed as development (zones, plans, settings).

@@ -199,6 +199,11 @@ export class AdminService {
     private readonly reputation: ReputationService,
     private readonly sms: SmsSender,
     private readonly env: { nodeEnv: string; mode: 'memory' | 'postgres'; version: string },
+    /**
+     * G-14: saving an SMS provider must take effect immediately — the sender chain is cached, so
+     * without this hook a new key would only start working after a restart.
+     */
+    private readonly onSmsProvidersChanged: () => void = () => {},
   ) {}
 
   private async notify(
@@ -750,6 +755,7 @@ export class AdminService {
       kind: saved.kind,
       isActive: saved.isActive,
     });
+    if (saved.kind === 'SMS') this.onSmsProvidersChanged();
     return toProviderView(saved);
   }
 

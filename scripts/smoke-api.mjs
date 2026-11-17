@@ -417,6 +417,43 @@ await step('GET /v1/admin/infra shows a colour per subsystem (G-13)', async () =
   return `${payload.checks.length} check(s), ${payload.migrations.latest}, ${payload.counts.tradesToday} معاملهٔ امروز`;
 });
 
+await step('GET /v1/admin/sms shows the chain the platform will walk (G-14)', async () => {
+  const { status, payload } = await call('GET', '/v1/admin/sms', { token: owner.token });
+  expect(status === 200, `status ${status}`);
+  expect(['PANEL', 'ENV', 'CONSOLE'].includes(payload?.source), 'unknown chain source');
+  expect(Array.isArray(payload?.chain) && payload.chain.length > 0, 'the chain is empty');
+  const last = payload.chain[payload.chain.length - 1];
+  expect(last.provider === 'default', 'the default chain is not the last link');
+  expect(payload.chain.every((link) => typeof link.keySet === 'boolean'), 'keySet missing');
+  expect(typeof payload.otpMessage === 'string' && payload.otpMessage.includes('{code}'), 'OTP text lost {code}');
+  return `${payload.source}: ${payload.chain.map((link) => link.provider).join(' → ')}`;
+});
+
+await step('POST /v1/admin/sms/test reports the provider answer verbatim (G-14)', async () => {
+  const { status, payload } = await call('POST', '/v1/admin/sms/test', {
+    token: owner.token,
+    // The default chain in a smoke run is the console sender, so nothing leaves the machine.
+    body: { phone: '09120000000', provider: 'console' },
+  });
+  expect(status === 200, `status ${status}: ${JSON.stringify(payload)}`);
+  expect(payload?.delivered === true, 'the test message was not delivered');
+  expect(Array.isArray(payload?.attempts) && payload.attempts.length > 0, 'no attempt recorded');
+  const attempt = payload.attempts[0];
+  expect(typeof attempt.provider === 'string', 'attempt lost its provider name');
+  expect('raw' in attempt, 'the panel was not given the provider response');
+  expect(attempt.ok === true, 'the successful attempt is marked failed');
+  return `${attempt.provider} → ${String(attempt.raw ?? '').slice(0, 40)}`;
+});
+
+await step('POST /v1/admin/sms/test refuses a bad phone number (G-14)', async () => {
+  const { status } = await call('POST', '/v1/admin/sms/test', {
+    token: owner.token,
+    body: { phone: '12345' },
+  });
+  expect(status === 422, `status ${status}`);
+  return 'rejected 422';
+});
+
 await step('POST/PATCH/DELETE /v1/admin/infra keeps the credential on the server (G-13)', async () => {
   const created = await call('POST', '/v1/admin/infra', {
     token: owner.token,

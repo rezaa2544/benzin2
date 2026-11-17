@@ -688,3 +688,16 @@ export type CreateInfraResourceInput = z.infer<typeof createInfraResourceSchema>
 export const updateInfraResourceSchema = createInfraResourceSchema.partial().strict();
 
 export type UpdateInfraResourceInput = z.infer<typeof updateInfraResourceSchema>;
+
+/** G-14: «ارسال آزمایشی» — a phone to prove delivery, and optionally one link of the chain. */
+export const smsTestSchema = z
+  .object({
+    phone: iranMobileSchema,
+    /** Omit (or `auto`) to walk the whole chain so the failover itself is exercised. */
+    provider: z
+      .string()
+      .trim()
+      .regex(/^(auto|console|smsir|kavenegar)$/, { message: 'PROVIDER_INVALID' })
+      .optional(),
+  })
+  .strict();

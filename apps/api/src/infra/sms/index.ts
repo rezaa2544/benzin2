@@ -39,14 +39,24 @@ export interface SmsAttempt {
   status: number | null;
   error: string | null;
   mode: SmsAttemptMode;
+  /**
+   * G-14: what the provider actually answered, trimmed. The panel shows this verbatim — «ارسال
+   * آزمایشی» is only useful if it reports the service's own words, not our summary of them.
+   */
+  raw: string | null;
+}
+
+/** What a transport hands back: the provider's response body, when it has one. */
+export interface SmsSendOutcome {
+  raw?: string | null;
 }
 
 export interface SmsTransport {
   readonly name: string;
-  /** Free text. */
-  send(phone: string, message: string): Promise<void>;
+  /** Free text. Returns the provider's response body when it reports one. */
+  send(phone: string, message: string): Promise<SmsSendOutcome | void>;
   /** One-time code through the provider's template, when the provider has one configured. */
-  sendCode?(phone: string, code: string): Promise<void>;
+  sendCode?(phone: string, code: string): Promise<SmsSendOutcome | void>;
 }
 
 /** A single provider said no; the chain decides whether that is fatal. */
@@ -55,6 +65,8 @@ export class SmsTransportError extends Error {
     readonly provider: string,
     readonly status: number | null,
     message: string,
+    /** The provider's own response body, when it sent one — the panel shows it verbatim. */
+    readonly raw: string | null = null,
   ) {
     super(message);
     this.name = 'SmsTransportError';
@@ -124,43 +136,75 @@ export class FailoverSmsSender implements SmsSender {
     );
   }
 
-  private async deliver(
+  /**
+   * G-14: the same walk, but it reports instead of throwing — the panel's «ارسال آزمایشی» needs the
+   * attempts even when the last provider also said no.
+   */
+  async sendWithAttempts(
     phone: string,
-    plan: (transport: SmsTransport) => { mode: SmsAttemptMode; run: () => Promise<void> },
-  ): Promise<void> {
+    message: string,
+  ): Promise<{ delivered: boolean; attempts: SmsAttempt[] }> {
     const attempts: SmsAttempt[] = [];
+    const outcome = await this.walk(phone, () => ({
+      mode: 'text' as SmsAttemptMode,
+      run: (transport) => transport.send(phone, message),
+    }), attempts);
+    return { delivered: outcome.delivered, attempts };
+  }
 
+  private async walk(
+    phone: string,
+    plan: (transport: SmsTransport) => {
+      mode: SmsAttemptMode;
+      run: (transport: SmsTransport) => Promise<SmsSendOutcome | void>;
+    },
+    attempts: SmsAttempt[],
+  ): Promise<{ delivered: boolean }> {
     for (const transport of this.transports) {
       const attempt = plan(transport);
       try {
-        await attempt.run();
-        const success: SmsAttempt = {
+        const result = await attempt.run(transport);
+        attempts.push({
           provider: transport.name,
           ok: true,
           status: null,
           error: null,
           mode: attempt.mode,
-        };
-        attempts.push(success);
-        this.onAttempt(success);
-        return;
+          raw: result?.raw ?? null,
+        });
+        this.onAttempt(attempts[attempts.length - 1]!);
+        return { delivered: true };
       } catch (error) {
-        const failure: SmsAttempt = {
+        attempts.push({
           provider: transport.name,
           ok: false,
           status: error instanceof SmsTransportError ? error.status : null,
           error: error instanceof Error ? error.message : String(error),
           mode: attempt.mode,
-        };
-        attempts.push(failure);
-        this.onAttempt(failure);
+          raw: error instanceof SmsTransportError ? (error.raw ?? null) : null,
+        });
+        this.onAttempt(attempts[attempts.length - 1]!);
       }
     }
+    void phone;
+    return { delivered: false };
+  }
 
-    throw new AppError('SMS_UNAVAILABLE', 503, 'No SMS provider accepted the message', {
-      phone,
-      attempts,
-    });
+  private async deliver(
+    phone: string,
+    plan: (transport: SmsTransport) => {
+      mode: SmsAttemptMode;
+      run: (transport: SmsTransport) => Promise<SmsSendOutcome | void>;
+    },
+  ): Promise<void> {
+    const attempts: SmsAttempt[] = [];
+    const outcome = await this.walk(phone, plan, attempts);
+    if (!outcome.delivered) {
+      throw new AppError('SMS_UNAVAILABLE', 503, 'No SMS provider accepted the message', {
+        phone,
+        attempts,
+      });
+    }
   }
 }
 
@@ -186,7 +230,7 @@ export class SmsIrTransport implements SmsTransport {
     return this.options.fetchImpl ?? (globalThis.fetch as unknown as FetchLike);
   }
 
-  async send(phone: string, message: string): Promise<void> {
+  async send(phone: string, message: string): Promise<SmsSendOutcome> {
     const base = this.options.baseUrl ?? 'https://api.sms.ir';
     const line = /^\d+$/.test(this.options.lineNumber)
       ? Number(this.options.lineNumber)
@@ -205,11 +249,11 @@ export class SmsIrTransport implements SmsTransport {
       }),
       signal: AbortSignal.timeout(this.options.timeoutMs ?? 5_000),
     });
-    await this.expectAccepted(response);
+    return { raw: await this.expectAccepted(response) };
   }
 
   /** `POST /v1/send/verify` — the code is filled into an approved template on a service line. */
-  async sendCode(phone: string, code: string): Promise<void> {
+  async sendCode(phone: string, code: string): Promise<SmsSendOutcome> {
     if (!this.options.templateId) {
       throw new SmsTransportError(this.name, null, 'no OTP template configured');
     }
@@ -228,22 +272,23 @@ export class SmsIrTransport implements SmsTransport {
       }),
       signal: AbortSignal.timeout(this.options.timeoutMs ?? 5_000),
     });
-    await this.expectAccepted(response);
+    return { raw: await this.expectAccepted(response) };
   }
 
   private async expectAccepted(response: {
     ok: boolean;
     status: number;
     text: () => Promise<string>;
-  }): Promise<void> {
+  }): Promise<string> {
     const body = await response.text();
     if (!response.ok)
-      throw new SmsTransportError(this.name, response.status, `http ${response.status}`);
+      throw new SmsTransportError(this.name, response.status, `http ${response.status}`, body);
     // SMS.ir answers 200 with `{"status":1}` on success and `{"status":0,...}` on a rejected line,
     // template or balance. The HTTP code alone is not a success signal.
     if (!/"status"\s*:\s*1(?!\d)/.test(body)) {
-      throw new SmsTransportError(this.name, response.status, 'rejected by provider');
+      throw new SmsTransportError(this.name, response.status, 'rejected by provider', body);
     }
+    return body;
   }
 }
 
@@ -275,7 +320,7 @@ export class KavenegarTransport implements SmsTransport {
     return `/v1/${encodeURIComponent(this.options.apiKey)}`;
   }
 
-  async send(phone: string, message: string): Promise<void> {
+  async send(phone: string, message: string): Promise<SmsSendOutcome> {
     const query = new URLSearchParams({
       receptor: phone,
       sender: this.options.sender,
@@ -286,11 +331,11 @@ export class KavenegarTransport implements SmsTransport {
       headers: { accept: 'application/json' },
       signal: AbortSignal.timeout(this.options.timeoutMs ?? 5_000),
     });
-    await this.expectAccepted(response);
+    return { raw: await this.expectAccepted(response) };
   }
 
   /** `GET /v1/{key}/verify/lookup.json?receptor&token&template` — token is the code. */
-  async sendCode(phone: string, code: string): Promise<void> {
+  async sendCode(phone: string, code: string): Promise<SmsSendOutcome> {
     if (!this.options.template) {
       throw new SmsTransportError(this.name, null, 'no OTP template configured');
     }
@@ -304,21 +349,22 @@ export class KavenegarTransport implements SmsTransport {
       headers: { accept: 'application/json' },
       signal: AbortSignal.timeout(this.options.timeoutMs ?? 5_000),
     });
-    await this.expectAccepted(response);
+    return { raw: await this.expectAccepted(response) };
   }
 
   private async expectAccepted(response: {
     ok: boolean;
     status: number;
     text: () => Promise<string>;
-  }): Promise<void> {
+  }): Promise<string> {
     const body = await response.text();
     if (!response.ok)
-      throw new SmsTransportError(this.name, response.status, `http ${response.status}`);
+      throw new SmsTransportError(this.name, response.status, `http ${response.status}`, body);
     // Kavenegar wraps everything in `{"return":{"status":200,...}}`.
     if (!/"status"\s*:\s*200(?!\d)/.test(body)) {
-      throw new SmsTransportError(this.name, response.status, 'rejected by provider');
+      throw new SmsTransportError(this.name, response.status, 'rejected by provider', body);
     }
+    return body;
   }
 }
 

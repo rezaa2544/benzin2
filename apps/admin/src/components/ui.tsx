@@ -143,7 +143,7 @@ export function Modal({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-ink/40 p-4">
-      <div className="w-full max-w-lg rounded-xl2 bg-raised p-5 shadow-lg">
+      <div data-testid="modal" className="w-full max-w-lg rounded-xl2 bg-raised p-5 shadow-lg">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-bold">{title}</h2>
           <button type="button" className="btn px-2 py-1 text-xs" onClick={onClose}>
