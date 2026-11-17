@@ -91,7 +91,8 @@ export async function createTestContext(
   clock: Clock = systemClock,
   options: TestContextOptions = {},
 ): Promise<TestContext> {
-  const repos = createMemoryRepositories();
+  // The clock goes into the repositories too: the plan allowance is a month-long window (G-26).
+  const repos = createMemoryRepositories(clock);
   const sms = new CapturingSms();
   const sender = options.wrapSms ? options.wrapSms(sms) : sms;
   const built = await buildApp({

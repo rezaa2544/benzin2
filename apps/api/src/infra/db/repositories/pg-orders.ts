@@ -517,6 +517,15 @@ export class PgReservationRepository implements ReservationRepository {
     );
   }
 
+  /** G-26: the buyer's monthly allowance counts every request they started, cancelled or not. */
+  async countByTakerSince(takerId: string, since: Date): Promise<number> {
+    return scalar(
+      this.db,
+      `SELECT count(*)::int AS value FROM reservations WHERE taker_id = $1 AND created_at >= $2`,
+      [takerId, since],
+    );
+  }
+
   async listByTaker(takerId: string, limit: number): Promise<Reservation[]> {
     const rows = await query<ReservationRow>(
       this.db,

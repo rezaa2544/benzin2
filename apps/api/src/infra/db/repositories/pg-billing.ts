@@ -22,6 +22,9 @@ type PlanRow = {
   duration_days: number;
   price_toman: number;
   max_active_orders: number;
+  monthly_reservations: number | null;
+  phone_visible: boolean;
+  single_use: boolean;
   is_active: boolean;
 };
 
@@ -32,10 +35,15 @@ const toPlan = (row: PlanRow): Plan => ({
   durationDays: Number(row.duration_days),
   priceToman: Number(row.price_toman),
   maxActiveOrders: Number(row.max_active_orders),
+  monthlyReservations:
+    row.monthly_reservations === null ? null : Number(row.monthly_reservations),
+  phoneVisible: row.phone_visible,
+  singleUse: row.single_use,
   isActive: row.is_active,
 });
 
-const PLAN_COLUMNS = `id, code, name_fa, duration_days, price_toman, max_active_orders, is_active`;
+const PLAN_COLUMNS = `id, code, name_fa, duration_days, price_toman, max_active_orders,
+  monthly_reservations, phone_visible, single_use, is_active`;
 
 export class PgPlanRepository implements PlanRepository {
   constructor(private readonly db: Db) {}
@@ -86,6 +94,9 @@ export class PgPlanRepository implements PlanRepository {
     if (patch.durationDays !== undefined) assign('duration_days', patch.durationDays);
     if (patch.priceToman !== undefined) assign('price_toman', patch.priceToman);
     if (patch.maxActiveOrders !== undefined) assign('max_active_orders', patch.maxActiveOrders);
+    if (patch.monthlyReservations !== undefined) assign('monthly_reservations', patch.monthlyReservations);
+    if (patch.phoneVisible !== undefined) assign('phone_visible', patch.phoneVisible);
+    if (patch.singleUse !== undefined) assign('single_use', patch.singleUse);
     if (patch.isActive !== undefined) assign('is_active', patch.isActive);
     if (sets.length === 0) {
       const current = await queryOne<PlanRow>(
@@ -116,11 +127,14 @@ export class PgPlanRepository implements PlanRepository {
   async upsert(plan: Plan): Promise<Plan> {
     const row = await queryOne<PlanRow>(
       this.db,
-      `INSERT INTO plans (id, code, name_fa, duration_days, price_toman, max_active_orders, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO plans (id, code, name_fa, duration_days, price_toman, max_active_orders,
+                          monthly_reservations, phone_visible, single_use, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (code) DO UPDATE
          SET name_fa = EXCLUDED.name_fa, duration_days = EXCLUDED.duration_days,
              price_toman = EXCLUDED.price_toman, max_active_orders = EXCLUDED.max_active_orders,
+             monthly_reservations = EXCLUDED.monthly_reservations,
+             phone_visible = EXCLUDED.phone_visible, single_use = EXCLUDED.single_use,
              is_active = EXCLUDED.is_active
        RETURNING ${PLAN_COLUMNS}`,
       [
@@ -130,6 +144,9 @@ export class PgPlanRepository implements PlanRepository {
         plan.durationDays,
         plan.priceToman,
         plan.maxActiveOrders,
+        plan.monthlyReservations,
+        plan.phoneVisible,
+        plan.singleUse,
         plan.isActive,
       ],
     );
@@ -146,9 +163,10 @@ type SubscriptionRow = {
   starts_at: Date;
   ends_at: Date;
   created_at: Date;
+  consumed_at: Date | null;
 };
 
-const SUBSCRIPTION_COLUMNS = `id, user_id, plan_id, status, starts_at, ends_at, created_at`;
+const SUBSCRIPTION_COLUMNS = `id, user_id, plan_id, status, starts_at, ends_at, created_at, consumed_at`;
 
 const toSubscription = (row: SubscriptionRow): Subscription => ({
   id: row.id,
@@ -158,6 +176,7 @@ const toSubscription = (row: SubscriptionRow): Subscription => ({
   startsAt: row.starts_at,
   endsAt: row.ends_at,
   createdAt: row.created_at,
+  consumedAt: row.consumed_at,
 });
 
 export class PgSubscriptionRepository implements SubscriptionRepository {
@@ -188,6 +207,7 @@ export class PgSubscriptionRepository implements SubscriptionRepository {
       this.db,
       `SELECT ${SUBSCRIPTION_COLUMNS} FROM subscriptions
         WHERE user_id = $1 AND status = 'ACTIVE' AND starts_at <= $2 AND ends_at > $2
+          AND consumed_at IS NULL
         ORDER BY ends_at DESC LIMIT 1`,
       [userId, now],
     );
@@ -200,6 +220,16 @@ export class PgSubscriptionRepository implements SubscriptionRepository {
       `UPDATE subscriptions SET status = 'ACTIVE', starts_at = $2, ends_at = $3
         WHERE id = $1 RETURNING ${SUBSCRIPTION_COLUMNS}`,
       [id, startsAt, endsAt],
+    );
+    return row ? toSubscription(row) : null;
+  }
+
+  async consume(id: string, at: Date): Promise<Subscription | null> {
+    const row = await queryOne<SubscriptionRow>(
+      this.db,
+      `UPDATE subscriptions SET consumed_at = $2 WHERE id = $1 AND consumed_at IS NULL
+       RETURNING ${SUBSCRIPTION_COLUMNS}`,
+      [id, at],
     );
     return row ? toSubscription(row) : null;
   }

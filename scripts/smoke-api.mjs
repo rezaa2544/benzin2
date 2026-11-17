@@ -202,12 +202,20 @@ await step('POST /v1/reservations/:id/confirm (owner)', async () => {
   return payload.status;
 });
 
-await step('GET /v1/reservations/:id/contact (phone reveal)', async () => {
-  const { status, payload } = await call('GET', `/v1/reservations/${reservation.id}/contact`, {
+await step('GET /v1/reservations/:id/contact sells numbers, not gives them (G-19/G-26)', async () => {
+  // With the free plan the accepted trade still does not hand out a number: the answer carries a
+  // reason the app can turn into «ارتقای اشتراک».
+  const free = await call('GET', `/v1/reservations/${reservation.id}/contact`, {
     token: buyer.token,
   });
-  expect(status === 200, `status ${status}: ${JSON.stringify(payload)}`);
-  return payload.phone ?? payload.contactPhone ?? 'revealed';
+  expect(
+    free.status === 402 && free.payload?.error?.code === 'PHONE_REQUIRES_SUBSCRIPTION',
+    `status ${free.status}: ${JSON.stringify(free.payload)}`,
+  );
+  expect(free.payload.error.details.chatOnly === true, 'no chat-only hint');
+  // No phone-shaped string leaks in the refusal.
+  expect(!/09\d{9}/.test(JSON.stringify(free.payload)), 'a number leaked in the refusal');
+  return '402 PHONE_REQUIRES_SUBSCRIPTION (chat only)';
 });
 
 await step('chat: post + read message', async () => {
@@ -329,6 +337,31 @@ await step('GET /v1/admin/revenue is staff-only and totals the window (G-12)', a
   const asBuyer = await call('GET', '/v1/admin/revenue', { token: buyer.token });
   expect(asBuyer.status === 403, `buyer got ${asBuyer.status}`);
   return `${asStaff.payload.totalTomanLabelFa} در ${asStaff.payload.paidCount} پرداخت`;
+});
+
+await step('GET /v1/me/entitlements answers what the buyer has paid for (G-26)', async () => {
+  const { status, payload } = await call('GET', '/v1/me/entitlements', { token: buyer.token });
+  expect(status === 200, `status ${status}`);
+  expect(typeof payload?.planCode === 'string', 'no plan code');
+  expect(typeof payload?.phoneVisible === 'boolean', 'no phone entitlement');
+  return `${payload.planNameFa} · ${payload.remaining === null ? 'نامحدود' : payload.remaining} رزرو`;
+});
+
+await step('GET /v1/plans lists what each plan sells (G-26)', async () => {
+  const { status, payload } = await call('GET', '/v1/plans', { token: buyer.token });
+  expect(status === 200, `status ${status}`);
+  const single = payload.items.find((plan) => plan.code === 'single');
+  expect(single?.priceToman === 15000, 'the 15k credit plan is missing');
+  expect(single?.singleUse === true, 'the credit plan is not single-use');
+  return `${payload.items.length} plan(s), credit plan ${single.priceLabelFa}`;
+});
+
+await step('PATCH /v1/me hides the number and shows it again (G-19)', async () => {
+  const hide = await call('PATCH', '/v1/me', { token: buyer.token, body: { phoneHidden: true } });
+  expect(hide.payload?.phoneHidden === true, 'the switch did not stick');
+  const show = await call('PATCH', '/v1/me', { token: buyer.token, body: { phoneHidden: false } });
+  expect(show.payload?.phoneHidden === false, 'the switch did not come back');
+  return 'hidden → visible';
 });
 
 await step('GET /v1/me/response (G-10, seller answer rate)', async () => {

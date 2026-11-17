@@ -17,6 +17,7 @@ import {
   type ReputationRecorder,
   type Repositories,
 } from '../ports.js';
+import type { EntitlementConsumption } from './entitlements-service.js';
 import { KeyedLock } from './keyed-lock.js';
 import type { SettingsService } from './settings-service.js';
 
@@ -60,6 +61,40 @@ export const toReservationView = (reservation: Reservation): ReservationView => 
   deliveryLockedUntil: reservation.deliveryLockedUntil?.toISOString() ?? null,
 });
 
+/**
+ * G-26 — the slice of `EntitlementService` this service needs. Narrow on purpose: the trade code
+ * must not be able to change plans or prices, only to ask and to record what it used.
+ */
+export interface EntitlementGate {
+  requireForReservation(user: User): Promise<
+    EntitlementConsumption & { planCode: string; monthlyLimit: number | null; usedThisMonth: number }
+  >;
+  recordUse(user: User, consumption: EntitlementConsumption): Promise<void>;
+  /** G-19: does this user's plan include seeing a number? */
+  phoneVisibleFor(userId: string): Promise<boolean>;
+}
+
+/** Default for the tests and tools that build a reservation service without billing at all. */
+const NOOP_ENTITLEMENTS: EntitlementGate = {
+  async requireForReservation() {
+    return {
+      subscriptionId: null,
+      singleUse: false,
+      planCode: 'free',
+      monthlyLimit: null,
+      usedThisMonth: 0,
+    };
+  },
+  async recordUse() {
+    /* nothing is metered when no entitlement service is wired */
+  },
+  async phoneVisibleFor() {
+    // A service built without billing behaves like the old free-for-all, which keeps the
+    // pre-G-26 tests honest about what they are testing.
+    return true;
+  },
+};
+
 export class ReservationService {
   /** One taker must not reserve twice at the same instant (E1-07). */
   private readonly takerLock = new KeyedLock();
@@ -75,6 +110,8 @@ export class ReservationService {
     private readonly reputation: ReputationRecorder = NOOP_REPUTATION,
     /** G-10: silence is measured here; the service decides what it costs (a listing pause). */
     private readonly ownerResponse: OwnerResponseTracker = NOOP_OWNER_RESPONSE,
+    /** G-26: the plan gate in front of every reservation, and the counter behind it. */
+    private readonly entitlements: EntitlementGate = NOOP_ENTITLEMENTS,
   ) {}
 
   /** Sends one Persian notification; a notifier failure must never fail the trade. */
@@ -111,12 +148,9 @@ export class ReservationService {
       throw new AppError('ORDER_NOT_AVAILABLE', 409, 'Order is no longer available');
     }
 
-    if (config['subscription.required_for_orders']) {
-      const subscription = await this.repos.subscriptions.findActiveByUser(taker.id, now);
-      if (!subscription) {
-        throw new AppError('SUBSCRIPTION_REQUIRED', 403, 'An active subscription is required');
-      }
-    }
+    // G-26: the plan decides, not a boolean. Throws RESERVATION_QUOTA_EXHAUSTED with the numbers
+    // the app needs to offer the right plan.
+    const entitlement = await this.entitlements.requireForReservation(taker);
 
     return this.takerLock.run(`taker:${taker.id}`, async () => {
       const active = await this.repos.reservations.findActiveByTaker(taker.id);
@@ -148,12 +182,20 @@ export class ReservationService {
         throw new AppError('ORDER_NOT_AVAILABLE', 409, 'Order is no longer available');
       }
 
+      // Only now is the buyer's plan actually spent: a lost race must not cost a credit.
+      await this.entitlements.recordUse(taker, entitlement);
+
       await this.repos.audit.append({
         actorId: taker.id,
         action: 'reservation.requested',
         entity: 'reservation',
         entityId: reservation.id,
-        metadata: { orderId },
+        metadata: {
+          orderId,
+          planCode: entitlement.planCode,
+          quotaUsed: entitlement.usedThisMonth + 1,
+          quotaLimit: entitlement.monthlyLimit,
+        },
       });
       await this.notify(
         order.ownerId,
@@ -465,8 +507,16 @@ export class ReservationService {
   }
 
   /**
-   * E4-05: phone numbers are a two-sided secret. They are released only after the owner
-   * accepted the request, and only to the two parties — every release is audited.
+   * E4-05 + G-19: phone numbers are a two-sided secret.
+   *
+   * Three rules stack, and all three must hold for a number to leave the server:
+   *  1. the caller is a party to a reservation the owner already accepted;
+   *  2. the caller's plan includes seeing numbers (the free plan does not — it sells browsing and
+   *     three reservations with the number hidden);
+   *  3. the person on the other end has not switched «شماره‌ام را مخفی کن» on.
+   *
+   * A hidden number is never serialised: the response says `hidden: true` and the app keeps the
+   * chat button, so privacy costs nobody the trade. Every call is audited either way.
    */
   async revealContact(
     actor: User,
@@ -475,8 +525,11 @@ export class ReservationService {
     reservationId: string;
     orderId: string;
     revealedAt: string;
-    owner: { id: string; phone: string };
-    taker: { id: string; phone: string };
+    /** True when at least one side is unreachable by phone; the app then offers chat only. */
+    chatOnly: boolean;
+    hidden: { owner: boolean; taker: boolean };
+    owner: { id: string; phone: string | null };
+    taker: { id: string; phone: string | null };
   }> {
     const { reservation, order } = await this.load(id);
     const isOwner = order.ownerId === actor.id;
@@ -489,24 +542,43 @@ export class ReservationService {
         status: reservation.status,
       });
     }
+    if (!(await this.entitlements.phoneVisibleFor(actor.id))) {
+      throw new AppError(
+        'PHONE_REQUIRES_SUBSCRIPTION',
+        402,
+        'Seeing a phone number is part of a paid plan',
+        { chatOnly: true },
+      );
+    }
+
     const owner = await this.repos.users.findById(order.ownerId);
     const taker = await this.repos.users.findById(reservation.takerId);
     if (!owner || !taker) throw AppError.notFound('NOT_FOUND', 'Party disappeared');
+
+    const hidden = { owner: owner.phoneHidden, taker: taker.phoneHidden };
 
     await this.repos.audit.append({
       actorId: actor.id,
       action: 'contact.revealed',
       entity: 'reservation',
       entityId: id,
-      metadata: { orderId: order.id, by: isOwner ? 'OWNER' : 'TAKER' },
+      metadata: {
+        orderId: order.id,
+        by: isOwner ? 'OWNER' : 'TAKER',
+        hidden: Object.entries(hidden)
+          .filter(([, isHidden]) => isHidden)
+          .map(([side]) => side.toUpperCase()),
+      },
     });
 
     return {
       reservationId: id,
       orderId: order.id,
       revealedAt: this.clock.now().toISOString(),
-      owner: { id: owner.id, phone: owner.phone },
-      taker: { id: taker.id, phone: taker.phone },
+      chatOnly: hidden.owner || hidden.taker,
+      hidden,
+      owner: { id: owner.id, phone: hidden.owner ? null : owner.phone },
+      taker: { id: taker.id, phone: hidden.taker ? null : taker.phone },
     };
   }
 

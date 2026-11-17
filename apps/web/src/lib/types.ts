@@ -13,6 +13,23 @@ export interface PublicUser {
   displayName: string | null;
   role: UserRole;
   createdAt?: string;
+  /** G-19: the privacy switch, only ever about the signed-in user themselves. */
+  phoneHidden?: boolean;
+}
+
+/** G-26 — what the signed-in buyer's plan allows right now. */
+export interface EntitlementView {
+  planCode: string;
+  planNameFa: string;
+  source: 'SUBSCRIPTION' | 'FREE';
+  active: boolean;
+  endsAt: string | null;
+  phoneVisible: boolean;
+  monthlyLimit: number | null;
+  usedThisMonth: number;
+  remaining: number | null;
+  singleUse: boolean;
+  needsPurchase: boolean;
 }
 
 export interface ZoneView {
@@ -204,6 +221,11 @@ export interface PlanView {
   priceLabelFa: string;
   durationDays: number;
   maxActiveOrders: number;
+  /** G-26: what the plan sells. `null` reservations means unlimited. */
+  monthlyReservations: number | null;
+  phoneVisible: boolean;
+  singleUse: boolean;
+  isActive: boolean;
 }
 
 export type SubscriptionStatus = 'ACTIVE' | 'EXPIRED' | 'CANCELLED';

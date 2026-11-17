@@ -33,6 +33,10 @@ export interface SeedPlan {
   durationDays: number;
   priceToman: number;
   maxActiveOrders: number;
+  /** G-26: reservations per month; null means unlimited. */
+  monthlyReservations: number | null;
+  phoneVisible: boolean;
+  singleUse: boolean;
   isActive: boolean;
 }
 
@@ -44,6 +48,10 @@ export const SEED_PLANS: readonly SeedPlan[] = [
     durationDays: 30,
     priceToman: 0,
     maxActiveOrders: 0,
+    // «۳ رزرو در ماه با شمارهٔ مخفی» — browsing stays free, the number stays the paid part.
+    monthlyReservations: 3,
+    phoneVisible: false,
+    singleUse: false,
     isActive: true,
   },
   {
@@ -52,6 +60,9 @@ export const SEED_PLANS: readonly SeedPlan[] = [
     durationDays: 30,
     priceToman: 49_000,
     maxActiveOrders: 3,
+    monthlyReservations: null,
+    phoneVisible: true,
+    singleUse: false,
     isActive: true,
   },
   {
@@ -60,6 +71,22 @@ export const SEED_PLANS: readonly SeedPlan[] = [
     durationDays: 90,
     priceToman: 129_000,
     maxActiveOrders: 5,
+    monthlyReservations: null,
+    phoneVisible: true,
+    singleUse: false,
+    isActive: true,
+  },
+  {
+    // G-26: «اعتباری (تک‌رزرو)» — one reservation without a subscription, for the light user.
+    // ASSUMPTION A15: the credit is valid 90 days, the same horizon as the quarterly plan.
+    code: 'single',
+    nameFa: 'اعتباری (تک‌رزرو)',
+    durationDays: 90,
+    priceToman: 15_000,
+    maxActiveOrders: 0,
+    monthlyReservations: 1,
+    phoneVisible: true,
+    singleUse: true,
     isActive: true,
   },
 ];
@@ -74,6 +101,7 @@ export const SEED_PLAN_IDS: Record<string, string> = {
   free: '3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e4e',
   monthly: '3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e4f',
   quarterly: '3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e50',
+  single: '3d1c7c1a-1f6f-4d3e-9f0a-0b7b1c2d3e52',
 };
 
 /** Destination card for manual card-to-card transfers (task E7-04); replaced in the panel. */

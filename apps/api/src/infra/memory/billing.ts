@@ -72,6 +72,7 @@ export class MemorySubscriptionRepository implements SubscriptionRepository {
       startsAt: input.startsAt,
       endsAt: input.endsAt,
       createdAt: input.startsAt,
+      consumedAt: null,
     };
     this.byId.set(subscription.id, clone(subscription));
     return clone(subscription);
@@ -88,6 +89,8 @@ export class MemorySubscriptionRepository implements SubscriptionRepository {
         (subscription) =>
           subscription.userId === userId &&
           subscription.status === 'ACTIVE' &&
+          // A spent credit plan must never extend an entitlement again (G-26).
+          subscription.consumedAt === null &&
           subscription.endsAt.getTime() > now.getTime(),
       )
       .sort((a, b) => b.endsAt.getTime() - a.endsAt.getTime());
@@ -100,6 +103,14 @@ export class MemorySubscriptionRepository implements SubscriptionRepository {
     subscription.status = 'ACTIVE';
     subscription.startsAt = startsAt;
     subscription.endsAt = endsAt;
+    return clone(subscription);
+  }
+
+  async consume(id: string, at: Date): Promise<Subscription | null> {
+    const subscription = this.byId.get(id);
+    if (!subscription) return null;
+    subscription.consumedAt = at;
+    this.byId.set(id, clone(subscription));
     return clone(subscription);
   }
 

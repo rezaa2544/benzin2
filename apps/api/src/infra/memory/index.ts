@@ -114,6 +114,7 @@ export class MemoryUserRepository implements UserRepository {
       status: 'ACTIVE',
       suspendedUntil: null,
       createdAt: new Date(),
+      phoneHidden: false,
       responseAnswered: 0,
       responseReceived: 0,
       responseRatePermille: null,
@@ -534,11 +535,22 @@ export class MemoryOrderRepository implements OrderRepository {
 
 export class MemoryReservationRepository implements ReservationRepository {
   private readonly byId = new Map<string, Reservation>();
+  /**
+   * G-26: reservation timestamps must follow the application clock, not the wall clock, because
+   * the plan's monthly allowance is measured in that window. The factory wires it in; a repo built
+   * bare keeps `new Date()` so nothing else changes.
+   */
+  private now: () => Date = () => new Date();
   /** G-10: the answer window needs the order's owner; Postgres joins, here the factory hands it over. */
   private orders: MemoryOrderRepository | null = null;
 
   attachOrders(orders: MemoryOrderRepository): void {
     this.orders = orders;
+  }
+
+  /** G-26: lets the app clock drive `createdAt`, so the monthly allowance is testable. */
+  useClock(now: () => Date): void {
+    this.now = now;
   }
 
   async countForOwnerWindow(
@@ -585,6 +597,14 @@ export class MemoryReservationRepository implements ReservationRepository {
     return (await this.findActiveByTaker(takerId)).length;
   }
 
+  /** G-26: the monthly allowance counts every request, cancelled ones included. */
+  async countByTakerSince(takerId: string, since: Date): Promise<number> {
+    return [...this.byId.values()].filter(
+      (reservation) =>
+        reservation.takerId === takerId && reservation.createdAt.getTime() >= since.getTime(),
+    ).length;
+  }
+
   async listByTaker(takerId: string, limit: number): Promise<Reservation[]> {
     return [...this.byId.values()]
       .filter((reservation) => reservation.takerId === takerId)
@@ -601,7 +621,7 @@ export class MemoryReservationRepository implements ReservationRepository {
       orderId: input.orderId,
       takerId: input.takerId,
       status: 'PENDING_OWNER',
-      createdAt: new Date(),
+      createdAt: this.now(),
       expiresAt: input.expiresAt,
       decidedAt: null,
       completedAt: null,
@@ -773,9 +793,10 @@ export class MemoryProviderSettingsRepository implements ProviderSettingsReposit
   }
 }
 
-export function createMemoryRepositories(): Repositories {
+export function createMemoryRepositories(clock?: { now(): Date }): Repositories {
   const orders = new MemoryOrderRepository();
   const reservations = new MemoryReservationRepository();
+  if (clock) reservations.useClock(clock.now.bind(clock));
   const users = new MemoryUserRepository();
   orders.attachReservations(reservations);
   orders.attachUsers(users);

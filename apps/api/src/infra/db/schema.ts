@@ -94,6 +94,8 @@ export const users = pgTable(
     reputation: integer('reputation').notNull().default(0),
     /** Trust suspension window (task E6-01); null when the account is unrestricted. */
     suspendedUntil: timestamp('suspended_until', { withTimezone: true }),
+    /** G-19: the user keeps their number private; the in-app chat stays the only contact path. */
+    phoneHidden: boolean('phone_hidden').notNull().default(false),
     /**
      * G-10 — answer rate over the last 30 days, stored as a projection so the market can sort on
      * it and the card can show it without recounting reservations. Nothing here is a penalty.
@@ -400,6 +402,11 @@ export const plans = pgTable('plans', {
   durationDays: integer('duration_days').notNull(),
   priceToman: integer('price_toman').notNull(),
   maxActiveOrders: smallint('max_active_orders').notNull().default(2),
+  // G-26: what the plan actually sells — a monthly reservation allowance (null = unlimited),
+  // the right to see a counterparty's number, and whether the plan is spent by one reservation.
+  monthlyReservations: smallint('monthly_reservations'),
+  phoneVisible: boolean('phone_visible').notNull().default(false),
+  singleUse: boolean('single_use').notNull().default(false),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -418,6 +425,8 @@ export const subscriptions = pgTable(
     startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
     endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** G-26: a single-use credit subscription stops granting anything once this is set. */
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
   },
   (t) => [
     check('subscriptions_window', sql`${t.endsAt} > ${t.startsAt}`),

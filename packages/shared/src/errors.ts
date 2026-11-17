@@ -16,6 +16,12 @@ export const ERROR_CODES = [
   'SMS_UNAVAILABLE',
   'ACCOUNT_SUSPENDED',
   'SUBSCRIPTION_REQUIRED',
+  /** G-26: the plan's monthly allowance is spent; the app offers the cheapest paid plan. */
+  'RESERVATION_QUOTA_EXHAUSTED',
+  /** G-19: seeing a number is part of a paid plan. */
+  'PHONE_REQUIRES_SUBSCRIPTION',
+  /** The catalogue lost its free plan — a deployment bug the API must not paper over. */
+  'FREE_PLAN_MISSING',
   'ZONE_NOT_SUPPORTED',
   'ZONE_MISMATCH',
   'OUTSIDE_ZONE',

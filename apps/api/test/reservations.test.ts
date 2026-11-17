@@ -11,6 +11,23 @@ import {
 
 let phoneSeq = 0;
 
+/** G-26: hands a user an active subscription for the named plan. */
+const givePlan = async (ctx: TestContext, userId: string, code: string): Promise<void> => {
+  const plan = await ctx.repos.plans.findByCode(code);
+  if (!plan) throw new Error(`plan ${code} missing`);
+  const subscription = await ctx.repos.subscriptions.create({
+    userId,
+    planId: plan.id,
+    startsAt: new Date(),
+    endsAt: new Date(Date.now() + plan.durationDays * 86_400_000),
+  });
+  await ctx.repos.subscriptions.activate(
+    subscription.id,
+    subscription.startsAt,
+    subscription.endsAt,
+  );
+};
+
 /** A brand new seller per test: the open-order cap is per user, not per test context. */
 const newOwner = async (ctx: TestContext): Promise<string> =>
   (await login(ctx, `0912${String(6_000_000 + phoneSeq++).padStart(7, '0')}`)).token;
@@ -34,8 +51,12 @@ describe('reservations', () => {
   beforeAll(async () => {
     ctx = await createTestContext();
     ownerToken = (await login(ctx, '09121000001')).token;
-    takerToken = (await login(ctx, '09121000002')).token;
+    const taker = await login(ctx, '09121000002');
+    takerToken = taker.token;
     void ownerToken;
+    // G-26: this shared buyer reserves in almost every test in this file, so they hold a plan with
+    // no monthly cap. The allowance itself is exercised in its own file.
+    await givePlan(ctx, taker.userId, 'monthly');
   });
 
   afterAll(async () => {

@@ -27,7 +27,7 @@ import { Conditions, query, queryOne, scalar, type Db } from './pg-common.js';
 
 const USER_COLUMNS = `id, phone, display_name, role, status, suspended_until, created_at,
   response_answered, response_received, response_rate_permille, response_refreshed_at,
-  unanswered_streak, delisted_until`;
+  unanswered_streak, delisted_until, phone_hidden`;
 
 type UserRow = {
   id: string;
@@ -43,6 +43,7 @@ type UserRow = {
   response_refreshed_at: Date | null;
   unanswered_streak: number;
   delisted_until: Date | null;
+  phone_hidden: boolean;
 };
 
 const toUser = (row: UserRow): User => ({
@@ -53,6 +54,7 @@ const toUser = (row: UserRow): User => ({
   status: row.status,
   suspendedUntil: row.suspended_until,
   createdAt: row.created_at,
+  phoneHidden: row.phone_hidden ?? false,
   responseAnswered: Number(row.response_answered ?? 0),
   responseReceived: Number(row.response_received ?? 0),
   responseRatePermille: row.response_rate_permille === null ? null : Number(row.response_rate_permille),
@@ -154,7 +156,7 @@ export class PgUserRepository implements UserRepository {
       `UPDATE users SET display_name = $2, role = $3, status = $4, suspended_until = $5,
          response_answered = $6, response_received = $7, response_rate_permille = $8,
          response_refreshed_at = $9, unanswered_streak = $10, delisted_until = $11,
-         updated_at = now()
+         phone_hidden = $12, updated_at = now()
         WHERE id = $1 RETURNING ${USER_COLUMNS}`,
       [
         user.id,
@@ -168,6 +170,7 @@ export class PgUserRepository implements UserRepository {
         user.responseRefreshedAt,
         user.unansweredStreak,
         user.delistedUntil,
+        user.phoneHidden,
       ],
     );
     if (!row) throw new Error(`user ${user.id} not found`);

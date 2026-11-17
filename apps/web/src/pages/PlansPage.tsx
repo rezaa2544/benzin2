@@ -3,6 +3,7 @@ import { formatJalaliDate, formatToman, toPersianDigits } from '@benzin/shared';
 import type { ApiClient } from '../lib/api.js';
 import { errorMessage } from '../lib/api.js';
 import type {
+  EntitlementView,
   MetaConfig,
   PaymentStartView,
   PlanView,
@@ -47,11 +48,14 @@ export function PlansPage({ api, config, paymentOutcome }: PlansPageProps): JSX.
   const reviewMode = config?.cardMode === 'review';
 
   const load = useCallback(async () => {
-    const [plans, subscription] = await Promise.all([
+    const [plans, subscription, entitlement] = await Promise.all([
       api.get<{ items: PlanView[] }>('/v1/plans'),
       api.get<{ subscription: SubscriptionView | null }>('/v1/me/subscription'),
+      // G-26: the plan that governs this buyer and what is left of it — shown before the cards,
+      // because «چند رزرو دارم؟» is the question that brings people to this page.
+      api.get<EntitlementView>('/v1/me/entitlements'),
     ]);
-    return { plans: plans.items, subscription: subscription.subscription };
+    return { plans: plans.items, subscription: subscription.subscription, entitlement };
   }, [api]);
 
   const { data, loading, error: loadError } = useResource(load, [api]);
@@ -110,6 +114,30 @@ export function PlansPage({ api, config, paymentOutcome }: PlansPageProps): JSX.
         <Skeleton rows={2} />
       ) : (
         <>
+          {data?.entitlement ? (
+            <div
+              className="card mb-3 border-brand/40 bg-brandSoft"
+              data-testid="entitlement-card"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-bold">{data.entitlement.planNameFa}</p>
+                <span className="chip">
+                  {data.entitlement.phoneVisible ? t('plans.planPhone') : t('plans.planNoPhone')}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted tnum" data-testid="entitlement-remaining">
+                {data.entitlement.remaining === null
+                  ? tf('plans.unlimitedRemaining', {
+                      used: toPersianDigits(data.entitlement.usedThisMonth),
+                    })
+                  : tf('plans.remainingOf', {
+                      remaining: toPersianDigits(data.entitlement.remaining),
+                      limit: toPersianDigits(data.entitlement.monthlyLimit ?? 0),
+                    })}
+              </p>
+            </div>
+          ) : null}
+
           {data?.subscription ? (
             <div className="card mb-3 border-brand/40 bg-brandSoft">
               <p className="text-sm font-bold">{data.subscription.planNameFa}</p>
@@ -203,10 +231,33 @@ export function PlansPage({ api, config, paymentOutcome }: PlansPageProps): JSX.
                     <h3 className="text-base font-bold">{plan.nameFa}</h3>
                     <span className="text-sm font-bold tnum">{plan.priceLabelFa}</span>
                   </div>
-                  <p className="mb-3 text-xs text-muted tnum">
+                  <p className="mb-1 text-xs text-muted tnum">
                     {tf('plans.duration', { days: toPersianDigits(plan.durationDays) })} ·{' '}
                     {tf('plans.orders', { count: toPersianDigits(plan.maxActiveOrders) })}
                   </p>
+                  {/* G-26: the card says what the money actually buys. */}
+                  <ul className="mb-3 space-y-1 text-xs">
+                    <li className="flex items-center gap-1">
+                      <span aria-hidden className="text-brand">
+                        ✓
+                      </span>
+                      {plan.monthlyReservations === null
+                        ? t('plans.unlimited')
+                        : `${toPersianDigits(plan.monthlyReservations)} ${t('plans.planReservations')}`}
+                    </li>
+                    <li className="flex items-center gap-1">
+                      <span aria-hidden className={plan.phoneVisible ? 'text-brand' : 'text-muted'}>
+                        {plan.phoneVisible ? '✓' : '×'}
+                      </span>
+                      {plan.phoneVisible ? t('plans.planPhone') : t('plans.planNoPhone')}
+                    </li>
+                    {plan.singleUse ? (
+                      <li className="flex items-center gap-1 text-muted">
+                        <span aria-hidden>•</span>
+                        {t('plans.planSingle')}
+                      </li>
+                    ) : null}
+                  </ul>
                   <button
                     type="button"
                     className="btn btn-primary w-full"

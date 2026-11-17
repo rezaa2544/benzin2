@@ -29,6 +29,8 @@ const errorMap = {
   RESERVATION_LIMIT_REACHED: t('errors.RESERVATION_LIMIT_REACHED'),
   TRADE_CYCLE_BLOCKED: t('errors.TRADE_CYCLE_BLOCKED'),
   SUBSCRIPTION_REQUIRED: t('errors.SUBSCRIPTION_REQUIRED'),
+  // G-26: the plan's monthly allowance is spent — the answer points at the plans page, not a dead end.
+  RESERVATION_QUOTA_EXHAUSTED: t('errors.RESERVATION_QUOTA_EXHAUSTED'),
   INVALID_STATE_TRANSITION: t('errors.INVALID_STATE_TRANSITION'),
 };
 

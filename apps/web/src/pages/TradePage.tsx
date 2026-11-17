@@ -38,6 +38,8 @@ const errorMap = {
   DELIVERY_CODE_REQUIRED: t('errors.DELIVERY_CODE_REQUIRED'),
   DELIVERY_CODE_INVALID: t('errors.DELIVERY_CODE_INVALID'),
   DELIVERY_CODE_LOCKED: t('errors.DELIVERY_CODE_LOCKED'),
+  // G-19: seeing a number is part of a paid plan; the message says so and stays calm.
+  PHONE_REQUIRES_SUBSCRIPTION: t('trade.phoneNeedsPlan'),
 };
 
 const LABELS: Record<TradeAction, string> = {
@@ -53,13 +55,18 @@ const LABELS: Record<TradeAction, string> = {
 
 const DANGER: readonly TradeAction[] = ['reject', 'cancel', 'dispute'];
 
-/** What `/v1/reservations/:id/contact` returns: both numbers, the caller picks the peer. */
+/**
+ * What `/v1/reservations/:id/contact` returns. G-19: a side that hid their number comes back as
+ * `null` with `hidden` set, and the screen switches to chat instead of a dialler.
+ */
 interface ContactReveal {
   reservationId: string;
   orderId: string;
   revealedAt: string;
-  owner: { id: string; phone: string };
-  taker: { id: string; phone: string };
+  chatOnly: boolean;
+  hidden: { owner: boolean; taker: boolean };
+  owner: { id: string; phone: string | null };
+  taker: { id: string; phone: string | null };
 }
 
 /**
@@ -72,6 +79,8 @@ export function TradePage({ api, user, config, reservationId }: TradePageProps):
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [phone, setPhone] = useState<string | null>(null);
+  /** G-19: the other side hid their number, so the trade continues in the in-app chat. */
+  const [chatOnly, setChatOnly] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
   const [stars, setStars] = useState(5);
   const [rated, setRated] = useState(false);
@@ -95,7 +104,9 @@ export function TradePage({ api, user, config, reservationId }: TradePageProps):
         const result = await api.get<ContactReveal>(`/v1/reservations/${reservationId}/contact`);
         // Show the other party, never your own number.
         const isTaker = data?.reservation.takerId === user.id;
-        setPhone(isTaker ? result.owner.phone : result.taker.phone);
+        const peer = isTaker ? result.owner.phone : result.taker.phone;
+        setPhone(peer);
+        setChatOnly(peer === null);
       } else {
         // G-09: closing the trade sends the buyer's hand-over code; everything else keeps the old
         // body-less shape (only `cancel` carries a reason object today).
@@ -195,7 +206,16 @@ export function TradePage({ api, user, config, reservationId }: TradePageProps):
         </Notice>
       ) : null}
 
-      {!phone && !actions.includes('contact') && live ? (
+      {chatOnly ? (
+        <Notice tone="info">
+          {t('trade.phoneHidden')}{' '}
+          <button type="button" className="underline" onClick={() => navigate('/chat')}>
+            {t('trade.chatInstead')}
+          </button>
+        </Notice>
+      ) : null}
+
+      {!phone && !chatOnly && !actions.includes('contact') && live ? (
         <Notice tone="info">{t('trade.contactHidden')}</Notice>
       ) : null}
 

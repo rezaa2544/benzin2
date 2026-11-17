@@ -28,6 +28,10 @@ export function PlansPage({ api }: { api: ApiClient }): JSX.Element {
     priceToman: '0',
     durationDays: '30',
     maxActiveOrders: '0',
+    /** Empty means unlimited, which is how the paid plans are sold (G-26). */
+    monthlyReservations: '',
+    phoneVisible: false,
+    singleUse: false,
     isActive: true,
   });
 
@@ -39,6 +43,9 @@ export function PlansPage({ api }: { api: ApiClient }): JSX.Element {
       priceToman: '0',
       durationDays: '30',
       maxActiveOrders: '0',
+      monthlyReservations: '',
+      phoneVisible: false,
+      singleUse: false,
       isActive: true,
     });
     setError(null);
@@ -53,6 +60,10 @@ export function PlansPage({ api }: { api: ApiClient }): JSX.Element {
       priceToman: String(plan.priceToman),
       durationDays: String(plan.durationDays),
       maxActiveOrders: String(plan.maxActiveOrders),
+      monthlyReservations:
+        plan.monthlyReservations === null ? '' : String(plan.monthlyReservations),
+      phoneVisible: plan.phoneVisible,
+      singleUse: plan.singleUse,
       isActive: plan.isActive,
     });
     setError(null);
@@ -67,6 +78,12 @@ export function PlansPage({ api }: { api: ApiClient }): JSX.Element {
       priceToman: Number(form.priceToman || 0),
       durationDays: Number(form.durationDays || 0),
       maxActiveOrders: Number(form.maxActiveOrders || 0),
+      // G-26: an empty box means «نامحدود», not zero — the difference between a paid plan and one
+      // that sells nothing.
+      monthlyReservations:
+        form.monthlyReservations.trim() === '' ? null : Number(form.monthlyReservations),
+      phoneVisible: form.phoneVisible,
+      singleUse: form.singleUse,
       isActive: form.isActive,
     };
     try {
@@ -231,6 +248,41 @@ export function PlansPage({ api }: { api: ApiClient }): JSX.Element {
                 setForm({ ...form, maxActiveOrders: event.target.value.replace(/[^0-9]/g, '') })
               }
             />
+          </Field>
+          <Field label={fa.plans.monthlyReservations} hint={fa.plans.monthlyReservationsHint}>
+            <input
+              className="input tnum"
+              dir="ltr"
+              inputMode="numeric"
+              placeholder="∞"
+              value={form.monthlyReservations}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  monthlyReservations: event.target.value.replace(/[^0-9]/g, ''),
+                })
+              }
+            />
+          </Field>
+          <Field label={fa.plans.phoneVisible}>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.phoneVisible}
+                onChange={(event) => setForm({ ...form, phoneVisible: event.target.checked })}
+              />
+              {fa.plans.phoneVisible}
+            </label>
+          </Field>
+          <Field label={fa.plans.singleUse}>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.singleUse}
+                onChange={(event) => setForm({ ...form, singleUse: event.target.checked })}
+              />
+              {fa.plans.singleUse}
+            </label>
           </Field>
           <Field label={fa.plans.active}>
             <label className="flex items-center gap-2 text-sm">

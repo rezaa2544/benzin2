@@ -39,6 +39,9 @@ export function ProfilePage({ api, user, onUser, onLogout }: ProfilePageProps): 
   const [nameError, setNameError] = useState<string | null>(null);
   const [nameSaved, setNameSaved] = useState(false);
   const [savingName, setSavingName] = useState(false);
+  /** G-19: the privacy switch. Saved on its own so it never waits on the name edit. */
+  const [phoneHidden, setPhoneHidden] = useState(user.phoneHidden ?? false);
+  const [savingPrivacy, setSavingPrivacy] = useState(false);
 
   const load = useCallback(async () => {
     const [reputation, response, devices, subscription] = await Promise.all([
@@ -81,6 +84,22 @@ export function ProfilePage({ api, user, onUser, onLogout }: ProfilePageProps): 
       setError(errorMessage(cause, errorMap));
     } finally {
       setSavingName(false);
+    }
+  };
+
+  const togglePhoneHidden = async (next: boolean): Promise<void> => {
+    setPhoneHidden(next);
+    setSavingPrivacy(true);
+    setError(null);
+    try {
+      const updated = await api.patch<PublicUser>('/v1/me', { phoneHidden: next });
+      onUser(updated);
+      setPhoneHidden(updated.phoneHidden ?? next);
+    } catch (cause) {
+      setPhoneHidden(!next);
+      setError(errorMessage(cause, errorMap));
+    } finally {
+      setSavingPrivacy(false);
     }
   };
 
@@ -162,6 +181,27 @@ export function ProfilePage({ api, user, onUser, onLogout }: ProfilePageProps): 
           </p>
         )}
         {nameSaved ? <Notice tone="success">{t('profile.saved')}</Notice> : null}
+      </div>
+
+      {/* G-19: one switch, no ceremony — and the hint says what stays available. */}
+      <div className="card mb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold">{t('profile.phoneHidden')}</h2>
+            <p className="mt-1 text-xs text-muted">{t('profile.phoneHiddenHint')}</p>
+          </div>
+          <label className="flex shrink-0 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label={t('profile.phoneHidden')}
+              checked={phoneHidden}
+              disabled={savingPrivacy}
+              onChange={(event) => void togglePhoneHidden(event.target.checked)}
+            />
+            <span className="text-xs text-muted">{phoneHidden ? t('common.yes') : t('common.no')}</span>
+          </label>
+        </div>
       </div>
 
       {loading ? (

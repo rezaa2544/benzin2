@@ -5,6 +5,7 @@ import type { User } from '../domain/entities.js';
 import type { AdminService } from '../modules/admin-service.js';
 import type { AuthService } from '../modules/auth-service.js';
 import type { ChatService } from '../modules/chat-service.js';
+import type { EntitlementService } from '../modules/entitlements-service.js';
 import type { NotificationService } from '../modules/notification-service.js';
 import type { PaymentService } from '../modules/payment-service.js';
 import type { ProfileService } from '../modules/profile-service.js';
@@ -38,6 +39,8 @@ export interface AppServices {
   ownerResponse: OwnerResponseService;
   /** Card-to-card deposits: webhook matching, review queue (task G-11). */
   cardDeposits: CardDepositService;
+  /** Buyer entitlements: plan allowance, phone visibility, credit consumption (G-26). */
+  entitlements: EntitlementService;
 }
 
 declare module 'fastify' {

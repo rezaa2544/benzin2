@@ -72,6 +72,7 @@ import {
 } from '../modules/payment-providers.js';
 import { PaymentService } from '../modules/payment-service.js';
 import { CardDepositService, verifyDepositSignature } from '../modules/card-deposit-service.js';
+import { EntitlementService } from '../modules/entitlements-service.js';
 import { OwnerResponseService } from '../modules/owner-response-service.js';
 import { ReputationService } from '../modules/reputation-service.js';
 import { ReservationService } from '../modules/reservations-service.js';
@@ -131,6 +132,8 @@ const toPublicUser = (user: User) => ({
   displayName: user.displayName,
   role: user.role,
   createdAt: user.createdAt.toISOString(),
+  // G-19: the owner of the profile must be able to see the switch's state.
+  phoneHidden: user.phoneHidden,
 });
 
 export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
@@ -193,6 +196,9 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
   // G-10: the answer rate is a badge, not a penalty — it never writes to the reputation ledger.
   const ownerResponse = new OwnerResponseService(repos, clock, notifications);
   const orders = new OrderService(repos, settings, clock, distance, locations, notifications);
+  // G-26: one authority over "what has this buyer paid for", consulted by the reservation gate and
+  // by the phone rule below.
+  const entitlements = new EntitlementService(repos, settings, clock);
   const reservations = new ReservationService(
     repos,
     settings,
@@ -200,6 +206,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     notifications,
     reputation,
     ownerResponse,
+    entitlements,
   );
   // The socket hub is attached to the Fastify server below; the service publishes
   // through this indirection so construction order stays acyclic.
@@ -247,6 +254,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     tradeMedian,
     ownerResponse,
     cardDeposits,
+    entitlements,
   };
   const requireAuth = authenticate(auth);
 
@@ -614,6 +622,15 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     const started = await payments.startPurchase(currentUser(request), body);
     return reply.status(201).send(started);
   });
+
+  /**
+   * G-26 — what this buyer may do right now: which plan governs them, how many reservations are
+   * left this month, and whether the plan includes seeing a number. The app reads it to decide
+   * between «رزرو» and «ارتقای اشتراک», so the rule is never re-implemented on the client.
+   */
+  app.get('/v1/me/entitlements', { preHandler: requireAuth }, async (request) =>
+    entitlements.forUser(currentUser(request).id),
+  );
 
   app.get('/v1/payments/mine', { preHandler: requireAuth }, async (request) => {
     const query = parseInput(paginationSchema, request.query);

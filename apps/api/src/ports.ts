@@ -250,6 +250,11 @@ export interface ReservationRepository {
   ): Promise<{ received: number; answered: number }>;
   findActiveByOrder(orderId: string): Promise<Reservation | null>;
   findActiveByTaker(takerId: string): Promise<Reservation[]>;
+  /**
+   * G-26: how many reservations this buyer already started in a window — the counter behind the
+   * plan's monthly allowance. Cancelled requests still count, otherwise the quota is free to abuse.
+   */
+  countByTakerSince(takerId: string, since: Date): Promise<number>;
   countActiveByTaker(takerId: string): Promise<number>;
   listByTaker(takerId: string, limit: number): Promise<Reservation[]>;
   /**
@@ -372,6 +377,8 @@ export interface SubscriptionRepository {
   /** The subscription that covers `now` for this user, latest window wins. */
   findActiveByUser(userId: string, now: Date): Promise<Subscription | null>;
   activate(id: string, startsAt: Date, endsAt: Date): Promise<Subscription | null>;
+  /** G-26: a single-use credit plan is spent by the reservation it paid for. */
+  consume(id: string, at: Date): Promise<Subscription | null>;
   listDueExpiry(now: Date, limit: number): Promise<Subscription[]>;
   expire(id: string): Promise<Subscription | null>;
   listByUser(userId: string, limit: number): Promise<Subscription[]>;

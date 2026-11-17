@@ -35,6 +35,22 @@ describe('E4 — concurrency, timers, cycle gate, contact disclosure and dispute
 
   const freshUser = async () => (await login(ctx, `09${(phone += 1)}`)).token;
 
+  /** G-26: buys the buyer a plan — the free tier does not include seeing numbers. */
+  const givePlan = async (token: string, code: string): Promise<void> => {
+    const plan = await ctx.repos.plans.findByCode(code);
+    if (!plan) throw new Error(`plan ${code} missing`);
+    const subscription = await ctx.repos.subscriptions.create({
+      userId: (await ctx.repos.users.findByPhone(
+        (await ctx.app.inject({ method: 'GET', url: '/v1/me', headers: auth(token) })).json<{ phone: string }>()
+          .phone,
+      ))!.id,
+      planId: plan.id,
+      startsAt: clock.now(),
+      endsAt: new Date(clock.now().getTime() + plan.durationDays * 86_400_000),
+    });
+    await ctx.repos.subscriptions.activate(subscription.id, subscription.startsAt, subscription.endsAt);
+  };
+
   const createOrder = async (token: string, overrides: Record<string, unknown> = {}) => {
     const response = await ctx.app.inject({
       method: 'POST',
@@ -190,6 +206,21 @@ describe('E4 — concurrency, timers, cycle gate, contact disclosure and dispute
     expect((tooEarly.json() as Record<string, unknown>).taker).toBeUndefined();
 
     await decide(owner, reservation.id, 'confirm');
+
+    // G-19/G-26: the free plan does not buy numbers, so the same request is refused — with a
+    // reason the app can act on, and without leaking a phone-shaped string.
+    const freePlan = await ctx.app.inject({
+      method: 'GET',
+      url: `/v1/reservations/${reservation.id}/contact`,
+      headers: auth(taker),
+    });
+    expect(freePlan.statusCode).toBe(402);
+    expect((freePlan.json() as { error: { code: string } }).error.code).toBe(
+      'PHONE_REQUIRES_SUBSCRIPTION',
+    );
+    expect(freePlan.body).not.toMatch(/09\d{9}/);
+
+    await givePlan(taker, 'monthly');
 
     const revealed = await ctx.app.inject({
       method: 'GET',

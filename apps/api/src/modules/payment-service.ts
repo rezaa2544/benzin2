@@ -23,6 +23,11 @@ export interface PlanView {
   priceLabelFa: string;
   durationDays: number;
   maxActiveOrders: number;
+  /** G-26: what the plan sells, so the app can promise it in the card. */
+  monthlyReservations: number | null;
+  phoneVisible: boolean;
+  singleUse: boolean;
+  isActive: boolean;
 }
 
 export interface SubscriptionView {
@@ -103,6 +108,10 @@ const toPlanView = (plan: Plan): PlanView => ({
   priceLabelFa: plan.priceToman === 0 ? 'رایگان' : formatToman(plan.priceToman),
   durationDays: plan.durationDays,
   maxActiveOrders: plan.maxActiveOrders,
+  monthlyReservations: plan.monthlyReservations,
+  phoneVisible: plan.phoneVisible,
+  singleUse: plan.singleUse,
+  isActive: plan.isActive,
 });
 
 const toPaymentView = (payment: Payment): PaymentView => ({
@@ -193,6 +202,9 @@ export class PaymentService {
       durationDays: input.durationDays,
       priceToman: input.priceToman,
       maxActiveOrders: input.maxActiveOrders ?? 0,
+      monthlyReservations: input.monthlyReservations ?? null,
+      phoneVisible: input.phoneVisible ?? false,
+      singleUse: input.singleUse ?? false,
       isActive: input.isActive ?? true,
     });
     await this.repos.audit.append({

@@ -128,6 +128,10 @@ export interface PlanRow {
   priceLabelFa: string;
   durationDays: number;
   maxActiveOrders: number;
+  /** G-26: what the plan sells — reservations per month (null = unlimited), numbers, single use. */
+  monthlyReservations: number | null;
+  phoneVisible: boolean;
+  singleUse: boolean;
   isActive: boolean;
 }
 

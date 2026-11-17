@@ -38,7 +38,10 @@ export class ProfileService {
     }
 
     const before = user.displayName;
-    user.displayName = input.displayName;
+    if (input.displayName !== undefined) user.displayName = input.displayName;
+    // G-19: the switch is part of the same edit, so a user can hide their number in one tap.
+    const hiddenBefore = user.phoneHidden;
+    if (input.phoneHidden !== undefined) user.phoneHidden = input.phoneHidden;
     const saved = await this.repos.users.save(user);
 
     await this.repos.audit.append({
@@ -46,7 +49,11 @@ export class ProfileService {
       action: 'user.profile_updated',
       entity: 'user',
       entityId: user.id,
-      metadata: { before, after: input.displayName },
+      metadata: {
+        before,
+        after: input.displayName,
+        ...(hiddenBefore !== saved.phoneHidden ? { phoneHidden: saved.phoneHidden } : {}),
+      },
     });
 
     return saved;

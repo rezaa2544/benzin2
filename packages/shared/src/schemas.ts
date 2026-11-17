@@ -316,6 +316,13 @@ export const createPlanSchema = z
     durationDays: z.number().int().min(1).max(365),
     /** Extra open-order slots the plan grants while it is active. */
     maxActiveOrders: z.number().int().min(0).max(50).default(0),
+    /**
+     * G-26 — what the buyer gets. `monthlyReservations` is required so a new plan can never be
+     * created without the owner saying how many reservations it is worth; `null` means unlimited.
+     */
+    monthlyReservations: z.number().int().min(0).max(1000).nullable().default(null),
+    phoneVisible: z.boolean().default(false),
+    singleUse: z.boolean().default(false),
     isActive: z.boolean().default(true),
   })
   .strict();
@@ -328,6 +335,9 @@ export const updatePlanSchema = z
     priceToman: z.number().int().min(0).max(100_000_000).optional(),
     durationDays: z.number().int().min(1).max(365).optional(),
     maxActiveOrders: z.number().int().min(0).max(50).optional(),
+    monthlyReservations: z.number().int().min(0).max(1000).nullable().optional(),
+    phoneVisible: z.boolean().optional(),
+    singleUse: z.boolean().optional(),
     isActive: z.boolean().optional(),
   })
   .strict();
@@ -420,6 +430,8 @@ export type AdminUserQuery = z.infer<typeof adminUserQuerySchema>;
  *  the phone is the identity and changes only by verifying a new number with OTP. */
 export const updateProfileSchema = z
   .object({
+    // G-19: the privacy switch must be usable on its own — a toggle that demands the name be
+    // re-sent is a toggle people learn not to touch.
     displayName: z
       .string()
       .trim()
@@ -428,9 +440,18 @@ export const updateProfileSchema = z
       .nullable()
       .refine((value) => value === null || !/^[\d\s+\-()]+$/.test(value), {
         message: 'DISPLAY_NAME_INVALID',
-      }),
+      })
+      .optional(),
+    /**
+     * G-19 — «شماره‌ام را مخفی کن». When on, no counterparty ever receives the number, even after a
+     * confirmed trade; the in-app chat stays open, so the trade is never blocked.
+     */
+    phoneHidden: z.boolean().optional(),
   })
-  .strict();
+  .strict()
+  .refine((value) => value.displayName !== undefined || value.phoneHidden !== undefined, {
+    message: 'VALIDATION_ERROR',
+  });
 
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 

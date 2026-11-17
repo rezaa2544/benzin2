@@ -25,6 +25,11 @@ export interface User {
   suspendedUntil: Date | null;
   readonly createdAt: Date;
   /**
+   * G-19 — the user chose to keep their number private. The rule is enforced on the server: a
+   * hidden number is never serialised into a response, whatever the caller's plan says.
+   */
+  phoneHidden: boolean;
+  /**
    * G-10 — how well this seller answers the requests they receive.
    *
    * The rate is a *badge*, never a punishment: nothing here subtracts points from anyone. The
@@ -119,6 +124,17 @@ export interface Plan {
   readonly priceToman: number;
   /** Extra open-order slots granted while the subscription is active. */
   readonly maxActiveOrders: number;
+  /**
+   * G-26 — what the buyer is actually buying.
+   *
+   * `monthlyReservations` is the number of reservations this plan grants per calendar month
+   * (`null` = unlimited, used by the paid plans); `phoneVisible` is the entitlement to see the
+   * counterparty's number at all; `singleUse` marks the credit plan, whose subscription is
+   * consumed by the single reservation it pays for.
+   */
+  readonly monthlyReservations: number | null;
+  readonly phoneVisible: boolean;
+  readonly singleUse: boolean;
   readonly isActive: boolean;
 }
 
@@ -130,6 +146,8 @@ export interface Subscription {
   startsAt: Date;
   endsAt: Date;
   readonly createdAt: Date;
+  /** G-26: set when a single-use credit plan is spent, so it stops extending entitlements. */
+  consumedAt: Date | null;
 }
 
 export interface Payment {
