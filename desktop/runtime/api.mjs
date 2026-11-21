@@ -56626,6 +56626,7 @@ var PARTICIPANT_STATUSES = [
 ];
 var WRITABLE_ORDER_STATUSES = /* @__PURE__ */ new Set(["RESERVED", "CONFIRMED", "DISPUTED"]);
 var CONTACT_ALLOWED_ORDER_STATUSES = /* @__PURE__ */ new Set(["CONFIRMED", "DISPUTED"]);
+var HIDDEN_GATE = { phoneVisibleFor: async () => false };
 var toMessageView = (message, contactMasked) => ({
   id: message.id,
   conversationId: message.conversationId,
@@ -56638,12 +56639,18 @@ var toMessageView = (message, contactMasked) => ({
 });
 var partyLabel = (isOwner) => isOwner ? "\u0635\u0627\u062D\u0628 \u0633\u0641\u0627\u0631\u0634" : "\u062E\u0631\u06CC\u062F\u0627\u0631";
 var ChatService = class {
-  constructor(repos2, settings2, clock, notifier, events = NOOP_CHAT_EVENTS) {
+  constructor(repos2, settings2, clock, notifier, events = NOOP_CHAT_EVENTS, phoneGate = HIDDEN_GATE) {
     this.repos = repos2;
     this.settings = settings2;
     this.clock = clock;
     this.notifier = notifier;
     this.events = events;
+    this.phoneGate = phoneGate;
+  }
+  /** Accepted trade + a plan that includes numbers ⇒ this reader may see digits. */
+  async contactGateFor(context, readerId) {
+    if (!CONTACT_ALLOWED_ORDER_STATUSES.has(context.order.status)) return "TRADE_NOT_ACCEPTED";
+    return await this.phoneGate.phoneVisibleFor(readerId) ? null : "SUBSCRIPTION_REQUIRED";
   }
   async context(actor, conversationId) {
     const conversation = await this.repos.conversations.findById(conversationId);
@@ -56673,13 +56680,15 @@ var ChatService = class {
     const peerId = this.peerId(context, actor);
     const peer = peerId ? await this.repos.users.findById(peerId) : null;
     const last = await this.repos.messages.lastMessage(context.conversation.id);
+    const contactReason = await this.contactGateFor(context, actor.id);
     return {
       id: context.conversation.id,
       orderId: context.order.id,
       createdAt: context.conversation.createdAt.toISOString(),
       closedAt: context.conversation.closedAt?.toISOString() ?? null,
       writable: this.isWritable(context) && context.conversation.closedAt === null,
-      contactAllowed: CONTACT_ALLOWED_ORDER_STATUSES.has(context.order.status),
+      contactAllowed: contactReason === null,
+      contactReason,
       peer: { id: peer?.id ?? "", displayName: peer?.displayName ?? null },
       unreadCount: await this.repos.messages.countUnread(context.conversation.id, actor.id),
       lastMessage: last ? {
@@ -56746,7 +56755,8 @@ var ChatService = class {
       );
       if (existing) return toMessageView(existing);
     }
-    const contactAllowed = CONTACT_ALLOWED_ORDER_STATUSES.has(context.order.status);
+    const peerId = this.peerId(context, actor);
+    const contactAllowed = peerId !== null && await this.contactGateFor(context, peerId) === null;
     const masked = contactAllowed ? null : maskPhoneNumbers(input.body);
     const message = await this.repos.messages.append(
       {
@@ -56778,7 +56788,6 @@ var ChatService = class {
       conversationId,
       payload: { message: toMessageView(message, masked ? masked.maskedCount > 0 : false) }
     });
-    const peerId = this.peerId(context, actor);
     if (peerId) {
       await this.notifier.emit({
         userId: peerId,
@@ -56806,6 +56815,16 @@ var ChatService = class {
         { orderStatus: context.order.status }
       );
     }
+    const readerId = this.peerId(context, actor);
+    const readerGate = readerId ? await this.contactGateFor(context, readerId) : "SUBSCRIPTION_REQUIRED";
+    if (readerGate !== null) {
+      throw new AppError(
+        "PHONE_REQUIRES_SUBSCRIPTION",
+        402,
+        "Seeing a phone number is part of a paid plan",
+        { chatOnly: true, reason: readerGate }
+      );
+    }
     const message = await this.repos.messages.append(
       {
         conversationId,
@@ -56829,10 +56848,9 @@ var ChatService = class {
       conversationId,
       payload: { message: toMessageView(message) }
     });
-    const peerId = this.peerId(context, actor);
-    if (peerId) {
+    if (readerId) {
       await this.notifier.emit({
-        userId: peerId,
+        userId: readerId,
         kind: "CONTACT_SHARED",
         params: { by: partyLabel(context.isOwner) },
         payload: { conversationId, orderId: context.order.id }
@@ -61080,7 +61098,7 @@ async function buildApp(options) {
   );
   const events = { publish: (event) => hub.publisher.publish(event) };
   const hub = { publisher: NOOP_CHAT_EVENTS };
-  const chat = new ChatService(repos2, settings2, clock, notifications2, events);
+  const chat = new ChatService(repos2, settings2, clock, notifications2, events, entitlements);
   const stats = new StatsService(repos2, settings2, clock);
   const tradeMedian = new TradeMedianService(repos2, clock);
   const admin = new AdminService(
@@ -61106,13 +61124,22 @@ async function buildApp(options) {
     region: options.node?.region ?? config2.NODE_REGION ?? null,
     staleSeconds: config2.NODE_STALE_SECONDS
   });
-  const scheduler2 = createScheduler(reservations2, orders2, reputation, payments2, clock, sweepLock2, ownerResponse, {
-    onTick: (result, at) => {
-      const detail = { ...result };
-      const count = Object.values(detail).reduce((total, value) => total + value, 0);
-      nodes.recordJob("expiry-sweep", count, detail);
+  const scheduler2 = createScheduler(
+    reservations2,
+    orders2,
+    reputation,
+    payments2,
+    clock,
+    sweepLock2,
+    ownerResponse,
+    {
+      onTick: (result, at) => {
+        const detail = { ...result };
+        const count = Object.values(detail).reduce((total, value) => total + value, 0);
+        nodes.recordJob("expiry-sweep", count, detail);
+      }
     }
-  });
+  );
   const infra = new InfraService(repos2, settings2, clock, {
     version: config2.APP_VERSION,
     mode: config2.DATABASE_URL ? "postgres" : "memory",
@@ -61486,11 +61513,7 @@ async function buildApp(options) {
     const rawBody = request.body;
     const body = typeof rawBody === "string" ? rawBody : JSON.stringify(request.body ?? {});
     const signature = request.headers["x-benzin-signature"];
-    if (!verifyDepositSignature(
-      body,
-      Array.isArray(signature) ? signature[0] : signature,
-      secret
-    )) {
+    if (!verifyDepositSignature(body, Array.isArray(signature) ? signature[0] : signature, secret)) {
       throw new AppError("CARD_WEBHOOK_UNAUTHORIZED", 401, "Invalid webhook signature");
     }
     const parsed = parseInput(cardDepositSchema, JSON.parse(body || "{}"));
@@ -61658,16 +61681,20 @@ async function buildApp(options) {
       return payments2.deactivatePaymentCard(currentUser(request), id);
     }
   );
-  app2.get("/v1/admin/revenue", { preHandler: [requireAuth, requireRole("ADMIN", "OWNER")] }, async (request) => {
-    const query2 = request.query ?? {};
-    const days = query2.days ? Number(query2.days) : 30;
-    const to = query2.to ? new Date(query2.to) : clock.now();
-    const from = query2.from ? new Date(query2.from) : new Date(to.getTime() - Math.min(Math.max(days, 1), 366) * 864e5);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-      throw AppError.validation("Invalid date range");
+  app2.get(
+    "/v1/admin/revenue",
+    { preHandler: [requireAuth, requireRole("ADMIN", "OWNER")] },
+    async (request) => {
+      const query2 = request.query ?? {};
+      const days = query2.days ? Number(query2.days) : 30;
+      const to = query2.to ? new Date(query2.to) : clock.now();
+      const from = query2.from ? new Date(query2.from) : new Date(to.getTime() - Math.min(Math.max(days, 1), 366) * 864e5);
+      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+        throw AppError.validation("Invalid date range");
+      }
+      return payments2.revenue(from, to);
     }
-    return payments2.revenue(from, to);
-  });
+  );
   app2.post(
     "/v1/admin/reconciliation",
     { preHandler: [requireAuth, requireRole("ADMIN", "OWNER")] },
@@ -61808,14 +61835,10 @@ async function buildApp(options) {
     }
   );
   app2.get("/v1/admin/sms", { preHandler: [...staffOnly] }, async () => services2.sms.status());
-  app2.post(
-    "/v1/admin/sms/test",
-    { preHandler: [...staffOnly] },
-    async (request) => {
-      const body = parseInput(smsTestSchema, request.body ?? {});
-      return services2.sms.testSend(currentUser(request), body.phone, body.provider);
-    }
-  );
+  app2.post("/v1/admin/sms/test", { preHandler: [...staffOnly] }, async (request) => {
+    const body = parseInput(smsTestSchema, request.body ?? {});
+    return services2.sms.testSend(currentUser(request), body.phone, body.provider);
+  });
   app2.get("/v1/admin/zones", { preHandler: [...staffOnly] }, async () => admin.listZones());
   app2.put("/v1/admin/zones", { preHandler: [...staffOnly] }, async (request) => {
     const body = parseInput(zoneUpsertSchema, request.body);
