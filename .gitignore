@@ -9,3 +9,8 @@ coverage/
 .vite/
 .turbo/
 *.tsbuildinfo
+
+# Production deployment secrets and artifacts (task G-18). The example file is committed.
+infra/.env.prod
+infra/rclone.conf
+infra/backups/

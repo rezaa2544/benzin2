@@ -1,0 +1,249 @@
+# Production stack for one small VPS (task G-18).
+#
+#   cp infra/.env.prod.example infra/.env.prod     # fill the domain + secrets
+#   docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.prod up -d --build
+#
+# Differences from `docker-compose.yml` (which stays a *development* stack):
+#   • nothing but Caddy publishes a port — the database and the apps are reachable only inside
+#     the compose network;
+#   • Caddy terminates TLS for a real domain and renews the certificate itself;
+#   • every service has `restart: unless-stopped`, a healthcheck and a log rotation cap, so a
+#     reboot, a crash or a chatty log line cannot take the site down;
+#   • a nightly `backup` sidecar dumps the database, prunes old copies and (optionally) ships them
+#     to any rclone remote — the restore drill lives in `infra/restore-test.sh`;
+#   • Uptime Kuma watches the API and the site from outside, on `/status/`.
+
+name: benzin
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '20m'
+    max-file: '5'
+
+x-restart: &restart unless-stopped
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    restart: *restart
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-benzin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/.env.prod}
+      POSTGRES_DB: ${POSTGRES_DB:-benzin}
+      # Tehran, so `CURRENT_DATE` in the panel matches the day people live in.
+      TZ: Asia/Tehran
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # The restore drill runs where the data is (`infra/restore-test.sh`); it only reads the
+      # dumps, so the volume is mounted read-only.
+      - ./restore-test.sh:/drills/restore-test.sh:ro
+      - backups:/backups:ro
+    healthcheck:
+      # `-h 127.0.0.1` matters: the initdb phase already answers on the unix socket, so a
+      # socket-only check marks the database healthy while it still refuses TCP — which is
+      # exactly how the first `migrate` run fails on a brand-new volume.
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-benzin} -d ${POSTGRES_DB:-benzin}',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  redis:
+    image: redis:7-alpine
+    restart: *restart
+    logging: *logging
+    command: ['redis-server', '--appendonly', 'yes', '--save', '900', '1']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 15s
+      timeout: 3s
+      retries: 10
+
+  # Forward-only migrations (E1-02) run *before* the API starts, every deploy. `initdb` scripts
+  # only fire on an empty volume, so schema changes would silently never apply that way.
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    # One-shot: it must not be restarted forever after a successful run.
+    restart: 'no'
+    logging: *logging
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-benzin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-benzin}
+      TZ: Asia/Tehran
+    command: ['node', 'apps/api/dist/infra/db/cli.js', 'migrate']
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    restart: *restart
+    logging: *logging
+    environment:
+      NODE_ENV: production
+      API_PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-benzin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-benzin}
+      REDIS_URL: redis://redis:6379
+      # Secrets: no default. `docker compose config` fails loudly if one is missing.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in infra/.env.prod}
+      OTP_PEPPER: ${OTP_PEPPER:?set OTP_PEPPER in infra/.env.prod}
+      CORS_ORIGINS: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN (https://<domain>) in infra/.env.prod}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN}
+      # G-12: the gateway callback has to be HTTPS and on the real domain, or the API refuses to boot.
+      PAYMENT_CALLBACK_URL: ${PUBLIC_ORIGIN}/v1/payments/gateway/callback
+      PAYMENT_RETURN_URL: ${PUBLIC_ORIGIN}/payments/return
+      ZARINPAL_MERCHANT_ID: ${ZARINPAL_MERCHANT_ID:-}
+      # G-02: one primary runs the sweeps; a helper node parks itself until the primary is quiet.
+      NODE_ROLE: ${NODE_ROLE:-primary}
+      NODE_ID: ${NODE_ID:-primary-1}
+      SCHEDULER_INTERVAL_MS: ${SCHEDULER_INTERVAL_MS:-30000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TZ: Asia/Tehran
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/healthz >/dev/null || exit 1']
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    restart: *restart
+    logging: *logging
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:4173/ >/dev/null || exit 1']
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  admin:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.admin
+    restart: *restart
+    logging: *logging
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:4173/ >/dev/null || exit 1']
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: *restart
+    logging: *logging
+    ports:
+      # Overridable so the whole stack can be rehearsed on a machine that already owns 80/443.
+      - '${HTTP_PORT:-80}:80'
+      - '${HTTPS_PORT:-443}:443'
+      - '${HTTPS_PORT:-443}:443/udp'
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST (the bare domain) in infra/.env.prod}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in infra/.env.prod}
+    volumes:
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+      admin:
+        condition: service_started
+      uptime-kuma:
+        condition: service_started
+    healthcheck:
+      test: ['CMD', 'caddy', 'version']
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  # Nightly pg_dump + rotation + optional cloud copy (task G-18). Runs as a tiny loop instead of
+  # host cron so the schedule travels with the stack.
+  backup:
+    image: postgis/postgis:16-3.4
+    restart: *restart
+    logging: *logging
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-benzin}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-benzin}
+      BACKUP_DIR: /backups
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_HOUR: ${BACKUP_HOUR:-3}
+      BACKUP_RCLONE_REMOTE: ${BACKUP_RCLONE_REMOTE:-}
+      RCLONE_CONFIG: /config/rclone.conf
+      TZ: Asia/Tehran
+    volumes:
+      - ./backup.sh:/usr/local/bin/backup.sh:ro
+      - backups:/backups
+      - ${RCLONE_CONFIG_FILE:-./rclone.conf}:/config/rclone.conf:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ['/bin/sh', '/usr/local/bin/backup.sh', 'loop']
+    healthcheck:
+      # "healthy" means at least one dump exists — the whole point of this container.
+      test: ['CMD-SHELL', 'test -n "$$(ls -A /backups 2>/dev/null)" || exit 1']
+      interval: 1h
+      timeout: 10s
+      retries: 2
+      start_period: 5m
+
+  # Uptime monitor for the API and the site (G-18). Published through Caddy at /status/.
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    restart: *restart
+    logging: *logging
+    environment:
+      # The image we deploy ignores both base-path variables (verified on 1.23.17: `/` answers,
+      # `/status/` 404s), so Kuma is served on its own name `status.<PUBLIC_HOST>` by Caddy and
+      # the app keeps no prefix of its own.
+      TZ: Asia/Tehran
+    volumes:
+      - kumadata:/app/data
+    healthcheck:
+      test: ['CMD-SHELL', 'extra/healthcheck || exit 1']
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  pgdata:
+  redisdata:
+  caddydata:
+  caddyconfig:
+  backups:
+  kumadata:

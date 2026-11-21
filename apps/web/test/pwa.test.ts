@@ -137,7 +137,11 @@ describe('index.html wiring (E9-15)', () => {
 
   it('opts iOS into standalone mode and keeps the status bar readable', () => {
     expect(html).toContain('name="apple-mobile-web-app-capable" content="yes"');
-    expect(html).toContain('name="apple-mobile-web-app-status-bar-style" content="default"');
+    // G-17: `default` left a light bar over a dark app. `black-translucent` lets the WebView run
+    // under the notch, and `--safe-top` in tokens.css pads the shell back down.
+    expect(html).toContain(
+      'name="apple-mobile-web-app-status-bar-style" content="black-translucent"',
+    );
     expect(html).toContain('name="apple-mobile-web-app-title" content="بنزین"');
     expect(html).toContain('viewport-fit=cover');
   });

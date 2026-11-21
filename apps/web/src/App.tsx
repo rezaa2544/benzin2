@@ -27,8 +27,17 @@ import {
 } from './lib/theme.js';
 import { t } from './lib/i18n.js';
 import { readOnline, subscribeOnline } from './lib/pwa.js';
+import {
+  apiBaseUrl,
+  appPlatform,
+  deviceId,
+  isNativeApp,
+  newDeviceId,
+  syncPushToken,
+} from './lib/native.js';
 import type { AuthResult, MetaConfig, ZoneView } from './lib/types.js';
 import { AppShell } from './components/AppShell.js';
+import { InstallHint } from './components/InstallHint.js';
 import type { NavKey } from './components/BottomNav.js';
 import { StyleGuidePage } from './pages/StyleGuidePage.js';
 import { LoginPage } from './pages/LoginPage.js';
@@ -92,6 +101,9 @@ export function App(): JSX.Element {
   const api = useMemo(
     () =>
       new ApiClient({
+        // Empty in a browser (relative URLs, same origin). The Android shell has to know the
+        // deployed origin because its WebView origin is `https://localhost` (G-16).
+        baseUrl: apiBaseUrl(import.meta.env.VITE_API_BASE_URL),
         getAccessToken: () => readSession(storeRef.current)?.accessToken ?? null,
         getRefreshToken: () => readSession(storeRef.current)?.refreshToken ?? null,
         onTokens: (tokens) => {
@@ -110,6 +122,22 @@ export function App(): JSX.Element {
     sync();
     return subscribeOnline(window, sync);
   }, []);
+
+  // ---------------------------------------------------------------- native shell (G-16)
+  // Only fires inside the Capacitor WebView. The token is registered after login, and again
+  // whenever FCM rotates it; a browser short-circuits on `isNativeApp()`.
+  useEffect(() => {
+    if (!session || !isNativeApp()) return;
+    void syncPushToken({
+      platform: appPlatform() ?? 'android',
+      register: (pushToken) =>
+        api.registerDevice({
+          deviceId: deviceId(window.localStorage, newDeviceId),
+          platform: appPlatform() ?? 'android',
+          pushToken,
+        }),
+    });
+  }, [api, session]);
 
   // ---------------------------------------------------------------- theme
   useEffect(() => {
@@ -223,6 +251,7 @@ export function App(): JSX.Element {
         config={config}
         onAuthenticated={onAuthenticated}
         reason={route.query['expired'] ? t('errors.TOKEN_EXPIRED') : undefined}
+        banner={<InstallHint />}
       />
     );
   }
@@ -331,7 +360,9 @@ export function App(): JSX.Element {
         );
       case 'plans':
         // G-12: the gateway sends the browser back with `?payment=paid|failed|pending`.
-        return <PlansPage api={api} config={config} paymentOutcome={route.query['payment'] ?? null} />;
+        return (
+          <PlansPage api={api} config={config} paymentOutcome={route.query['payment'] ?? null} />
+        );
       case 'styleGuide':
         return <StyleGuidePage theme={mode} onToggleTheme={toggleTheme} />;
       default:

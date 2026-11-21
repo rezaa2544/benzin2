@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">بنزین۲</string>
+    <string name="title_activity_main">بنزین۲</string>
+    <string name="package_name">ir.benzin2.app</string>
+    <string name="custom_url_scheme">ir.benzin2.app</string>
+    <!-- The channel id the manifest points FCM at; created on first launch by MainActivity. -->
+    <string name="default_notification_channel_id">benzin_trades</string>
+    <string name="default_notification_channel_name">معامله‌ها</string>
+</resources>

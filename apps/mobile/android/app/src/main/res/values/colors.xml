@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- UX-SPEC.md tokens: dark bg #0B0F14, brand #12B76A, brand ink #05603A. -->
+    <color name="colorPrimary">#12B76A</color>
+    <color name="colorPrimaryDark">#05603A</color>
+    <color name="colorAccent">#12B76A</color>
+    <color name="splashBackground">#0B0F14</color>
+</resources>

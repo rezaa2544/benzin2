@@ -77,6 +77,8 @@
   --tap-min: 44px;
   --phone-max: 430px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* G-17: iOS with `black-translucent` draws the WebView under the notch; the shell pads by this. */
+  --safe-top: env(safe-area-inset-top, 0px);
   --nav-height: 4rem;
 
   /* Layer order */

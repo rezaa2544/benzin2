@@ -1,0 +1,21 @@
+# Keep the build context small and reproducible (task G-18): the images install their own
+# dependencies inside the container from the lockfile, so a developer's node_modules, build output
+# and desktop artifacts must never travel over the wire.
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+coverage/
+**/coverage/
+.vite/
+.turbo/
+.git/
+.husky/
+desktop/runtime/
+desktop/dist-content/
+docs/
+uploads/
+*.log
+*.tsbuildinfo

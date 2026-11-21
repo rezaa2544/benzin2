@@ -20,6 +20,10 @@ const safeEqualHex = (a: string, b: string): boolean => {
   return mismatch === 0;
 };
 
+/** A device row is scoped by (user, deviceId); the value comes from the client, so it is checked. */
+const DEVICE_ID_PATTERN = /^[A-Za-z0-9._:-]{8,128}$/;
+const DEVICE_PLATFORMS = ['android', 'ios', 'web'] as const;
+
 export interface DeviceInput {
   platform: 'android' | 'ios' | 'web';
   deviceId: string;
@@ -295,6 +299,23 @@ export class AuthService {
 
   listDevices(user: User) {
     return this.repos.devices.listByUser(user.id);
+  }
+
+  /**
+   * G-16: the app learns its FCM token *after* login, so the token cannot only travel with the
+   * OTP request. Same upsert as the login path: one row per (user, deviceId), refreshed in place,
+   * so a reinstalled app or a rotated token updates the row instead of piling up dead tokens.
+   */
+  async registerDevice(user: User, input: DeviceInput) {
+    if (!DEVICE_ID_PATTERN.test(input.deviceId)) {
+      throw new AppError('VALIDATION_ERROR', 422, 'deviceId must be 8–128 safe characters', {
+        field: 'deviceId',
+      });
+    }
+    if (!DEVICE_PLATFORMS.includes(input.platform)) {
+      throw new AppError('VALIDATION_ERROR', 422, 'Unknown platform', { field: 'platform' });
+    }
+    return this.repos.devices.upsert({ ...input, userId: user.id }, this.clock.now());
   }
 }
 

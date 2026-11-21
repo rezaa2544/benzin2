@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { toPersianDigits, toAsciiDigits } from '@benzin/shared';
 import { errorMessage } from '../lib/api.js';
 import type { ApiClient } from '../lib/api.js';
@@ -13,6 +13,8 @@ export interface LoginPageProps {
   onAuthenticated: (auth: AuthResult) => void;
   /** Shown when the user was bounced here by an expired session. */
   reason?: string;
+  /** G-17: the iOS «add to home screen» card, rendered above the form when it applies. */
+  banner?: ReactNode;
 }
 
 const PHONE = /^09\d{9}$/;
@@ -22,7 +24,13 @@ const PHONE = /^09\d{9}$/;
  * timer, the code boxes accept Persian digits, and the phone is normalised before it is
  * ever sent (no spaces, no `+98`).
  */
-export function LoginPage({ api, config, onAuthenticated, reason }: LoginPageProps): JSX.Element {
+export function LoginPage({
+  api,
+  config,
+  onAuthenticated,
+  reason,
+  banner,
+}: LoginPageProps): JSX.Element {
   const [step, setStep] = useState<'phone' | 'code'>('phone');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
@@ -91,7 +99,11 @@ export function LoginPage({ api, config, onAuthenticated, reason }: LoginPagePro
     <>
       {/* No header on the auth screen, so the version chip pins itself to the corner. */}
       <VersionBadge fixed />
-      <div className="phone-frame flex min-h-dvh flex-col justify-center py-10">
+      <div
+        className="phone-frame flex min-h-dvh flex-col justify-center py-10"
+        style={{ paddingTop: 'calc(var(--safe-top) + 2.5rem)' }}
+      >
+        {banner}
         <div className="mb-6 text-center">
           <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-card bg-brand text-2xl text-brandInk">
             ⛽

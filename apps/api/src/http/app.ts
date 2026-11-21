@@ -458,6 +458,27 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     return reply.status(200).send({ revoked });
   });
 
+  /**
+   * G-16: the Android app registers its FCM token here once the user is signed in (the token
+   * arrives after the OTP, and it can rotate at any time). Idempotent by (user, deviceId).
+   */
+  app.post('/v1/me/devices', { preHandler: requireAuth }, async (request) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const device = await auth.registerDevice(currentUser(request), {
+      platform: body.platform as 'android' | 'ios' | 'web',
+      deviceId: String(body.deviceId ?? ''),
+      pushToken: typeof body.pushToken === 'string' ? body.pushToken : undefined,
+      appVersion: typeof body.appVersion === 'string' ? body.appVersion : undefined,
+    });
+    return {
+      id: device.id,
+      platform: device.platform,
+      deviceId: device.deviceId,
+      pushRegistered: device.pushToken !== null,
+      lastSeenAt: device.lastSeenAt.toISOString(),
+    };
+  });
+
   app.get('/v1/me/devices', { preHandler: requireAuth }, async (request) => {
     const devices = await auth.listDevices(currentUser(request));
     return {

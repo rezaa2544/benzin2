@@ -1,5 +1,14 @@
 import { z } from 'zod';
 
+/**
+ * G-18: an environment file writes `KEY=` for "not set", and `docker compose` faithfully passes
+ * the empty string. Zod then rejects it against `min(8)`, so an operator who leaves an optional
+ * key blank gets a container that crash-loops with "String must contain at least 8 character(s)".
+ * Empty means absent — that is the only reading that makes `infra/.env.prod.example` honest.
+ */
+const optional = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   API_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -67,7 +76,7 @@ const envSchema = z.object({
   SMS_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(5_000),
   /** `sandbox` approves payments locally; `zarinpal` calls the real bank gateway. */
   PAYMENT_GATEWAY: z.enum(['sandbox', 'zarinpal']).default('sandbox'),
-  ZARINPAL_MERCHANT_ID: z.string().min(8).optional(),
+  ZARINPAL_MERCHANT_ID: optional(z.string().min(8)),
   ZARINPAL_BASE_URL: z.string().url().default('https://payment.zarinpal.com'),
   PAYMENT_CALLBACK_URL: z.string().url().default('https://app.benzin.ir/payments/callback'),
   /**

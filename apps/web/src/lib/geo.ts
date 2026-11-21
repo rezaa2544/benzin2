@@ -1,3 +1,5 @@
+import { nativeGeolocation } from './native.js';
+
 /**
  * G-07 — every geographic helper the screens need, kept out of the components so the
  * maths is testable without a DOM.
@@ -172,7 +174,7 @@ export function currentPosition(
     Pick<globalThis.Geolocation, 'getCurrentPosition'> | null | undefined = typeof navigator ===
   'undefined'
     ? null
-    : navigator.geolocation,
+    : (nativeGeolocation() ?? navigator.geolocation),
 ): Promise<GeoResult> {
   if (!geolocation) return Promise.resolve({ point: null, failure: 'unsupported' });
   return new Promise((resolve) => {

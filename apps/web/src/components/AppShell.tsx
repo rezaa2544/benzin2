@@ -36,7 +36,7 @@ export function AppShell({
   offline = false,
 }: AppShellProps): JSX.Element {
   return (
-    <div className="min-h-dvh bg-bg">
+    <div className="min-h-dvh bg-bg" style={{ paddingTop: 'var(--safe-top)' }}>
       <header className="sticky top-0 z-nav border-b border-line bg-surface/95 backdrop-blur">
         <div className="phone-frame flex min-h-tap items-center justify-between gap-2 py-2">
           <div className="flex items-center gap-2">

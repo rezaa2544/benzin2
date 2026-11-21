@@ -58,6 +58,19 @@ export class ApiClient {
     return this.request<T>('POST', path, { body });
   }
 
+  /**
+   * G-16: hand the FCM token to the API once the user is signed in. The server upserts by
+   * (user, deviceId), so calling it on every launch is the intended usage.
+   */
+  registerDevice(body: {
+    deviceId: string;
+    platform: 'android' | 'ios' | 'web';
+    pushToken?: string;
+    appVersion?: string;
+  }): Promise<{ id: string; pushRegistered: boolean }> {
+    return this.post('/v1/me/devices', body);
+  }
+
   patch<T>(path: string, body?: unknown): Promise<T> {
     return this.request<T>('PATCH', path, { body });
   }

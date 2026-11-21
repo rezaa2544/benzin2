@@ -20,6 +20,9 @@ ENV NODE_ENV=production
 COPY --from=build /repo/node_modules ./node_modules
 COPY --from=build /repo/packages/shared ./packages/shared
 COPY --from=build /repo/apps/api ./apps/api
+# G-18: the migrate step (`migrate` service / `db:migrate`) resolves <root>/infra/migrations from
+# the compiled CLI, so the folder has to exist in the image.
+COPY infra/migrations ./infra/migrations
 COPY package.json pnpm-workspace.yaml ./
 USER node
 EXPOSE 3000
