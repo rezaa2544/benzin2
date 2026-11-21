@@ -264,7 +264,10 @@ export interface ConversationView {
   createdAt: string;
   closedAt: string | null;
   writable: boolean;
+  /** True when this reader may see raw numbers in the thread (G-27). */
   contactAllowed: boolean;
+  /** Why not: the trade is not accepted yet, or the reader has no plan. Null when numbers flow. */
+  contactReason: 'TRADE_NOT_ACCEPTED' | 'SUBSCRIPTION_REQUIRED' | null;
   peer: { id: string; displayName: string | null };
   unreadCount: number;
   lastMessage: { body: string; kind: string; senderId: string; createdAt: string } | null;

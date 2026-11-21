@@ -190,15 +190,17 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
         })
       : new SandboxGatewayProvider());
   // G-11: the destination card comes from settings (editable in the panel), not from a constant.
-  const cardToCard = options.providers?.cardToCard ?? new CardToCardProvider(repos.paymentCards, async () => {
-    const config = await settings.get();
-    const [card] = await repos.paymentCards.list(true);
-    return {
-      cardNumber: config['payment.card_number'],
-      holderName: config['payment.card_holder'],
-      bankName: card?.bankName ?? null,
-    };
-  });
+  const cardToCard =
+    options.providers?.cardToCard ??
+    new CardToCardProvider(repos.paymentCards, async () => {
+      const config = await settings.get();
+      const [card] = await repos.paymentCards.list(true);
+      return {
+        cardNumber: config['payment.card_number'],
+        holderName: config['payment.card_holder'],
+        bankName: card?.bankName ?? null,
+      };
+    });
   const payments = new PaymentService(
     repos,
     settings,
@@ -231,7 +233,9 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
   // through this indirection so construction order stays acyclic.
   const events: ChatEventPublisher = { publish: (event) => hub.publisher.publish(event) };
   const hub: { publisher: ChatEventPublisher } = { publisher: NOOP_CHAT_EVENTS };
-  const chat = new ChatService(repos, settings, clock, notifications, events);
+  // G-27: the chat masks numbers for anyone whose plan does not include them, so it needs the
+  // very same entitlement gate the contact card uses.
+  const chat = new ChatService(repos, settings, clock, notifications, events, entitlements);
   const stats = new StatsService(repos, settings, clock);
   // G-08: the number the home screen anchors on — median of *closed* trades, not asking prices.
   const tradeMedian = new TradeMedianService(repos, clock);
@@ -254,21 +258,33 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
   );
   const nodes = new NodesService(repos, clock, {
     nodeId: options.node?.nodeId ?? config.NODE_ID ?? `${config.NODE_ROLE}-${hostSlug()}`,
-    name: options.node?.name ?? config.NODE_NAME ?? `بنزین — ${config.NODE_ROLE === 'helper' ? 'کمکی' : 'اصلی'}`,
+    name:
+      options.node?.name ??
+      config.NODE_NAME ??
+      `بنزین — ${config.NODE_ROLE === 'helper' ? 'کمکی' : 'اصلی'}`,
     role: options.node?.role ?? config.NODE_ROLE,
     version: config.APP_VERSION,
     region: options.node?.region ?? config.NODE_REGION ?? null,
     staleSeconds: config.NODE_STALE_SECONDS,
   });
   // The scheduler reports every sweep it runs, so the panel can show a real work report.
-  const scheduler = createScheduler(reservations, orders, reputation, payments, clock, sweepLock, ownerResponse, {
-    onTick: (result, at) => {
-      const detail = { ...result } as Record<string, number>;
-      const count = Object.values(detail).reduce((total, value) => total + value, 0);
-      void at;
-      nodes.recordJob('expiry-sweep', count, detail);
+  const scheduler = createScheduler(
+    reservations,
+    orders,
+    reputation,
+    payments,
+    clock,
+    sweepLock,
+    ownerResponse,
+    {
+      onTick: (result, at) => {
+        const detail = { ...result } as Record<string, number>;
+        const count = Object.values(detail).reduce((total, value) => total + value, 0);
+        void at;
+        nodes.recordJob('expiry-sweep', count, detail);
+      },
     },
-  });
+  );
   // G-13 — the infrastructure board reads the same scheduler the sweeps use, so «زمان‌بند» on the
   // screen is the real last tick rather than a heartbeat invented for the dashboard.
   const infra = new InfraService(repos, settings, clock, {
@@ -576,7 +592,8 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     const { id } = request.params as { id: string };
     // G-09: the seller must send the buyer's four-digit code; an empty body is still fine for the
     // buyer closing their own trade, so the body is optional here.
-    const body = request.body === undefined ? {} : parseInput(completeReservationSchema, request.body);
+    const body =
+      request.body === undefined ? {} : parseInput(completeReservationSchema, request.body);
     return reservations.complete(currentUser(request), id, body.code);
   });
 
@@ -758,11 +775,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     const body = typeof rawBody === 'string' ? rawBody : JSON.stringify(request.body ?? {});
     const signature = request.headers['x-benzin-signature'];
     if (
-      !verifyDepositSignature(
-        body,
-        Array.isArray(signature) ? signature[0] : signature,
-        secret,
-      )
+      !verifyDepositSignature(body, Array.isArray(signature) ? signature[0] : signature, secret)
     ) {
       throw new AppError('CARD_WEBHOOK_UNAUTHORIZED', 401, 'Invalid webhook signature');
     }
@@ -957,19 +970,23 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
   /**
    * G-12 — income report. Defaults to the last 30 days; the panel's revenue card reads it as is.
    */
-  app.get('/v1/admin/revenue', { preHandler: [requireAuth, requireRole('ADMIN', 'OWNER')] }, async (request) => {
-    const query = (request.query ?? {}) as { from?: string; to?: string; days?: string };
-    const days = query.days ? Number(query.days) : 30;
-    // The window follows the application clock so a report and the sweeps always agree on "now".
-    const to = query.to ? new Date(query.to) : clock.now();
-    const from = query.from
-      ? new Date(query.from)
-      : new Date(to.getTime() - Math.min(Math.max(days, 1), 366) * 86_400_000);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-      throw AppError.validation('Invalid date range');
-    }
-    return payments.revenue(from, to);
-  });
+  app.get(
+    '/v1/admin/revenue',
+    { preHandler: [requireAuth, requireRole('ADMIN', 'OWNER')] },
+    async (request) => {
+      const query = (request.query ?? {}) as { from?: string; to?: string; days?: string };
+      const days = query.days ? Number(query.days) : 30;
+      // The window follows the application clock so a report and the sweeps always agree on "now".
+      const to = query.to ? new Date(query.to) : clock.now();
+      const from = query.from
+        ? new Date(query.from)
+        : new Date(to.getTime() - Math.min(Math.max(days, 1), 366) * 86_400_000);
+      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+        throw AppError.validation('Invalid date range');
+      }
+      return payments.revenue(from, to);
+    },
+  );
 
   app.post(
     '/v1/admin/reconciliation',
@@ -1152,19 +1169,14 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     },
   );
 
-
   // ------------------------------------------------------------ SMS panel (task G-14)
   // The chain the platform will actually walk, what it holds, and a button that proves it works.
   app.get('/v1/admin/sms', { preHandler: [...staffOnly] }, async () => services.sms.status());
 
-  app.post(
-    '/v1/admin/sms/test',
-    { preHandler: [...staffOnly] },
-    async (request) => {
-      const body = parseInput(smsTestSchema, request.body ?? {});
-      return services.sms.testSend(currentUser(request), body.phone, body.provider);
-    },
-  );
+  app.post('/v1/admin/sms/test', { preHandler: [...staffOnly] }, async (request) => {
+    const body = parseInput(smsTestSchema, request.body ?? {});
+    return services.sms.testSend(currentUser(request), body.phone, body.provider);
+  });
 
   // ---------------------------------------------------- admin: cities (E8-07)
   app.get('/v1/admin/zones', { preHandler: [...staffOnly] }, async () => admin.listZones());

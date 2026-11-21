@@ -28,6 +28,23 @@ const WRITABLE_ORDER_STATUSES = new Set(['RESERVED', 'CONFIRMED', 'DISPUTED']);
 /** Only an accepted trade unlocks raw phone numbers (task E5-02). */
 const CONTACT_ALLOWED_ORDER_STATUSES = new Set(['CONFIRMED', 'DISPUTED']);
 
+/**
+ * G-27 — who may read a raw number. Reads a plan's `phone_visible`, never the order status, so the
+ * chat cannot be used to get around the subscription the plans page sells.
+ */
+export interface PhoneVisibilityGate {
+  phoneVisibleFor(userId: string): Promise<boolean>;
+}
+
+/**
+ * Fail-closed default: a thread built without a gate (unit tests, old wiring) masks every number.
+ * Privacy must survive a forgotten dependency, not depend on it being remembered.
+ */
+const HIDDEN_GATE: PhoneVisibilityGate = { phoneVisibleFor: async () => false };
+
+/** Why a thread is not sharing numbers yet, so the app can say the useful sentence. */
+export type ContactGateReason = 'TRADE_NOT_ACCEPTED' | 'SUBSCRIPTION_REQUIRED' | null;
+
 export interface MessageView {
   id: string;
   conversationId: string;
@@ -46,7 +63,10 @@ export interface ConversationView {
   createdAt: string;
   closedAt: string | null;
   writable: boolean;
+  /** True when *this reader* may see raw numbers in the thread. */
   contactAllowed: boolean;
+  /** `TRADE_NOT_ACCEPTED` / `SUBSCRIPTION_REQUIRED`, or null when numbers flow freely. */
+  contactReason: ContactGateReason;
   peer: { id: string; displayName: string | null };
   unreadCount: number;
   lastMessage: { body: string; kind: MessageKind; senderId: string; createdAt: string } | null;
@@ -91,7 +111,15 @@ export class ChatService {
     private readonly clock: Clock,
     private readonly notifier: NotificationEmitter,
     private readonly events: ChatEventPublisher = NOOP_CHAT_EVENTS,
+    // G-27: the same entitlement that guards the contact card guards the words typed into chat.
+    private readonly phoneGate: PhoneVisibilityGate = HIDDEN_GATE,
   ) {}
+
+  /** Accepted trade + a plan that includes numbers ⇒ this reader may see digits. */
+  private async contactGateFor(context: ChatContext, readerId: string): Promise<ContactGateReason> {
+    if (!CONTACT_ALLOWED_ORDER_STATUSES.has(context.order.status)) return 'TRADE_NOT_ACCEPTED';
+    return (await this.phoneGate.phoneVisibleFor(readerId)) ? null : 'SUBSCRIPTION_REQUIRED';
+  }
 
   private async context(actor: User, conversationId: string): Promise<ChatContext> {
     const conversation = await this.repos.conversations.findById(conversationId);
@@ -124,13 +152,15 @@ export class ChatService {
     const peerId = this.peerId(context, actor);
     const peer = peerId ? await this.repos.users.findById(peerId) : null;
     const last = await this.repos.messages.lastMessage(context.conversation.id);
+    const contactReason = await this.contactGateFor(context, actor.id);
     return {
       id: context.conversation.id,
       orderId: context.order.id,
       createdAt: context.conversation.createdAt.toISOString(),
       closedAt: context.conversation.closedAt?.toISOString() ?? null,
       writable: this.isWritable(context) && context.conversation.closedAt === null,
-      contactAllowed: CONTACT_ALLOWED_ORDER_STATUSES.has(context.order.status),
+      contactAllowed: contactReason === null,
+      contactReason,
       peer: { id: peer?.id ?? '', displayName: peer?.displayName ?? null },
       unreadCount: await this.repos.messages.countUnread(context.conversation.id, actor.id),
       lastMessage: last
@@ -212,7 +242,10 @@ export class ChatService {
       if (existing) return toMessageView(existing);
     }
 
-    const contactAllowed = CONTACT_ALLOWED_ORDER_STATUSES.has(context.order.status);
+    // The number has to be readable by the person receiving it, so the *peer's* plan decides.
+    // Storing the raw digits for a reader who never paid would make the paywall decorative.
+    const peerId = this.peerId(context, actor);
+    const contactAllowed = peerId !== null && (await this.contactGateFor(context, peerId)) === null;
     const masked = contactAllowed ? null : maskPhoneNumbers(input.body);
     const message = await this.repos.messages.append(
       {
@@ -249,7 +282,6 @@ export class ChatService {
       payload: { message: toMessageView(message, masked ? masked.maskedCount > 0 : false) },
     });
 
-    const peerId = this.peerId(context, actor);
     if (peerId) {
       await this.notifier.emit({
         userId: peerId,
@@ -279,6 +311,20 @@ export class ChatService {
         { orderStatus: context.order.status },
       );
     }
+    // G-27: the card would store a raw number in a thread the reader cannot pay to read, so it is
+    // refused rather than written and hidden later. Same rule as the masking in `send`.
+    const readerId = this.peerId(context, actor);
+    const readerGate = readerId
+      ? await this.contactGateFor(context, readerId)
+      : 'SUBSCRIPTION_REQUIRED';
+    if (readerGate !== null) {
+      throw new AppError(
+        'PHONE_REQUIRES_SUBSCRIPTION',
+        402,
+        'Seeing a phone number is part of a paid plan',
+        { chatOnly: true, reason: readerGate },
+      );
+    }
     const message = await this.repos.messages.append(
       {
         conversationId,
@@ -305,10 +351,9 @@ export class ChatService {
       payload: { message: toMessageView(message) },
     });
 
-    const peerId = this.peerId(context, actor);
-    if (peerId) {
+    if (readerId) {
       await this.notifier.emit({
-        userId: peerId,
+        userId: readerId,
         kind: 'CONTACT_SHARED',
         params: { by: partyLabel(context.isOwner) },
         payload: { conversationId, orderId: context.order.id },

@@ -54,13 +54,17 @@ describe('chat', () => {
       party: unknown;
       peer: { id: string };
       contactAllowed: boolean;
+      contactReason: string | null;
       writable: boolean;
     }>(takerView);
     expect(view.id).toBe(trade.conversationId);
     expect(view.orderId).toBe(trade.orderId);
     expect(view.peer.id).toBe(trade.owner.userId);
     expect(view.writable).toBe(true);
-    expect(view.contactAllowed).toBe(true);
+    // G-27: the acceptance alone no longer unlocks numbers — the reader's plan does. This taker
+    // is on the free plan, so the thread says *why* numbers are still masked.
+    expect(view.contactAllowed).toBe(false);
+    expect(view.contactReason).toBe('SUBSCRIPTION_REQUIRED');
     // The thread itself never leaks the peer's phone number (E4-05 owns that reveal).
     expect(JSON.stringify(view)).not.toContain(trade.owner.phone);
   });

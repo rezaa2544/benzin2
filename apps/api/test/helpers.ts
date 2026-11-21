@@ -159,7 +159,8 @@ export async function completeTrade(
     url: `/v1/reservations/${input.reservationId}/delivery-code`,
     headers: { authorization: `Bearer ${input.buyerToken}` },
   });
-  const code = codeResponse.statusCode === 200 ? (codeResponse.json() as { code: string }).code : undefined;
+  const code =
+    codeResponse.statusCode === 200 ? (codeResponse.json() as { code: string }).code : undefined;
   const response = await ctx.app.inject({
     method: 'POST',
     url: `/v1/reservations/${input.reservationId}/complete`,
@@ -275,6 +276,28 @@ export async function startTrade(
   const conversationId = (conversation.json() as { id: string }).id;
 
   return { owner, taker, orderId, reservationId, conversationId };
+}
+
+/**
+ * G-27 — gives a user a paid plan straight in the repository, the same way the billing service does
+ * after an operator approves a transfer. Tests that care about *what a plan unlocks* need the
+ * subscription, not the whole checkout.
+ */
+export async function buyPlan(ctx: TestContext, userId: string, code = 'monthly'): Promise<void> {
+  const plan = await ctx.repos.plans.findByCode(code);
+  if (!plan) throw new Error(`plan ${code} is not in the catalogue`);
+  const now = ctx.clock.now();
+  const subscription = await ctx.repos.subscriptions.create({
+    userId,
+    planId: plan.id,
+    startsAt: now,
+    endsAt: new Date(now.getTime() + plan.durationDays * 86_400_000),
+  });
+  await ctx.repos.subscriptions.activate(
+    subscription.id,
+    subscription.startsAt,
+    subscription.endsAt,
+  );
 }
 
 export const orderPayload = (overrides: Record<string, unknown> = {}) => ({

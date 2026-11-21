@@ -5,6 +5,7 @@ import type { ConversationView, MessageView, MetaConfig, PublicUser } from '../l
 import { navigate } from '../lib/router.js';
 import { useResource } from '../lib/useResource.js';
 import { t } from '../lib/i18n.js';
+import { canShareContact, chatNoticeKey } from '../lib/chat.js';
 import { ChatBubble } from '../components/ChatBubble.js';
 import { EmptyState } from '../components/EmptyState.js';
 import { ListError, Notice, PageTitle, Skeleton } from './parts.js';
@@ -21,6 +22,7 @@ const errorMap = {
   UNKNOWN: t('errors.UNKNOWN'),
   CONVERSATION_CLOSED: t('chat.closed'),
   CONTACT_SHARING_BLOCKED: t('chat.blocked'),
+  PHONE_REQUIRES_SUBSCRIPTION: t('chat.maskedPlan'),
   MESSAGE_TOO_LONG: t('errors.MESSAGE_TOO_LONG'),
   NOT_CONVERSATION_PARTY: t('errors.FORBIDDEN'),
 };
@@ -195,7 +197,9 @@ function Thread({
       <PageTitle title={conversation?.peer.displayName ?? t('chat.title')} />
       {error ? <Notice tone="error">{error}</Notice> : null}
       {conversation && !conversation.contactAllowed ? (
-        <Notice tone="info">{t('chat.masked')}</Notice>
+        // G-27: the sentence has to match the reason — «صبر کن تا تأیید شود» and «اشتراک بخر» are
+        // two very different things to ask of someone, and the thread now knows which it is.
+        <Notice tone="info">{t(chatNoticeKey(conversation.contactReason))}</Notice>
       ) : null}
 
       <div className="flex-1 overflow-y-auto pb-3">
@@ -232,7 +236,7 @@ function Thread({
               </button>
             ))}
           </div>
-          {conversation?.contactAllowed ? (
+          {conversation && canShareContact(conversation) ? (
             <button
               type="button"
               className="btn mb-2 w-full"

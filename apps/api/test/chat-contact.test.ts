@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   auth,
+  buyPlan,
   createTestContext,
   startTrade,
   type TestContext,
@@ -66,14 +67,47 @@ describe('chat contact sharing', () => {
     }
   });
 
-  it('keeps every digit once the trade is confirmed', async () => {
+  it('keeps masking after confirmation when the reader has no plan (G-27)', async () => {
+    // Before G-27 the acceptance alone unlocked digits, so a free buyer could ask the seller to
+    // type the number and skip the subscription the plans page sells.
     const trade = await startTrade(ctx);
+
+    const response = await post(ctx, trade, trade.taker.token, 'شماره من 09121234567 است');
+    expect(response.statusCode).toBe(201);
+    const message = json<{ body: string; contactMasked: boolean }>(response);
+    expect(message.contactMasked).toBe(true);
+    expect(message.body).not.toContain('09121234567');
+
+    const listed = await ctx.app.inject({
+      method: 'GET',
+      url: `/v1/conversations/${trade.conversationId}/messages`,
+      headers: auth(trade.owner.token),
+    });
+    expect(listed.body).not.toContain('09121234567');
+  });
+
+  it('shows the digits once the reader has a plan (G-27)', async () => {
+    const trade = await startTrade(ctx);
+    // The owner reads the taker's message, so the owner's plan is the one that has to include
+    // numbers — the same rule the contact card applies.
+    await buyPlan(ctx, trade.owner.userId, 'monthly');
 
     const response = await post(ctx, trade, trade.taker.token, 'شماره من 09121234567 است');
     expect(response.statusCode).toBe(201);
     const message = json<{ body: string; contactMasked: boolean }>(response);
     expect(message.contactMasked).toBe(false);
     expect(message.body).toBe('شماره من 09121234567 است');
+  });
+
+  it('still masks before acceptance even when the reader pays (G-27)', async () => {
+    const trade = await startTrade(ctx, { confirm: false });
+    await buyPlan(ctx, trade.owner.userId, 'monthly');
+
+    const response = await post(ctx, trade, trade.taker.token, 'شماره من 09121234567 است');
+    expect(response.statusCode).toBe(201);
+    const message = json<{ body: string; contactMasked: boolean }>(response);
+    expect(message.contactMasked).toBe(true);
+    expect(message.body).not.toContain('09121234567');
   });
 
   it('refuses a contact card before the owner accepts', async () => {
@@ -92,8 +126,10 @@ describe('chat contact sharing', () => {
     expect(error.details.orderStatus).toBe('RESERVED');
   });
 
-  it('sends a contact card with the sender phone number after confirmation', async () => {
+  it('sends a contact card with the sender phone number to a paying reader', async () => {
     const trade = await startTrade(ctx);
+    // The owner receives the card, so the owner is the reader who has to have the plan.
+    await buyPlan(ctx, trade.owner.userId, 'monthly');
 
     const response = await ctx.app.inject({
       method: 'POST',
@@ -117,6 +153,31 @@ describe('chat contact sharing', () => {
     expect(shared).toBeTruthy();
     expect(shared?.bodyFa).toContain('شماره تماس');
     expect(shared?.bodyFa).not.toContain(trade.taker.phone);
+  });
+
+  it('refuses a contact card when the reader has no plan (G-27)', async () => {
+    const trade = await startTrade(ctx);
+
+    const response = await ctx.app.inject({
+      method: 'POST',
+      url: `/v1/conversations/${trade.conversationId}/contact`,
+      headers: auth(trade.taker.token),
+    });
+    expect(response.statusCode).toBe(402);
+    const error = json<{ error: { code: string; details: { chatOnly: boolean; reason: string } } }>(
+      response,
+    ).error;
+    expect(error.code).toBe('PHONE_REQUIRES_SUBSCRIPTION');
+    expect(error.details.chatOnly).toBe(true);
+    expect(error.details.reason).toBe('SUBSCRIPTION_REQUIRED');
+
+    // Nothing was written: the raw number is not sitting in the thread for later.
+    const listed = await ctx.app.inject({
+      method: 'GET',
+      url: `/v1/conversations/${trade.conversationId}/messages`,
+      headers: auth(trade.owner.token),
+    });
+    expect(listed.body).not.toContain(trade.taker.phone);
   });
 
   it('blocks a stranger from sharing a contact card', async () => {
