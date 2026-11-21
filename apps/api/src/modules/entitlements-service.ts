@@ -47,7 +47,10 @@ const FREE_PLAN_CODE = 'free';
 
 export class EntitlementService {
   constructor(
-    private readonly repos: Pick<Repositories, 'plans' | 'subscriptions' | 'reservations' | 'audit'>,
+    private readonly repos: Pick<
+      Repositories,
+      'plans' | 'subscriptions' | 'reservations' | 'audit'
+    >,
     private readonly settings: SettingsService,
     private readonly clock: Clock,
   ) {}
@@ -91,14 +94,16 @@ export class EntitlementService {
   async forUser(userId: string): Promise<BuyerEntitlementView> {
     const config = await this.settings.get();
     const { plan, subscription, fallback } = await this.resolve(userId);
-    const used = await this.repos.reservations.countByTakerSince(userId, this.monthStart(this.clock.now()));
+    const used = await this.repos.reservations.countByTakerSince(
+      userId,
+      this.monthStart(this.clock.now()),
+    );
 
     // An owner who switches `subscription.required_for_orders` on is saying "no free rides":
     // the fallback plan then grants nothing.
     const requiresPaid = config['subscription.required_for_orders'];
     const monthlyLimit = fallback && requiresPaid ? 0 : plan.monthlyReservations;
-    const remaining =
-      monthlyLimit === null ? null : Math.max(0, monthlyLimit - used);
+    const remaining = monthlyLimit === null ? null : Math.max(0, monthlyLimit - used);
 
     return {
       planCode: plan.code,

@@ -141,7 +141,9 @@ export function assertGatewaySafety(config: Config): Config {
     ['PAYMENT_RETURN_URL', config.PAYMENT_RETURN_URL],
   ] as const) {
     if (!url.startsWith('https://')) {
-      throw new Error(`${name} must be an https:// URL when the real gateway is enabled (got ${url})`);
+      throw new Error(
+        `${name} must be an https:// URL when the real gateway is enabled (got ${url})`,
+      );
     }
   }
   return config;

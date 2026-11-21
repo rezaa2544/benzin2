@@ -244,7 +244,9 @@ const medianOf = (values: number[]): number | null => {
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
   const value =
-    sorted.length % 2 === 0 ? ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2 : sorted[middle];
+    sorted.length % 2 === 0
+      ? ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2
+      : sorted[middle];
   return Math.round(value ?? 0);
 };
 
@@ -270,7 +272,10 @@ export class TradeMedianService {
     const medianRateToman = this.medianOfTrades(inScope.map((trade) => trade.rateToman));
     const sufficient = inScope.length >= TRADE_MEDIAN_MIN_TRADES;
 
-    const buckets = new Map<string, { province: string | null; county: string | null; rates: number[] }>();
+    const buckets = new Map<
+      string,
+      { province: string | null; county: string | null; rates: number[] }
+    >();
     for (const trade of trades) {
       const key = `${trade.province ?? ''}|${trade.county ?? ''}`;
       const bucket = buckets.get(key) ?? {

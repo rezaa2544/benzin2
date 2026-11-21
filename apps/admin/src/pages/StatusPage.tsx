@@ -52,7 +52,13 @@ export function StatusPage({ api }: { api: ApiClient }): JSX.Element {
   const openEdit = (row: InfraResourceRow): void => {
     setEditing(row);
     // The secret box stays empty on purpose: an empty box means «unchanged».
-    setForm({ name: row.name, kind: row.kind, address: row.address, secret: '', isActive: row.isActive });
+    setForm({
+      name: row.name,
+      kind: row.kind,
+      address: row.address,
+      secret: '',
+      isActive: row.isActive,
+    });
     setError(null);
     setOpen(true);
   };
@@ -146,11 +152,7 @@ export function StatusPage({ api }: { api: ApiClient }): JSX.Element {
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label={fa.status.version}
-          value={data.version}
-          hint={data.nodeEnv}
-        />
+        <StatCard label={fa.status.version} value={data.version} hint={data.nodeEnv} />
         <StatCard
           label={fa.status.migrations}
           // Just the number: the full file name («0013_infra_resources») turns into bidi soup in an

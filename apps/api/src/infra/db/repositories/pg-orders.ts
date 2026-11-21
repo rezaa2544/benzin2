@@ -376,7 +376,7 @@ export class PgOrderRepository implements OrderRepository {
    */
   async listCompletedTrades(input: CompletedTradeQuery): Promise<CompletedTrade[]> {
     const params: unknown[] = [input.since];
-    const filters: string[] = ['r.status IN (\'COMPLETED\', \'AUTO_COMPLETED\')'];
+    const filters: string[] = ["r.status IN ('COMPLETED', 'AUTO_COMPLETED')"];
     if (input.province) {
       params.push(input.province);
       filters.push(`o.province = $${params.length}`);
@@ -570,9 +570,7 @@ export class PgReservationRepository implements ReservationRepository {
 
   async updateDelivery(
     id: string,
-    patch: Partial<
-      Pick<Reservation, 'deliveryCode' | 'deliveryAttempts' | 'deliveryLockedUntil'>
-    >,
+    patch: Partial<Pick<Reservation, 'deliveryCode' | 'deliveryAttempts' | 'deliveryLockedUntil'>>,
   ): Promise<Reservation | null> {
     const row = await queryOne<ReservationRow>(
       this.db,

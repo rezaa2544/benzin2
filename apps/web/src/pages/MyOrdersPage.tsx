@@ -8,7 +8,7 @@ import { useResource } from '../lib/useResource.js';
 import { t } from '../lib/i18n.js';
 import { OrderCard } from '../components/OrderCard.js';
 import { EmptyState } from '../components/EmptyState.js';
-import { ListError, Notice, PageTitle, Skeleton } from './parts.js';
+import { ListError, PageTitle, Skeleton } from './parts.js';
 
 export interface MyOrdersPageProps {
   api: ApiClient;

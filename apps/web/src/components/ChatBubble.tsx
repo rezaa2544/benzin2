@@ -36,9 +36,7 @@ export function ChatBubble({
           <p dir="ltr" className="tnum text-base font-bold text-brand">
             {phone ?? text}
           </p>
-          <span className="mt-1 block text-xs text-muted tnum">
-            {formatJalaliTime(createdAt)}
-          </span>
+          <span className="mt-1 block text-xs text-muted tnum">{formatJalaliTime(createdAt)}</span>
         </div>
       </div>
     );

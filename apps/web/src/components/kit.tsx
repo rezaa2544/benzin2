@@ -184,7 +184,8 @@ export function Countdown({
 }): JSX.Element {
   const remaining = new Date(dueAt).getTime() - now;
   const { minutes, seconds } = splitClock(remaining);
-  const tone = remaining <= 0 ? 'text-danger' : remaining < warnBelowMs ? 'text-warning' : 'text-muted';
+  const tone =
+    remaining <= 0 ? 'text-danger' : remaining < warnBelowMs ? 'text-warning' : 'text-muted';
   return (
     <span className={`text-xs font-medium tnum ${tone}`} data-testid="countdown">
       {remaining <= 0 ? t('common.expired') : countdownLabel(minutes, seconds)}
@@ -513,7 +514,8 @@ export function RadioCard({
           <span className="text-sm font-bold">{title}</span>
           {price === undefined ? null : (
             <span className="money text-sm">
-              {formatToman(price)} <span className="text-xs font-normal text-muted">{t('common.toman')}</span>
+              {formatToman(price)}{' '}
+              <span className="text-xs font-normal text-muted">{t('common.toman')}</span>
             </span>
           )}
         </span>

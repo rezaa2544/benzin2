@@ -148,11 +148,13 @@ describe('G-10 seller answer rate', () => {
       expect(mine.ratePercent).toBe(100);
       expect(mine.labelFa).toBe('۱۰۰٪ پاسخ‌دهی');
 
-      const detail = (await ctx.app.inject({
-        method: 'GET',
-        url: `/v1/orders/${listing.id}`,
-        headers: auth(owner.token),
-      })).json() as OrderBody;
+      const detail = (
+        await ctx.app.inject({
+          method: 'GET',
+          url: `/v1/orders/${listing.id}`,
+          headers: auth(owner.token),
+        })
+      ).json() as OrderBody;
       expect(detail.owner.ratePercent).toBe(100);
       expect(detail.owner.answered).toBe(3);
       expect(detail.owner.received).toBe(3);
@@ -222,11 +224,13 @@ describe('G-10 seller answer rate', () => {
       let owner = await login(ctx, phone);
       const listing = await createOrder(ctx, owner.token, { litres: 20 });
 
-      const scoreBefore = (await ctx.app.inject({
-        method: 'GET',
-        url: '/v1/me/reputation',
-        headers: auth(owner.token),
-      })).json() as { score: number; recentEvents: unknown[] };
+      const scoreBefore = (
+        await ctx.app.inject({
+          method: 'GET',
+          url: '/v1/me/reputation',
+          headers: auth(owner.token),
+        })
+      ).json() as { score: number; recentEvents: unknown[] };
 
       for (let index = 0; index < RESPONSE_MISS_LIMIT; index += 1) {
         const taker = await login(ctx, freshPhone());
@@ -258,11 +262,13 @@ describe('G-10 seller answer rate', () => {
       expect(ownItems.some((item) => item.id === listing.id)).toBe(true);
 
       // …and it is not a punishment: the trust ledger gained nothing at all.
-      const scoreAfter = (await ctx.app.inject({
-        method: 'GET',
-        url: '/v1/me/reputation',
-        headers: auth(owner.token),
-      })).json() as { score: number; recentEvents: unknown[] };
+      const scoreAfter = (
+        await ctx.app.inject({
+          method: 'GET',
+          url: '/v1/me/reputation',
+          headers: auth(owner.token),
+        })
+      ).json() as { score: number; recentEvents: unknown[] };
       expect(scoreAfter.score).toBe(scoreBefore.score);
       expect(scoreAfter.recentEvents.length).toBe(scoreBefore.recentEvents.length);
 

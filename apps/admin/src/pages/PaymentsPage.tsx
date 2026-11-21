@@ -17,7 +17,10 @@ import fa from '../i18n/fa.json';
  * from the API on digits or separators.
  */
 function RevenueCard({ api, onRetried }: { api: ApiClient; onRetried: () => void }): JSX.Element {
-  const report = useResource<RevenueReport>(() => api.get<RevenueReport>('/v1/admin/revenue', { days: 30 }), []);
+  const report = useResource<RevenueReport>(
+    () => api.get<RevenueReport>('/v1/admin/revenue', { days: 30 }),
+    [],
+  );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const data = report.data;
@@ -49,7 +52,12 @@ function RevenueCard({ api, onRetried }: { api: ApiClient; onRetried: () => void
           <h2 className="text-sm font-bold">{fa.payments.revenueTitle}</h2>
           <p className="text-xs text-muted">{fa.payments.revenueLead}</p>
         </div>
-        <button type="button" className="btn px-2 py-1 text-xs" disabled={busy} onClick={() => void retry()}>
+        <button
+          type="button"
+          className="btn px-2 py-1 text-xs"
+          disabled={busy}
+          onClick={() => void retry()}
+        >
           {fa.payments.revenueRetry}
         </button>
       </div>
@@ -104,8 +112,16 @@ function RevenueCard({ api, onRetried }: { api: ApiClient; onRetried: () => void
                   // The report is bucketed by Tehran day; the panel shows it as a Jalali date.
                   render: (row) => <span className="tnum">{fmtDate(`${row.day}T00:00:00Z`)}</span>,
                 },
-                { key: 'count', header: fa.payments.revenuePaid, render: (row) => <span className="tnum">{fmtNumber(row.paidCount)}</span> },
-                { key: 'sum', header: fa.payments.revenueTotal, render: (row) => <span className="tnum">{row.paidTomanLabelFa}</span> },
+                {
+                  key: 'count',
+                  header: fa.payments.revenuePaid,
+                  render: (row) => <span className="tnum">{fmtNumber(row.paidCount)}</span>,
+                },
+                {
+                  key: 'sum',
+                  header: fa.payments.revenueTotal,
+                  render: (row) => <span className="tnum">{row.paidTomanLabelFa}</span>,
+                },
               ]}
             />
           )}

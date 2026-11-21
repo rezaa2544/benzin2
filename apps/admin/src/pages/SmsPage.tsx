@@ -202,9 +202,7 @@ export function SmsPage({ api }: { api: ApiClient }): JSX.Element {
               {
                 key: 'priority',
                 header: fa.sms.priority,
-                render: (row) => (
-                  <span className="tnum">{String(row.config.priority ?? '—')}</span>
-                ),
+                render: (row) => <span className="tnum">{String(row.config.priority ?? '—')}</span>,
               },
               {
                 key: 'sender',
@@ -229,11 +227,7 @@ export function SmsPage({ api }: { api: ApiClient }): JSX.Element {
                 key: 'actions',
                 header: '',
                 render: (row) => (
-                  <button
-                    type="button"
-                    className="btn px-2 py-1 text-xs"
-                    onClick={() => open(row)}
-                  >
+                  <button type="button" className="btn px-2 py-1 text-xs" onClick={() => open(row)}>
                     {fa.app.save}
                   </button>
                 ),
@@ -414,9 +408,7 @@ function AttemptsTable({ rows, empty }: { rows: SmsAttemptRow[]; empty: string }
         {
           key: 'ok',
           header: fa.sms.delivered,
-          render: (row) => (
-            <Badge value={row.ok ? 'PAID' : 'FAILED'} />
-          ),
+          render: (row) => <Badge value={row.ok ? 'PAID' : 'FAILED'} />,
         },
         {
           key: 'status',

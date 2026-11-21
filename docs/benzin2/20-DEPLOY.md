@@ -178,29 +178,29 @@ The whole stack was brought up on a real Docker host (Docker 29.8) with the prod
 file, a real Postgres+PostGIS, and `TLS_MODE=internal` instead of a public domain — same Caddyfile,
 same images, ports remapped to 8081/8443 because the host already owned 80/443.
 
-| What | Command | Result |
-| --- | --- | --- |
-| the file is valid | `docker compose config -q` | exit 0 |
-| the stack comes up | `up -d --build` | 9 services; `migrate` exited 0, the rest healthy |
-| TLS + proxy | `curl -k https://benzin.local:8443/healthz` | `200` |
-| site, panel | `/` and `/admin/` | `200`, `200` |
-| http → https | `http://127.0.0.1:8081/` | `308` → `https://benzin.local/` |
-| security headers | `curl -D -` | HSTS, `X-Content-Type-Options`, `Referrer-Policy` |
-| monitor | `/status/` and `https://status.benzin.local/` | `301` → `200` |
-| API through the edge | OTP request/verify → `/v1/me` | `202` → `200` → `200` |
-| device registration (G-16) | `POST /v1/me/devices` in the deployed container | `200`, `pushRegistered: true` |
-| nightly backup, run manually | `exec backup backup.sh once` | `benzin-20261121-234145.dump` (80K), verified with `pg_restore --list`, pruned at 14 days |
-| restore drill | `exec postgres /drills/restore-test.sh` | **PASSED** — `users 2 · plans 4 · audit_logs 2 · migrations 14` |
-| log rotation | `docker inspect` | every container: `json-file 20m x5` |
-| restart policy | `docker inspect` | every container: `unless-stopped` |
+| What                         | Command                                         | Result                                                                                    |
+| ---------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| the file is valid            | `docker compose config -q`                      | exit 0                                                                                    |
+| the stack comes up           | `up -d --build`                                 | 9 services; `migrate` exited 0, the rest healthy                                          |
+| TLS + proxy                  | `curl -k https://benzin.local:8443/healthz`     | `200`                                                                                     |
+| site, panel                  | `/` and `/admin/`                               | `200`, `200`                                                                              |
+| http → https                 | `http://127.0.0.1:8081/`                        | `308` → `https://benzin.local/`                                                           |
+| security headers             | `curl -D -`                                     | HSTS, `X-Content-Type-Options`, `Referrer-Policy`                                         |
+| monitor                      | `/status/` and `https://status.benzin.local/`   | `301` → `200`                                                                             |
+| API through the edge         | OTP request/verify → `/v1/me`                   | `202` → `200` → `200`                                                                     |
+| device registration (G-16)   | `POST /v1/me/devices` in the deployed container | `200`, `pushRegistered: true`                                                             |
+| nightly backup, run manually | `exec backup backup.sh once`                    | `benzin-20261121-234145.dump` (80K), verified with `pg_restore --list`, pruned at 14 days |
+| restore drill                | `exec postgres /drills/restore-test.sh`         | **PASSED** — `users 2 · plans 4 · audit_logs 2 · migrations 14`                           |
+| log rotation                 | `docker inspect`                                | every container: `json-file 20m x5`                                                       |
+| restart policy               | `docker inspect`                                | every container: `unless-stopped`                                                         |
 
-Four defects were found *by running it*, not by reading it — they are the reason this was worth
+Four defects were found _by running it_, not by reading it — they are the reason this was worth
 doing before the server exists:
 
 1. **`migrate` raced the database.** `pg_isready` answered on the unix socket during `initdb`, so
    the healthcheck went green while TCP still refused connections. Fixed with `-h 127.0.0.1` and a
    60-second `start_period`.
-2. **A blank secret bricked the API.** `ZARINPAL_MERCHANT_ID=` in `.env.prod` is the *normal* state
+2. **A blank secret bricked the API.** `ZARINPAL_MERCHANT_ID=` in `.env.prod` is the _normal_ state
    before the merchant account exists, and zod rejected the empty string — the container
    crash-looped. `apps/api/src/config.ts` now treats `''` as absent (`apps/api/test/g18-config.test.ts`).
 3. **Kuma has no working base path.** It answered on `/` and 404'd on `/status/`, so the monitor

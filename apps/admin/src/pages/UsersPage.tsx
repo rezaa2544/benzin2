@@ -188,13 +188,7 @@ export function UsersPage({
  * Support sees *why* someone is out of the market and can put them back with one click; the pause
  * itself expires on its own, so nothing here can turn into a quiet ban.
  */
-function PauseQueue({
-  api,
-  onReleased,
-}: {
-  api: ApiClient;
-  onReleased: () => void;
-}): JSX.Element {
+function PauseQueue({ api, onReleased }: { api: ApiClient; onReleased: () => void }): JSX.Element {
   const queue = useResource<{ items: ListingPause[]; total: number }>(
     () => api.get<{ items: ListingPause[]; total: number }>('/v1/admin/listing-pauses'),
     [],

@@ -107,7 +107,9 @@ export function SettingsPage({ api }: { api: ApiClient }): JSX.Element {
                   ) : (
                     <input
                       className="input tnum"
-                      dir={row.kind === 'number' || row.key === 'payment.card_number' ? 'ltr' : 'rtl'}
+                      dir={
+                        row.kind === 'number' || row.key === 'payment.card_number' ? 'ltr' : 'rtl'
+                      }
                       value={String(value)}
                       onChange={(event) => setEdits({ ...edits, [row.key]: event.target.value })}
                     />

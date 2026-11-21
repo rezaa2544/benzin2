@@ -130,6 +130,7 @@ setInterval(() => sweep().catch(logError), 30_000);
 ```
 
 قواعد:
+
 - **idempotent**: اجرای دوباره اثر اضافه ندارد.
 - **batched**: حداکثر ۱۰۰ ردیف در هر دور تا جدول بزرگ قفل نشود.
 - **observable**: هر دور در `audit_log` با تعداد ردیف‌ها ثبت شود؛ در پنل «آخرین اجرای زمان‌بند»
@@ -147,18 +148,18 @@ settings(key text primary key, value jsonb not null, updated_at timestamptz, upd
 
 کلیدهای الزامی (مقادیر پیش‌فرض):
 
-| کلید | پیش‌فرض |
-|---|---|
-| `order.expiry_days` | `2` |
-| `order.reservation_minutes` | `30` |
-| `order.extension_minutes` | `10` |
-| `order.max_open_per_seller` | `3` |
-| `payment.gateway_enabled` | `true` |
-| `payment.card_to_card_enabled` | `true` |
-| `payment.card_to_card_mode` | `"auto" | "review" | "manual"` |
-| `plan.free_reservations_per_month` | `3` |
-| `sms.provider_chain` | `["smsir","kavenegar","console"]` |
-| `market.average_window_hours` | `72` |
+| کلید                               | پیش‌فرض                           |
+| ---------------------------------- | --------------------------------- |
+| `order.expiry_days`                | `2`                               |
+| `order.reservation_minutes`        | `30`                              |
+| `order.extension_minutes`          | `10`                              |
+| `order.max_open_per_seller`        | `3`                               |
+| `payment.gateway_enabled`          | `true`                            |
+| `payment.card_to_card_enabled`     | `true`                            |
+| `payment.card_to_card_mode`        | `"auto"                           | "review" | "manual"` |
+| `plan.free_reservations_per_month` | `3`                               |
+| `sms.provider_chain`               | `["smsir","kavenegar","console"]` |
+| `market.average_window_hours`      | `72`                              |
 
 هیچ‌کدام از این‌ها در کد ثابت نباشد؛ همه از پنل مالک قابل ویرایش با ثبت در `audit_log`.
 
@@ -180,13 +181,13 @@ select percentile_cont(0.5) within group (order by price_per_liter) as median_pp
 
 ## ۶. دسترسی و حریم خصوصی داده
 
-| داده | چه کسی می‌بیند |
-|---|---|
-| مختصات دقیق آگهی | فروشنده، سرور؛ خریدار فقط فاصله/دایرهٔ تقریبی |
-| شمارهٔ فروشنده | خریدارِ دارای رزرو و اشتراک (مگر `phone_hidden`) |
-| شمارهٔ خریدار | فروشنده، فقط بعد از RESERVED |
-| محتوای چت | دو طرف + پنل فقط با دسترسی `SUPPORT` و ثبت در `audit_log` |
-| گزارش کارت‌به‌کارت | `FINANCE` و `OWNER` |
+| داده               | چه کسی می‌بیند                                            |
+| ------------------ | --------------------------------------------------------- |
+| مختصات دقیق آگهی   | فروشنده، سرور؛ خریدار فقط فاصله/دایرهٔ تقریبی              |
+| شمارهٔ فروشنده      | خریدارِ دارای رزرو و اشتراک (مگر `phone_hidden`)           |
+| شمارهٔ خریدار       | فروشنده، فقط بعد از RESERVED                              |
+| محتوای چت          | دو طرف + پنل فقط با دسترسی `SUPPORT` و ثبت در `audit_log` |
+| گزارش کارت‌به‌کارت | `FINANCE` و `OWNER`                                       |
 
 ## ۷. مهاجرت از وضعیت فعلی
 

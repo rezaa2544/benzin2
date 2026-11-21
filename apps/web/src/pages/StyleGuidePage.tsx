@@ -139,9 +139,7 @@ export function StyleGuidePage({ theme, onToggleTheme }: StyleGuidePageProps): J
                 <div dir="ltr" className="font-mono text-xs text-ink">
                   --{token.name}
                 </div>
-                {token.note ? (
-                  <div className="text-xs text-muted">{token.note}</div>
-                ) : null}
+                {token.note ? <div className="text-xs text-muted">{token.note}</div> : null}
               </div>
             </div>
           ))}
@@ -320,7 +318,6 @@ export function StyleGuidePage({ theme, onToggleTheme }: StyleGuidePageProps): J
         </div>
       </Section>
 
-
       <Section title={t('styleGuide.kit')} lead={t('styleGuide.kitLead')}>
         <div className="flex flex-col gap-4">
           <Card title="Button">
@@ -455,7 +452,10 @@ export function StyleGuidePage({ theme, onToggleTheme }: StyleGuidePageProps): J
           </div>
           <div>
             <p className="mb-1 text-xs text-muted">{t('errors.UNKNOWN')}</p>
-            <ListError message={t('errors.UNKNOWN')} onRetry={() => push(t('state.retry'), 'info')} />
+            <ListError
+              message={t('errors.UNKNOWN')}
+              onRetry={() => push(t('state.retry'), 'info')}
+            />
           </div>
           <div>
             <p className="mb-1 text-xs text-muted">{t('offline.banner')}</p>

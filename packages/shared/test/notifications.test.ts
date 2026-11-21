@@ -13,6 +13,7 @@ const REQUIRED_PARAMS: Record<string, Record<string, number | string>> = {
   RESERVATION_REQUESTED: { litres: 20, minutes: 5 },
   RESERVATION_CONFIRMED: { litres: 20 },
   RESERVATION_REJECTED: { litres: 20 },
+  RESERVATION_EXTENDED: { litres: 20, minutes: 5 },
   RESERVATION_EXPIRED: { litres: 20, minutes: 5 },
   RESERVATION_CANCELLED: { by: 'خریدار', litres: 20, reason: 'منصرف شدم' },
   TRADE_COMPLETED: { litres: 20, rateToman: 2600 },
@@ -29,6 +30,10 @@ const REQUIRED_PARAMS: Record<string, Record<string, number | string>> = {
   SUBSCRIPTION_EXPIRED: { plan: 'اشتراک یک‌ماهه' },
   DISPUTE_RESOLVED: { litres: 20, outcome: 'به نفع خریدار' },
   ACCOUNT_ROLE_CHANGED: { role: 'پشتیبانی' },
+  LISTINGS_PAUSED: { hours: 24 },
+  LISTINGS_RESUMED: {},
+  PAYMENT_DEPOSIT_UNMATCHED: { amount: 49_000, reference: 'REF-1402' },
+  PAYMENT_NEEDS_REVIEW: { amount: 49_000, tracking: 'TRK-1402' },
 };
 
 const placeholders = (template: string): string[] =>

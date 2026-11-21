@@ -40,9 +40,14 @@ export const SETTING_DEFINITIONS = {
    * it would send a code-less SMS that looks delivered.
    */
   'notification.sms_otp_message': {
-    schema: z.string().trim().min(5).max(160).refine((value) => value.includes('{code}'), {
-      message: 'OTP_TEMPLATE_MISSING_CODE',
-    }),
+    schema: z
+      .string()
+      .trim()
+      .min(5)
+      .max(160)
+      .refine((value) => value.includes('{code}'), {
+        message: 'OTP_TEMPLATE_MISSING_CODE',
+      }),
     default: 'کد ورود شما به بنزین: {code}',
   },
   'payment.card_to_card_ttl_minutes': { schema: z.number().int().min(15).max(1440), default: 120 },
@@ -173,7 +178,10 @@ export const SETTING_META: Record<SettingKey, { labelFa: string; group: SettingG
     labelFa: 'حداکثر تلاش بررسی درگاه (سپس بازبینی اپراتور)',
     group: 'PAYMENT',
   },
-  'payment.verify_retry_minutes': { labelFa: 'فاصلهٔ تلاش‌های بررسی درگاه (دقیقه)', group: 'PAYMENT' },
+  'payment.verify_retry_minutes': {
+    labelFa: 'فاصلهٔ تلاش‌های بررسی درگاه (دقیقه)',
+    group: 'PAYMENT',
+  },
   'trust.suspend_below_score': { labelFa: 'تعلیق زیر امتیاز', group: 'TRUST' },
   'trust.suspend_hours': { labelFa: 'مدت تعلیق (ساعت)', group: 'TRUST' },
   'trust.window_days': { labelFa: 'پنجره‌ی محاسبه‌ی اعتبار (روز)', group: 'TRUST' },

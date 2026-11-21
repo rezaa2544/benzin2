@@ -104,17 +104,21 @@ export function PlansPage({ api, config, paymentOutcome }: PlansPageProps): JSX.
 
       {/* G-12: the buyer came back from the bank — say what happened before anything else. */}
       {paymentOutcome && OUTCOME_KEYS[paymentOutcome] ? (
-        <Notice tone={paymentOutcome === 'paid' ? 'success' : paymentOutcome === 'failed' ? 'error' : 'warning'}>
+        <Notice
+          tone={
+            paymentOutcome === 'paid'
+              ? 'success'
+              : paymentOutcome === 'failed'
+                ? 'error'
+                : 'warning'
+          }
+        >
           {t(OUTCOME_KEYS[paymentOutcome]!)}
         </Notice>
       ) : null}
       {error ? <Notice tone="error">{error}</Notice> : null}
       {loadError ? (
-        <ListError
-          message={errorMessage(loadError, errorMap)}
-          error={loadError}
-          onRetry={reload}
-        />
+        <ListError message={errorMessage(loadError, errorMap)} error={loadError} onRetry={reload} />
       ) : null}
 
       {loading ? (
@@ -122,10 +126,7 @@ export function PlansPage({ api, config, paymentOutcome }: PlansPageProps): JSX.
       ) : (
         <>
           {data?.entitlement ? (
-            <div
-              className="card mb-3 border-brand/40 bg-brandSoft"
-              data-testid="entitlement-card"
-            >
+            <div className="card mb-3 border-brand/40 bg-brandSoft" data-testid="entitlement-card">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-bold">{data.entitlement.planNameFa}</p>
                 <span className="chip">
@@ -247,8 +248,7 @@ export function PlansPage({ api, config, paymentOutcome }: PlansPageProps): JSX.
                     {plan.durationDays > 0
                       ? tf('plans.duration', { days: toPersianDigits(plan.durationDays) })
                       : t('plans.noExpiry')}{' '}
-                    ·{' '}
-                    {tf('plans.orders', { count: toPersianDigits(plan.maxActiveOrders) })}
+                    · {tf('plans.orders', { count: toPersianDigits(plan.maxActiveOrders) })}
                   </p>
                   {/* G-26: the card says what the money actually buys. */}
                   <ul className="mb-3 space-y-1 text-xs">

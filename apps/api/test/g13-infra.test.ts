@@ -169,7 +169,11 @@ describe('G-13 — infrastructure inventory', () => {
 
       const board = await overview(ctx, owner.token);
       expect(board.resources).toHaveLength(1);
-      expect(board.resources[0]).toMatchObject({ name: 'پیامک کاوه‌نگار', kind: 'SMS', isActive: true });
+      expect(board.resources[0]).toMatchObject({
+        name: 'پیامک کاوه‌نگار',
+        kind: 'SMS',
+        isActive: true,
+      });
 
       // Saving the form without touching the credential must not wipe it.
       const renamed = await ctx.app.inject({
@@ -179,7 +183,11 @@ describe('G-13 — infrastructure inventory', () => {
         payload: { name: 'کاوه‌نگار اصلی', isActive: false },
       });
       expect(renamed.statusCode).toBe(200);
-      expect(renamed.json()).toMatchObject({ name: 'کاوه‌نگار اصلی', isActive: false, secretSet: true });
+      expect(renamed.json()).toMatchObject({
+        name: 'کاوه‌نگار اصلی',
+        isActive: false,
+        secretSet: true,
+      });
 
       const audit = await ctx.repos.audit.list(10);
       const actions = audit.map((entry) => entry.action);

@@ -27,7 +27,9 @@ if (config.NODE_ENV === 'production' && !config.DATABASE_URL) {
 const postgres: PostgresHandle | null = config.DATABASE_URL
   ? createPostgresRepositories(config.DATABASE_URL)
   : null;
-const repos: Repositories = postgres ? postgres.repositories : createMemoryRepositories(systemClock);
+const repos: Repositories = postgres
+  ? postgres.repositories
+  : createMemoryRepositories(systemClock);
 
 // Provider chain from D3: SMS.ir first, Kavenegar as failover; `console` without keys.
 const sms = createSmsSender(config);

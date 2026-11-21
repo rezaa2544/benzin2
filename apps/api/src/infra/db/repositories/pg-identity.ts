@@ -57,7 +57,8 @@ const toUser = (row: UserRow): User => ({
   phoneHidden: row.phone_hidden ?? false,
   responseAnswered: Number(row.response_answered ?? 0),
   responseReceived: Number(row.response_received ?? 0),
-  responseRatePermille: row.response_rate_permille === null ? null : Number(row.response_rate_permille),
+  responseRatePermille:
+    row.response_rate_permille === null ? null : Number(row.response_rate_permille),
   responseRefreshedAt: row.response_refreshed_at,
   unansweredStreak: Number(row.unanswered_streak ?? 0),
   delistedUntil: row.delisted_until,

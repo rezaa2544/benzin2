@@ -82,11 +82,7 @@ async function matchedTrade(session: Session): Promise<{ orderId: string; reserv
 }
 
 /** Reads the code and returns just the string, which is what every test actually needs. */
-const codeOf = async (
-  ctx: TestContext,
-  token: string,
-  reservationId: string,
-): Promise<string> => {
+const codeOf = async (ctx: TestContext, token: string, reservationId: string): Promise<string> => {
   const response = await ctx.app.inject({
     method: 'GET',
     url: `/v1/reservations/${reservationId}/delivery-code`,
@@ -173,9 +169,9 @@ describe('four-digit delivery code (G-09)', () => {
     const rejected = await complete(ctx, session.owner.token, reservationId, { code: wrong });
     expect(rejected.statusCode).toBe(422);
     expect((rejected.body.error as { code: string }).code).toBe('DELIVERY_CODE_INVALID');
-    expect((rejected.body.error as { details: { attemptsRemaining: number } }).details.attemptsRemaining).toBe(
-      2,
-    );
+    expect(
+      (rejected.body.error as { details: { attemptsRemaining: number } }).details.attemptsRemaining,
+    ).toBe(2);
 
     // Still CONFIRMED: a wrong code must not move the reservation.
     const stillThere = await ctx.app.inject({

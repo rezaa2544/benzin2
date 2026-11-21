@@ -47,7 +47,7 @@ export interface NodeHeartbeatInput {
   region?: string | null;
   resources?: Partial<NodeResources> | null;
   traffic?: Partial<NodeTraffic> | null;
-  jobs?: Partial<Omit<NodeJobs, 'recent'>> & { recent?: NodeJob[] } | null;
+  jobs?: (Partial<Omit<NodeJobs, 'recent'>> & { recent?: NodeJob[] }) | null;
   uptimeSeconds?: number;
   active?: boolean;
 }
@@ -158,7 +158,8 @@ export class NodesService {
     this.requests += 1;
     if (isError) this.errors += 1;
     this.window.push({ at, ms: input.durationMs, error: isError });
-    if (this.window.length > MAX_WINDOW_SAMPLES) this.window.splice(0, this.window.length - MAX_WINDOW_SAMPLES);
+    if (this.window.length > MAX_WINDOW_SAMPLES)
+      this.window.splice(0, this.window.length - MAX_WINDOW_SAMPLES);
   }
 
   /** Called by the scheduler after every sweep so the panel can show a work report. */
@@ -266,7 +267,10 @@ export class NodesService {
   }
 
   private toView(record: NodeHeartbeatRecord, now: Date, self: boolean): NodeView {
-    const ageSeconds = Math.max(0, Math.round((now.getTime() - record.lastSeenAt.getTime()) / 1000));
+    const ageSeconds = Math.max(
+      0,
+      Math.round((now.getTime() - record.lastSeenAt.getTime()) / 1000),
+    );
     const state: NodeState =
       ageSeconds > this.staleSeconds ? 'offline' : record.active ? 'active' : 'standby';
     const duties: NodeView['duties'] =

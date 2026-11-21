@@ -167,9 +167,9 @@ describe('G-11 card-to-card', () => {
         url: '/v1/me/subscription',
         headers: auth(buyer.token),
       });
-      expect((subscription.json() as { subscription: { status: string } | null }).subscription?.status).toBe(
-        'ACTIVE',
-      );
+      expect(
+        (subscription.json() as { subscription: { status: string } | null }).subscription?.status,
+      ).toBe('ACTIVE');
 
       // Same reference again: 200 (so the bank stops retrying) but nothing happens twice.
       const replay = await deposit(ctx, {

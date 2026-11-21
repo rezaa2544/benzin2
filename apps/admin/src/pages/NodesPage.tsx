@@ -30,15 +30,7 @@ import fa from '../i18n/fa.json';
 
 const POLL_MS = 4_000;
 
-function Meter({
-  label,
-  pct,
-  hint,
-}: {
-  label: string;
-  pct: number;
-  hint: string;
-}): JSX.Element {
+function Meter({ label, pct, hint }: { label: string; pct: number; hint: string }): JSX.Element {
   return (
     <div>
       <div className="flex items-baseline justify-between">
@@ -46,7 +38,10 @@ function Meter({
         <span className="tnum text-xs font-bold">{fmtPct(pct)}</span>
       </div>
       <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface" role="presentation">
-        <div className={`h-full rounded-full ${pctBarClass(pct)}`} style={{ width: barWidth(pct) }} />
+        <div
+          className={`h-full rounded-full ${pctBarClass(pct)}`}
+          style={{ width: barWidth(pct) }}
+        />
       </div>
       <p className="mt-1 text-[11px] text-muted">{hint}</p>
     </div>
@@ -76,7 +71,9 @@ function NodeCard({ node }: { node: NodeView }): JSX.Element {
           <p className="mt-1 text-[11px] text-muted tnum">{node.nodeId}</p>
         </div>
         <div className="text-end">
-          <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${stateTone(node.state)}`}>
+          <span
+            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${stateTone(node.state)}`}
+          >
             {node.stateFa}
           </span>
           <p className="mt-1 text-[11px] text-muted">
@@ -138,7 +135,10 @@ function NodeCard({ node }: { node: NodeView }): JSX.Element {
         ) : (
           <ul className="space-y-1">
             {jobs.map((job, index) => (
-              <li key={`${job.at}-${index}`} className="flex flex-wrap justify-between gap-2 text-[11px]">
+              <li
+                key={`${job.at}-${index}`}
+                className="flex flex-wrap justify-between gap-2 text-[11px]"
+              >
                 <span>{describeJob(job)}</span>
                 <span className="text-muted tnum">{job.at.slice(11, 16)}</span>
               </li>
@@ -183,7 +183,10 @@ const fhms = (seconds: number): string => {
 
 export function NodesPage({ api }: { api: ApiClient }): JSX.Element {
   const [tick, setTick] = useState(0);
-  const overview = useResource<NodesOverview>(() => api.get<NodesOverview>('/v1/admin/nodes'), [tick]);
+  const overview = useResource<NodesOverview>(
+    () => api.get<NodesOverview>('/v1/admin/nodes'),
+    [tick],
+  );
 
   // "Live" is the requirement, not an extra: poll while the tab is open, and stop when hidden so a
   // forgotten tab does not keep hammering the API.
@@ -221,9 +224,7 @@ export function NodesPage({ api }: { api: ApiClient }): JSX.Element {
       <div className="card space-y-1 text-sm">
         <p>
           <span className="text-muted">{fa.nodes.activeNow}: </span>
-          <span className="font-bold">
-            {activeNode ? activeNode.name : fa.nodes.nobody}
-          </span>
+          <span className="font-bold">{activeNode ? activeNode.name : fa.nodes.nobody}</span>
         </p>
         <p className="text-xs text-muted">{data.failover.reasonFa}</p>
         <p className="text-[11px] text-muted">

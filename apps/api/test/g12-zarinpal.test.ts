@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { auth, createTestContext, freshPhone, login, mintAccessToken, ManualClock } from './helpers.js';
+import {
+  auth,
+  createTestContext,
+  freshPhone,
+  login,
+  mintAccessToken,
+  ManualClock,
+} from './helpers.js';
 import { ZarinpalGatewayProvider } from '../src/modules/payment-providers.js';
 import { assertGatewaySafety, loadConfig } from '../src/config.js';
 import type { PaymentProvider } from '../src/ports.js';
@@ -22,7 +29,7 @@ class FakeGateway implements PaymentProvider {
   readonly verified: string[] = [];
   private counter = 0;
 
-  async init(input: { paymentId: string }): Promise<{
+  async init(_input: { paymentId: string }): Promise<{
     redirectUrl: string | null;
     authority: string | null;
     destination: null;
@@ -84,9 +91,19 @@ describe('G-12 Zarinpal provider contract', () => {
       fetchImpl: async (url, init) => {
         sent.push({ url, body: JSON.parse(init.body) as Record<string, unknown> });
         if (url.endsWith('request.json')) {
-          return { ok: true, status: 200, json: async () => ({ data: { code: 100, authority: 'A00000000000000000000000000000001234' } }) };
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: { code: 100, authority: 'A00000000000000000000000000000001234' },
+            }),
+          };
         }
-        return { ok: true, status: 200, json: async () => ({ data: { code: verifyCode, ref_id: 987654 } }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ data: { code: verifyCode, ref_id: 987654 } }),
+        };
       },
     });
 
@@ -155,9 +172,9 @@ describe('G-12 Zarinpal provider contract', () => {
     });
     expect(ok.PAYMENT_GATEWAY).toBe('zarinpal');
     // The sandbox gateway has no such requirements — development must stay one command away.
-    expect(assertGatewaySafety(loadConfig({ NODE_ENV: 'development', ...SECRET_ENV })).PAYMENT_GATEWAY).toBe(
-      'sandbox',
-    );
+    expect(
+      assertGatewaySafety(loadConfig({ NODE_ENV: 'development', ...SECRET_ENV })).PAYMENT_GATEWAY,
+    ).toBe('sandbox');
   });
 });
 
@@ -191,9 +208,9 @@ describe('G-12 gateway callback', () => {
         url: '/v1/me/subscription',
         headers: auth(buyer.token),
       });
-      expect((subscription.json() as { subscription: { status: string } | null }).subscription?.status).toBe(
-        'ACTIVE',
-      );
+      expect(
+        (subscription.json() as { subscription: { status: string } | null }).subscription?.status,
+      ).toBe('ACTIVE');
 
       // The buyer refreshes the return page: same answer, no second activation.
       const replay = await callback(ctx, `Authority=${stored!.authority}&Status=OK`);
@@ -235,7 +252,10 @@ describe('G-12 gateway callback', () => {
       env: { PAYMENT_RETURN_URL: 'https://app.benzin.ir/plans' },
     });
     try {
-      const response = await callback(ctx, 'Authority=A000000000000000000000000000000099&Status=OK');
+      const response = await callback(
+        ctx,
+        'Authority=A000000000000000000000000000000099&Status=OK',
+      );
       expect(response.statusCode).toBe(302);
       expect(response.headers.location).toContain('payment=unknown');
       // A short/absent authority is the same dead end from the buyer's point of view.
@@ -411,8 +431,13 @@ describe('G-12 revenue report', () => {
 
       expect(body.paidCount).toBe(2);
       expect(body.totalToman).toBe(gatewayInvoice.amountToman + card.amountToman);
-      expect(body.byProvider.map((row) => row.provider).sort()).toEqual(['CARD_TO_CARD', 'GATEWAY']);
-      expect(body.byProvider.find((row) => row.provider === 'GATEWAY')?.labelFa).toBe('درگاه بانکی');
+      expect(body.byProvider.map((row) => row.provider).sort()).toEqual([
+        'CARD_TO_CARD',
+        'GATEWAY',
+      ]);
+      expect(body.byProvider.find((row) => row.provider === 'GATEWAY')?.labelFa).toBe(
+        'درگاه بانکی',
+      );
       expect(body.byDay).toHaveLength(1);
       expect(body.byDay[0]!.day).toBe('2026-03-10');
       // Persian digits and separators are made server-side.

@@ -43,19 +43,19 @@ callback در مرورگر خریدار است: تب بسته می‌شود، ا
    آدیت `payment.verify_exhausted` ثبت می‌شود و به خریدار اعلان `PAYMENT_NEEDS_REVIEW` می‌رود؛
    اپراتور با همان صف G-11 تأیید یا رد می‌کند.
 
-نکتهٔ مهم: پاسخی که بانک *داده* (کد خطا مثل `-51`) شکست قطعی است و همان‌جا `FAILED` می‌شود؛ فقط
+نکتهٔ مهم: پاسخی که بانک _داده_ (کد خطا مثل `-51`) شکست قطعی است و همان‌جا `FAILED` می‌شود؛ فقط
 خطای گذرا (throw/شبکه) وارد صف تلاش مجدد می‌شود. «تلاش مجدد روی یک رد قطعی» فقط تأخیر در پاسخ به
 خریدار است.
 
 ## ۳) پیکربندی روی سرور (کلید هرگز در مخزن)
 
-| متغیر | نمونه | توضیح |
-|---|---|---|
-| `PAYMENT_GATEWAY` | `zarinpal` | `sandbox` (پیش‌فرض توسعه) یا `zarinpal` |
-| `ZARINPAL_MERCHANT_ID` | ۳۶ کاراکتر از پنل زرین‌پال | فقط در `.env` سرور |
-| `ZARINPAL_BASE_URL` | `https://payment.zarinpal.com` | برای تست مقابل سندباکس زرین‌پال تغییر می‌کند |
-| `PAYMENT_CALLBACK_URL` | `https://app.benzin.ir/v1/payments/gateway/callback` | باید HTTPS باشد |
-| `PAYMENT_RETURN_URL` | `https://app.benzin.ir/plans` | مقصد نهایی مرورگر خریدار |
+| متغیر                  | نمونه                                                | توضیح                                        |
+| ---------------------- | ---------------------------------------------------- | -------------------------------------------- |
+| `PAYMENT_GATEWAY`      | `zarinpal`                                           | `sandbox` (پیش‌فرض توسعه) یا `zarinpal`      |
+| `ZARINPAL_MERCHANT_ID` | ۳۶ کاراکتر از پنل زرین‌پال                           | فقط در `.env` سرور                           |
+| `ZARINPAL_BASE_URL`    | `https://payment.zarinpal.com`                       | برای تست مقابل سندباکس زرین‌پال تغییر می‌کند |
+| `PAYMENT_CALLBACK_URL` | `https://app.benzin.ir/v1/payments/gateway/callback` | باید HTTPS باشد                              |
+| `PAYMENT_RETURN_URL`   | `https://app.benzin.ir/plans`                        | مقصد نهایی مرورگر خریدار                     |
 
 **نگهبان راه‌اندازی:** اگر `PAYMENT_GATEWAY=zarinpal` باشد و یکی از این‌ها غلط باشد، سرور بالا
 نمی‌آید (`assertGatewaySafety`): نبودِ `ZARINPAL_MERCHANT_ID`، یا آدرس callback/return غیر HTTPS.

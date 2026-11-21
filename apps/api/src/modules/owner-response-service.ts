@@ -81,13 +81,8 @@ export class OwnerResponseService {
   async refresh(userId: string): Promise<ResponseView | null> {
     const user = await this.repos.users.findById(userId);
     if (!user) return null;
-    const since = new Date(
-      this.clock.now().getTime() - RESPONSE_WINDOW_DAYS * 24 * 3_600_000,
-    );
-    const { received, answered } = await this.repos.reservations.countForOwnerWindow(
-      userId,
-      since,
-    );
+    const since = new Date(this.clock.now().getTime() - RESPONSE_WINDOW_DAYS * 24 * 3_600_000);
+    const { received, answered } = await this.repos.reservations.countForOwnerWindow(userId, since);
     user.responseReceived = received;
     user.responseAnswered = answered;
     user.responseRatePermille = received === 0 ? null : Math.round((answered * 1000) / received);
@@ -232,7 +227,8 @@ export class OwnerResponseService {
   async pausedCount(): Promise<number> {
     const paused = await this.repos.users.listDelisted(this.clock.now(), 500);
     return paused.filter(
-      (user) => user.delistedUntil !== null && user.delistedUntil.getTime() > this.clock.now().getTime(),
+      (user) =>
+        user.delistedUntil !== null && user.delistedUntil.getTime() > this.clock.now().getTime(),
     ).length;
   }
 }

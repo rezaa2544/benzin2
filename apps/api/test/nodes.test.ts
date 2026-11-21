@@ -124,15 +124,17 @@ describe('node monitor (G-28)', () => {
       headers: auth(token),
     });
     const job = (
-      nodes.json() as { nodes: { jobs: { recent: { kind: string; count: number; detail: Record<string, number> }[] } }[] }
+      nodes.json() as {
+        nodes: {
+          jobs: { recent: { kind: string; count: number; detail: Record<string, number> }[] };
+        }[];
+      }
     ).nodes[0]!.jobs.recent[0]!;
     expect(job.kind).toBe('expiry-sweep');
     expect(job.detail.expiredOrders).toBe(1);
     // G-10 added two sweeps of its own (lapsed listing pauses, aged answer windows), so the total
     // is the sum of the report rather than a fixed 1 — the panel shows exactly that sum.
-    expect(job.count).toBe(
-      Object.values(job.detail).reduce((total, value) => total + value, 0),
-    );
+    expect(job.count).toBe(Object.values(job.detail).reduce((total, value) => total + value, 0));
     await ctx.close();
   });
 
@@ -150,7 +152,15 @@ describe('node monitor (G-28)', () => {
       nodeId: 'pc-reza',
       name: 'سیستم رضا',
       role: 'helper' as const,
-      resources: { cpuPct: 12.5, cores: 8, memUsedPct: 44, memRssMb: 512, diskFreeGb: 120, diskTotalGb: 480, loadAvg: 0.6 },
+      resources: {
+        cpuPct: 12.5,
+        cores: 8,
+        memUsedPct: 44,
+        memRssMb: 512,
+        diskFreeGb: 120,
+        diskTotalGb: 480,
+        loadAvg: 0.6,
+      },
       uptimeSeconds: 3600,
       active: false,
     };
@@ -178,7 +188,12 @@ describe('node monitor (G-28)', () => {
       payload,
     });
     expect(ok.statusCode).toBe(200);
-    const helper = ok.json() as { nodeId: string; role: string; state: string; resources: { cpuPct: number } };
+    const helper = ok.json() as {
+      nodeId: string;
+      role: string;
+      state: string;
+      resources: { cpuPct: number };
+    };
     expect(helper.nodeId).toBe('pc-reza');
     expect(helper.role).toBe('helper');
     expect(helper.state).toBe('standby');

@@ -42,9 +42,7 @@ export function DeliveryCodeCard({
     <div className="card mb-3" data-testid="delivery-code">
       <div className="mb-1 flex items-center justify-between">
         <p className="text-sm font-bold">{t('trade.deliveryCodeTitle')}</p>
-        <span className="text-xs text-muted tnum">
-          {formatJalaliDateTime(data.expiresAt)}
-        </span>
+        <span className="text-xs text-muted tnum">{formatJalaliDateTime(data.expiresAt)}</span>
       </div>
       <p className="mb-2 text-xs text-muted">{t('trade.deliveryCodeLead')}</p>
       <button

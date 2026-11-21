@@ -67,7 +67,11 @@ export const toReservationView = (reservation: Reservation): ReservationView => 
  */
 export interface EntitlementGate {
   requireForReservation(user: User): Promise<
-    EntitlementConsumption & { planCode: string; monthlyLimit: number | null; usedThisMonth: number }
+    EntitlementConsumption & {
+      planCode: string;
+      monthlyLimit: number | null;
+      usedThisMonth: number;
+    }
   >;
   recordUse(user: User, consumption: EntitlementConsumption): Promise<void>;
   /** G-19: does this user's plan include seeing a number? */
@@ -397,7 +401,8 @@ export class ReservationService {
       expiresAt: issued.expiresAt.toISOString(),
       attemptsRemaining: Math.max(
         0,
-        DELIVERY_CODE_ATTEMPTS - (locked && locked.getTime() > now.getTime() ? 0 : issued.deliveryAttempts),
+        DELIVERY_CODE_ATTEMPTS -
+          (locked && locked.getTime() > now.getTime() ? 0 : issued.deliveryAttempts),
       ),
       lockedUntil: locked && locked.getTime() > now.getTime() ? locked.toISOString() : null,
     };
@@ -416,19 +421,17 @@ export class ReservationService {
     const now = this.clock.now();
     const locked = reservation.deliveryLockedUntil;
     if (locked && locked.getTime() > now.getTime()) {
-      throw new AppError(
-        'DELIVERY_CODE_LOCKED',
-        429,
-        'Too many wrong codes — try again later',
-        { lockedUntil: locked.toISOString() },
-      );
+      throw new AppError('DELIVERY_CODE_LOCKED', 429, 'Too many wrong codes — try again later', {
+        lockedUntil: locked.toISOString(),
+      });
     }
     if (!code) {
       throw new AppError('DELIVERY_CODE_REQUIRED', 422, 'The hand-over code is required', {
         attemptsRemaining: DELIVERY_CODE_ATTEMPTS - reservation.deliveryAttempts,
       });
     }
-    const expected = reservation.deliveryCode ?? (await this.issueDeliveryCode(reservation)).deliveryCode;
+    const expected =
+      reservation.deliveryCode ?? (await this.issueDeliveryCode(reservation)).deliveryCode;
     if (code === expected) {
       if (reservation.deliveryAttempts > 0 || locked) {
         await this.repos.reservations.updateDelivery(reservation.id, {
@@ -688,9 +691,7 @@ export class ReservationService {
    * same order again instead of leaving them on a dead screen. Only the newest release within a day
    * whose order is still open qualifies.
    */
-  async rebookHint(
-    user: User,
-  ): Promise<{
+  async rebookHint(user: User): Promise<{
     orderId: string;
     reservationId: string;
     litres: number;

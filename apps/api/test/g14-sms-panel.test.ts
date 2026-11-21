@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FetchLike } from '../src/infra/sms/index.js';
+import type { TestContext } from './helpers.js';
 import {
   auth,
   createTestContext,
@@ -60,7 +61,7 @@ const providerFetch = (
   };
 };
 
-const status = async (ctx: { app: Parameters<typeof auth> extends never ? never : any }, token: string) => {
+const status = async (ctx: TestContext, token: string) => {
   const response = await ctx.app.inject({
     method: 'GET',
     url: '/v1/admin/sms',
@@ -71,7 +72,7 @@ const status = async (ctx: { app: Parameters<typeof auth> extends never ? never 
 };
 
 const saveProvider = async (
-  ctx: any,
+  ctx: TestContext,
   token: string,
   payload: Record<string, unknown>,
 ): Promise<void> => {

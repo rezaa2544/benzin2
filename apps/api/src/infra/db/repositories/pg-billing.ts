@@ -35,8 +35,7 @@ const toPlan = (row: PlanRow): Plan => ({
   durationDays: Number(row.duration_days),
   priceToman: Number(row.price_toman),
   maxActiveOrders: Number(row.max_active_orders),
-  monthlyReservations:
-    row.monthly_reservations === null ? null : Number(row.monthly_reservations),
+  monthlyReservations: row.monthly_reservations === null ? null : Number(row.monthly_reservations),
   phoneVisible: row.phone_visible,
   singleUse: row.single_use,
   isActive: row.is_active,
@@ -94,7 +93,8 @@ export class PgPlanRepository implements PlanRepository {
     if (patch.durationDays !== undefined) assign('duration_days', patch.durationDays);
     if (patch.priceToman !== undefined) assign('price_toman', patch.priceToman);
     if (patch.maxActiveOrders !== undefined) assign('max_active_orders', patch.maxActiveOrders);
-    if (patch.monthlyReservations !== undefined) assign('monthly_reservations', patch.monthlyReservations);
+    if (patch.monthlyReservations !== undefined)
+      assign('monthly_reservations', patch.monthlyReservations);
     if (patch.phoneVisible !== undefined) assign('phone_visible', patch.phoneVisible);
     if (patch.singleUse !== undefined) assign('single_use', patch.singleUse);
     if (patch.isActive !== undefined) assign('is_active', patch.isActive);
@@ -507,7 +507,10 @@ export class PgPaymentRepository implements PaymentRepository {
     return row ? toPayment(row) : null;
   }
 
-  async revenue(from: Date, to: Date): Promise<{
+  async revenue(
+    from: Date,
+    to: Date,
+  ): Promise<{
     totalPaidToman: number;
     totalPaidCount: number;
     byProvider: { provider: PaymentMethod; paidToman: number; paidCount: number }[];
@@ -529,7 +532,11 @@ export class PgPaymentRepository implements PaymentRepository {
          FROM payments
         WHERE COALESCE(paid_at, created_at) BETWEEN $1 AND $2`,
       [from, to],
-    ).then((rows) => (rows.length > 0 ? rows : [{ paid_toman: 0, paid_count: 0, pending_count: 0, failed_count: 0 }]));
+    ).then((rows) =>
+      rows.length > 0
+        ? rows
+        : [{ paid_toman: 0, paid_count: 0, pending_count: 0, failed_count: 0 }],
+    );
 
     const providers = await query<{
       provider: PaymentMethod;
@@ -546,7 +553,11 @@ export class PgPaymentRepository implements PaymentRepository {
     );
 
     // `Asia/Tehran` so a payment at 23:30 local time lands on that local day, not the UTC one.
-    const days = await query<{ day: string; paid_toman: string | number; paid_count: string | number }>(
+    const days = await query<{
+      day: string;
+      paid_toman: string | number;
+      paid_count: string | number;
+    }>(
       this.db,
       `SELECT to_char((COALESCE(paid_at, created_at) AT TIME ZONE 'Asia/Tehran')::date, 'YYYY-MM-DD') AS day,
               SUM(amount_toman) AS paid_toman,

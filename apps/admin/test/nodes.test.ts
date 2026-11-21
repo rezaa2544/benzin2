@@ -75,7 +75,9 @@ describe('node screen formatting (G-28)', () => {
     expect(recentJobs(jobs)).toHaveLength(6);
     expect(recentJobs(jobs)[0]?.count).toBe(1);
     expect(hasOnlyIdleSweeps(jobs)).toBe(false);
-    expect(hasOnlyIdleSweeps([{ kind: 'expiry-sweep', count: 0, at: '2026-02-01T10:00:00.000Z' }])).toBe(true);
+    expect(
+      hasOnlyIdleSweeps([{ kind: 'expiry-sweep', count: 0, at: '2026-02-01T10:00:00.000Z' }]),
+    ).toBe(true);
     expect(jobKindFa('something-new')).toBe('something-new');
   });
 

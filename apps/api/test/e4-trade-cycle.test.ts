@@ -41,14 +41,19 @@ describe('E4 — concurrency, timers, cycle gate, contact disclosure and dispute
     if (!plan) throw new Error(`plan ${code} missing`);
     const subscription = await ctx.repos.subscriptions.create({
       userId: (await ctx.repos.users.findByPhone(
-        (await ctx.app.inject({ method: 'GET', url: '/v1/me', headers: auth(token) })).json<{ phone: string }>()
-          .phone,
+        (await ctx.app.inject({ method: 'GET', url: '/v1/me', headers: auth(token) })).json<{
+          phone: string;
+        }>().phone,
       ))!.id,
       planId: plan.id,
       startsAt: clock.now(),
       endsAt: new Date(clock.now().getTime() + plan.durationDays * 86_400_000),
     });
-    await ctx.repos.subscriptions.activate(subscription.id, subscription.startsAt, subscription.endsAt);
+    await ctx.repos.subscriptions.activate(
+      subscription.id,
+      subscription.startsAt,
+      subscription.endsAt,
+    );
   };
 
   const createOrder = async (token: string, overrides: Record<string, unknown> = {}) => {

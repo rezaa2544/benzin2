@@ -87,7 +87,9 @@ export class MemoryUserRepository implements UserRepository {
 
   async listDelistDue(now: Date, limit: number): Promise<User[]> {
     return [...this.byId.values()]
-      .filter((user) => user.delistedUntil !== null && user.delistedUntil.getTime() <= now.getTime())
+      .filter(
+        (user) => user.delistedUntil !== null && user.delistedUntil.getTime() <= now.getTime(),
+      )
       .slice(0, limit)
       .map(clone);
   }
@@ -96,7 +98,8 @@ export class MemoryUserRepository implements UserRepository {
     return [...this.byId.values()]
       .filter(
         (user) =>
-          user.responseRefreshedAt === null || user.responseRefreshedAt.getTime() <= before.getTime(),
+          user.responseRefreshedAt === null ||
+          user.responseRefreshedAt.getTime() <= before.getTime(),
       )
       .slice(0, limit)
       .map(clone);
@@ -662,9 +665,7 @@ export class MemoryReservationRepository implements ReservationRepository {
 
   async updateDelivery(
     id: string,
-    patch: Partial<
-      Pick<Reservation, 'deliveryCode' | 'deliveryAttempts' | 'deliveryLockedUntil'>
-    >,
+    patch: Partial<Pick<Reservation, 'deliveryCode' | 'deliveryAttempts' | 'deliveryLockedUntil'>>,
   ): Promise<Reservation | null> {
     const current = this.byId.get(id);
     if (!current) return null;
@@ -812,7 +813,9 @@ export class MemoryInfraResourceRepository implements InfraResourceRepository {
 
   async update(
     id: string,
-    patch: Partial<Pick<InfraResource, 'name' | 'kind' | 'address' | 'secret' | 'isActive' | 'updatedBy'>>,
+    patch: Partial<
+      Pick<InfraResource, 'name' | 'kind' | 'address' | 'secret' | 'isActive' | 'updatedBy'>
+    >,
     at: Date,
   ): Promise<InfraResource | null> {
     const existing = this.byId.get(id);
@@ -823,7 +826,8 @@ export class MemoryInfraResourceRepository implements InfraResourceRepository {
     if (patch.address !== undefined) (next as { address: string }).address = patch.address;
     if (patch.secret !== undefined) (next as { secret: string | null }).secret = patch.secret;
     if (patch.isActive !== undefined) next.isActive = patch.isActive;
-    if (patch.updatedBy !== undefined) (next as { updatedBy: string | null }).updatedBy = patch.updatedBy;
+    if (patch.updatedBy !== undefined)
+      (next as { updatedBy: string | null }).updatedBy = patch.updatedBy;
     next.updatedAt = at;
     this.byId.set(id, clone(next));
     return clone(next);

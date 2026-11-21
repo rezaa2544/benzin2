@@ -1,6 +1,10 @@
 import { existsSync, readdirSync, statfsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { AppError, type CreateInfraResourceInput, type UpdateInfraResourceInput } from '@benzin/shared';
+import {
+  AppError,
+  type CreateInfraResourceInput,
+  type UpdateInfraResourceInput,
+} from '@benzin/shared';
 import type { Clock, InfraKind, InfraResource, User } from '../domain/entities.js';
 import type { Repositories } from '../ports.js';
 import type { SettingsService } from './settings-service.js';
@@ -93,7 +97,14 @@ export class InfraService {
   constructor(
     private readonly repos: Pick<
       Repositories,
-      'infraResources' | 'settings' | 'providerSettings' | 'zones' | 'users' | 'orders' | 'reservations' | 'audit'
+      | 'infraResources'
+      | 'settings'
+      | 'providerSettings'
+      | 'zones'
+      | 'users'
+      | 'orders'
+      | 'reservations'
+      | 'audit'
     >,
     private readonly settings: SettingsService,
     private readonly clock: Clock,
@@ -125,7 +136,8 @@ export class InfraService {
       const files = readdirSync(MIGRATIONS_DIR)
         .filter((name) => name.endsWith('.sql'))
         .sort();
-      const latest = files.length > 0 ? (files[files.length - 1] ?? '').replace(/\.sql$/, '') : null;
+      const latest =
+        files.length > 0 ? (files[files.length - 1] ?? '').replace(/\.sql$/, '') : null;
       return {
         latest,
         count: files.length,
@@ -155,9 +167,7 @@ export class InfraService {
     const zones = await this.repos.zones.listAll();
     const activeProviders = providers.filter((provider) => provider.isActive);
     const smsProvider = activeProviders.find((provider) => provider.kind === 'SMS');
-    const gatewayProvider = activeProviders.find(
-      (provider) => provider.kind === 'PAYMENT',
-    );
+    const gatewayProvider = activeProviders.find((provider) => provider.kind === 'PAYMENT');
     const checkedAt = now.toISOString();
 
     const last = this.options.lastTick?.() ?? null;
@@ -305,7 +315,11 @@ export class InfraService {
     return this.toView(created);
   }
 
-  async update(actor: User, id: string, input: UpdateInfraResourceInput): Promise<InfraResourceView> {
+  async update(
+    actor: User,
+    id: string,
+    input: UpdateInfraResourceInput,
+  ): Promise<InfraResourceView> {
     const existing = await this.repos.infraResources.findById(id);
     if (!existing) throw new AppError('INFRA_NOT_FOUND', 404, 'زیرساخت پیدا نشد');
     if (input.name && input.name !== existing.name) {
@@ -318,7 +332,11 @@ export class InfraService {
       id,
       // An omitted secret keeps the stored one: the panel shows «تنظیم شده» and never the value,
       // so a form save must not silently wipe a credential it was never given.
-      { ...input, secret: input.secret === undefined ? undefined : input.secret, updatedBy: actor.id },
+      {
+        ...input,
+        secret: input.secret === undefined ? undefined : input.secret,
+        updatedBy: actor.id,
+      },
       this.clock.now(),
     );
     if (!updated) throw new AppError('INFRA_NOT_FOUND', 404, 'زیرساخت پیدا نشد');

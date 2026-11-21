@@ -46,15 +46,15 @@
 
 ### ۴. معماری (تصمیم‌گرفته‌شده، تغییرش نده)
 
-| لایه | انتخاب |
-|---|---|
-| API | Node 22 + Fastify 5 + TypeScript |
-| DB | PostgreSQL 16 + PostGIS |
-| ORM | Drizzle + SQL مستقیم برای کوئری‌های حساس |
-| Real-time | WebSocket روی همان API |
-| ادمین | React + Vite + Tailwind |
-| اپ | React PWA + بستهٔ اندروید با **Capacitor** (iPhone همان PWA) |
-| استقرار | یک VPS + Docker Compose + Caddy |
+| لایه      | انتخاب                                                      |
+| --------- | ----------------------------------------------------------- |
+| API       | Node 22 + Fastify 5 + TypeScript                            |
+| DB        | PostgreSQL 16 + PostGIS                                     |
+| ORM       | Drizzle + SQL مستقیم برای کوئری‌های حساس                    |
+| Real-time | WebSocket روی همان API                                      |
+| ادمین     | React + Vite + Tailwind                                     |
+| اپ        | React PWA + بستهٔ اندروید با **Capacitor** (iPhone همان PWA) |
+| استقرار   | یک VPS + Docker Compose + Caddy                             |
 
 جزئیات: `docs/benzin2/01-ARCHITECTURE.md`.
 

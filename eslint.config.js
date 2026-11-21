@@ -17,6 +17,12 @@ export default tseslint.config(
       'drizzle/**',
       'eslint.config.js',
       'commitlint.config.js',
+      // Generated, not authored: the Electron shell ships a pre-built copy of the SPA and the
+      // admin panel (desktop/runtime), and Capacitor copies the SPA into the Android project.
+      'desktop/runtime/**',
+      'desktop/dist-content/**',
+      'apps/mobile/android/**',
+      'apps/mobile/www/**',
     ],
   },
   js.configs.recommended,
@@ -42,6 +48,41 @@ export default tseslint.config(
   {
     files: ['**/test/**/*.ts'],
     rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
+  },
+  {
+    // Plain-Node scripts (smoke runs, build helpers, the Electron main process) and the PostCSS/
+    // Tailwind configs run on Node, not in a browser: flat config has no `env`, so the Node and
+    // WHATWG globals they lean on are declared here instead.
+    files: ['**/*.{js,cjs,mjs}'],
+    languageOptions: {
+      globals: {
+        fetch: 'readonly',
+        Request: 'readonly',
+        Response: 'readonly',
+        Headers: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
+        TextEncoder: 'readonly',
+        TextDecoder: 'readonly',
+        module: 'writable',
+        require: 'readonly',
+        exports: 'writable',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+      },
+    },
+    rules: {
+      'no-console': 'off',
+      // The Electron main process and its build helpers are CommonJS by necessity (Electron loads
+      // them before any bundler exists), so `require()` is the correct form there.
+      '@typescript-eslint/no-require-imports': 'off',
+    },
   },
   {
     // The service worker is plain JS on purpose (no build step, no bundler): declare the worker

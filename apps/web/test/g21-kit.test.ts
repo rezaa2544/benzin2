@@ -129,7 +129,11 @@ describe('design discipline (G-21)', () => {
     }
 
     // Screens that are not lists still owe the user a retry and a tracking code when they fail.
-    for (const file of ['src/pages/ProfilePage.tsx', 'src/pages/TradePage.tsx', 'src/pages/OrderDetailPage.tsx']) {
+    for (const file of [
+      'src/pages/ProfilePage.tsx',
+      'src/pages/TradePage.tsx',
+      'src/pages/OrderDetailPage.tsx',
+    ]) {
       const source = readFileSync(join(ROOT, file), 'utf8');
       expect(source, `${file} has no retryable error state`).toContain('ListError');
     }

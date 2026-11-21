@@ -306,7 +306,10 @@ export class MemoryPaymentRepository implements PaymentRepository {
     return clone(payment);
   }
 
-  async revenue(from: Date, to: Date): Promise<{
+  async revenue(
+    from: Date,
+    to: Date,
+  ): Promise<{
     totalPaidToman: number;
     totalPaidCount: number;
     byProvider: { provider: Payment['provider']; paidToman: number; paidCount: number }[];

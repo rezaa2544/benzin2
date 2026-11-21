@@ -1,5 +1,10 @@
 import { useCallback, useState } from 'react';
-import { formatJalaliDate, formatJalaliDateTime, formatJalaliTime, toPersianDigits } from '@benzin/shared';
+import {
+  formatJalaliDate,
+  formatJalaliDateTime,
+  formatJalaliTime,
+  toPersianDigits,
+} from '@benzin/shared';
 import type { ApiClient } from '../lib/api.js';
 import { errorMessage } from '../lib/api.js';
 import type {
@@ -124,11 +129,7 @@ export function ProfilePage({ api, user, onUser, onLogout }: ProfilePageProps): 
 
       {error ? <Notice tone="error">{error}</Notice> : null}
       {loadError ? (
-        <ListError
-          message={errorMessage(loadError, errorMap)}
-          error={loadError}
-          onRetry={reload}
-        />
+        <ListError message={errorMessage(loadError, errorMap)} error={loadError} onRetry={reload} />
       ) : null}
 
       <div className="card mb-3">
@@ -205,7 +206,9 @@ export function ProfilePage({ api, user, onUser, onLogout }: ProfilePageProps): 
               disabled={savingPrivacy}
               onChange={(event) => void togglePhoneHidden(event.target.checked)}
             />
-            <span className="text-xs text-muted">{phoneHidden ? t('common.yes') : t('common.no')}</span>
+            <span className="text-xs text-muted">
+              {phoneHidden ? t('common.yes') : t('common.no')}
+            </span>
           </label>
         </div>
       </div>

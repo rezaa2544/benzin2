@@ -574,13 +574,7 @@ export function MarketPage({
         </div>
       ) : null}
 
-      {error ? (
-        <ListError
-          message={error}
-          error={errorCause}
-          onRetry={reload}
-        />
-      ) : null}
+      {error ? <ListError message={error} error={errorCause} onRetry={reload} /> : null}
       {loading ? <Skeleton rows={3} /> : null}
 
       {lotMessage ? <Notice tone="info">{lotMessage}</Notice> : null}

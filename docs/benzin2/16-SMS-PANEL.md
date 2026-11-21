@@ -17,10 +17,22 @@
   "source": "PANEL",
   "otpMessage": "کد ورود شما به بنزین: {code}",
   "chain": [
-    { "provider": "smsir", "priority": 5, "isActive": true, "keySet": true,
-      "sender": "30007732", "template": "12345" },
-    { "provider": "default", "priority": 0, "isActive": true, "keySet": true,
-      "sender": null, "template": null }
+    {
+      "provider": "smsir",
+      "priority": 5,
+      "isActive": true,
+      "keySet": true,
+      "sender": "30007732",
+      "template": "12345"
+    },
+    {
+      "provider": "default",
+      "priority": 0,
+      "isActive": true,
+      "keySet": true,
+      "sender": null,
+      "template": null
+    }
   ],
   "lastAttempts": []
 }
@@ -41,13 +53,13 @@
 
 ## ۲) الگوها
 
-| کلید | معنا |
-|---|---|
-| `config.priority` | عدد بزرگ‌تر زودتر امتحان می‌شود |
-| `config.sender` | شمارهٔ خط فرستنده |
-| `config.template` | شناسهٔ الگوی sms.ir / نام الگوی کاوه‌نگار |
-| `config.templateParameter` | نام پارامتر کد در sms.ir (پیش‌فرض `code`) |
-| `notification.sms_otp_message` | متن پیامک کد ورود، با `{code}` |
+| کلید                           | معنا                                      |
+| ------------------------------ | ----------------------------------------- |
+| `config.priority`              | عدد بزرگ‌تر زودتر امتحان می‌شود           |
+| `config.sender`                | شمارهٔ خط فرستنده                          |
+| `config.template`              | شناسهٔ الگوی sms.ir / نام الگوی کاوه‌نگار  |
+| `config.templateParameter`     | نام پارامتر کد در sms.ir (پیش‌فرض `code`) |
+| `notification.sms_otp_message` | متن پیامک کد ورود، با `{code}`            |
 
 - اگر ارائه‌دهنده الگو داشته باشد، کد از مسیر `sendCode` (verify/lookup) می‌رود و متن آزاد
   فرستاده نمی‌شود؛ بدون الگو، همان متن `notification.sms_otp_message` با `{code}` جایگزین می‌شود.
@@ -64,10 +76,21 @@
   "delivered": true,
   "message": "پیام آزمایشی بنزین: تنظیمات پنل پیامک درست است.",
   "attempts": [
-    { "provider": "smsir", "ok": false, "status": 200, "mode": "text",
-      "error": "rejected by provider", "raw": "{\"status\":0,\"message\":\"line is disabled\"}" },
-    { "provider": "kavenegar", "ok": true, "status": null, "mode": "text",
-      "raw": "{\"return\":{\"status\":200,\"message\":\"ok\"}}" }
+    {
+      "provider": "smsir",
+      "ok": false,
+      "status": 200,
+      "mode": "text",
+      "error": "rejected by provider",
+      "raw": "{\"status\":0,\"message\":\"line is disabled\"}"
+    },
+    {
+      "provider": "kavenegar",
+      "ok": true,
+      "status": null,
+      "mode": "text",
+      "raw": "{\"return\":{\"status\":200,\"message\":\"ok\"}}"
+    }
   ]
 }
 ```

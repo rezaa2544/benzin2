@@ -101,7 +101,9 @@ export function OrderCard({
               // not «امتیاز ۰».
               <span
                 className={`chip ${
-                  ownerResponseRate !== null && ownerResponseRate !== undefined && ownerResponseRate >= 80
+                  ownerResponseRate !== null &&
+                  ownerResponseRate !== undefined &&
+                  ownerResponseRate >= 80
                     ? 'bg-brandSoft text-brand'
                     : ''
                 }`}

@@ -121,7 +121,10 @@ describe('G-26 — what a buyer has paid for', () => {
       const fourth = await reserve(ctx, buyer.token, await newSeller(ctx));
       expect(fourth.statusCode).toBe(429);
       const error = fourth.json() as {
-        error: { code: string; details: { monthlyLimit: number; usedThisMonth: number; cheapestPlanToman: number } };
+        error: {
+          code: string;
+          details: { monthlyLimit: number; usedThisMonth: number; cheapestPlanToman: number };
+        };
       };
       expect(error.error.code).toBe('RESERVATION_QUOTA_EXHAUSTED');
       // The app needs the numbers to offer the right plan, not just a refusal.
@@ -146,7 +149,9 @@ describe('G-26 — what a buyer has paid for', () => {
       const phone = freshPhone();
       const buyer = await login(ctx, phone);
       for (let index = 0; index < 3; index += 1) {
-        expect((await reserveAndRelease(ctx, buyer.token, await newSeller(ctx))).statusCode).toBe(201);
+        expect((await reserveAndRelease(ctx, buyer.token, await newSeller(ctx))).statusCode).toBe(
+          201,
+        );
       }
       expect((await reserve(ctx, buyer.token, await newSeller(ctx))).statusCode).toBe(429);
 
@@ -157,7 +162,9 @@ describe('G-26 — what a buyer has paid for', () => {
       // moved, not the session.
       const returning = await login(ctx, phone);
       expect((await entitlementsOf(ctx, returning.token)).usedThisMonth).toBe(0);
-      expect((await reserveAndRelease(ctx, returning.token, await newSeller(ctx))).statusCode).toBe(201);
+      expect((await reserveAndRelease(ctx, returning.token, await newSeller(ctx))).statusCode).toBe(
+        201,
+      );
     } finally {
       await ctx.close();
     }
@@ -182,7 +189,9 @@ describe('G-26 — what a buyer has paid for', () => {
       expect(entitlement.endsAt).not.toBeNull();
 
       for (let index = 0; index < 5; index += 1) {
-        expect((await reserveAndRelease(ctx, buyer.token, await newSeller(ctx))).statusCode).toBe(201);
+        expect((await reserveAndRelease(ctx, buyer.token, await newSeller(ctx))).statusCode).toBe(
+          201,
+        );
       }
       expect((await entitlementsOf(ctx, buyer.token)).usedThisMonth).toBe(5);
     } finally {
@@ -232,7 +241,9 @@ describe('G-26 — what a buyer has paid for', () => {
       expect(second.statusCode).toBe(201);
 
       // And the credit cannot be resurrected by asking again.
-      expect(await ctx.repos.subscriptions.findActiveByUser(buyer.userId, ctx.clock.now())).toBeNull();
+      expect(
+        await ctx.repos.subscriptions.findActiveByUser(buyer.userId, ctx.clock.now()),
+      ).toBeNull();
     } finally {
       await ctx.close();
     }
@@ -381,9 +392,9 @@ describe('G-19 — the phone number stays a two-sided secret', () => {
       expect(response.body).not.toMatch(new RegExp(seller.phone ?? 'NEVER'));
 
       const audit = await ctx.repos.audit.list(200);
-      const entry = audit
-        .filter((row) => row.action === 'contact.revealed')
-        .at(-1) as { metadata: { hidden?: string[] } };
+      const entry = audit.filter((row) => row.action === 'contact.revealed').at(-1) as {
+        metadata: { hidden?: string[] };
+      };
       expect(entry.metadata.hidden).toEqual(['OWNER']);
 
       // Privacy never blocks the trade: the in-app chat between the two is still there.

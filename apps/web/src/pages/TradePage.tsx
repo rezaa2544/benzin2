@@ -143,11 +143,7 @@ export function TradePage({ api, user, config, reservationId }: TradePageProps):
     return (
       <div>
         <PageTitle title={t('trade.title')} />
-        <ListError
-          message={errorMessage(loadError, errorMap)}
-          error={loadError}
-          onRetry={reload}
-        />
+        <ListError message={errorMessage(loadError, errorMap)} error={loadError} onRetry={reload} />
       </div>
     );
   }
@@ -198,7 +194,8 @@ export function TradePage({ api, user, config, reservationId }: TradePageProps):
         </dl>
       </div>
 
-      {role === 'taker' && (reservation.status === 'CONFIRMED' || reservation.status === 'COMPLETED') ? (
+      {role === 'taker' &&
+      (reservation.status === 'CONFIRMED' || reservation.status === 'COMPLETED') ? (
         <DeliveryCodeCard api={api} reservationId={reservationId} />
       ) : null}
 

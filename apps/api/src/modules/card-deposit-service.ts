@@ -1,12 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { AppError } from '@benzin/shared';
 import type { Clock, Payment, User } from '../domain/entities.js';
-import type {
-  CardDeposit,
-  NotificationEmitter,
-  PaymentCardRepository,
-  Repositories,
-} from '../ports.js';
+import type { CardDeposit, NotificationEmitter, Repositories } from '../ports.js';
 import type { SettingsService } from './settings-service.js';
 
 /**
@@ -100,7 +95,11 @@ export class CardDepositService {
   }
 
   /** The destination account the buyer is told to pay, straight from the settings (G-11). */
-  async destination(): Promise<{ cardNumber: string; holderName: string; bankName: string | null }> {
+  async destination(): Promise<{
+    cardNumber: string;
+    holderName: string;
+    bankName: string | null;
+  }> {
     const config = await this.settings.get();
     const [card] = await this.repos.paymentCards.list(true);
     return {
@@ -272,7 +271,10 @@ export class CardDepositService {
   }
 
   /** Admin: the unmatched queue, newest first. */
-  async listUnmatched(limit = 50, offset = 0): Promise<{
+  async listUnmatched(
+    limit = 50,
+    offset = 0,
+  ): Promise<{
     items: CardDepositView[];
     total: number;
   }> {

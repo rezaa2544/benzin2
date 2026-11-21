@@ -1,4 +1,11 @@
-import type { NodeHeartbeatRecord, NodeJob, NodeJobs, NodeRepository, NodeResources, NodeTraffic } from '../../../ports.js';
+import type {
+  NodeHeartbeatRecord,
+  NodeJob,
+  NodeJobs,
+  NodeRepository,
+  NodeResources,
+  NodeTraffic,
+} from '../../../ports.js';
 import { query, queryOne, type Db } from './pg-common.js';
 
 /**

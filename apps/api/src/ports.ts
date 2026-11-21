@@ -279,9 +279,7 @@ export interface ReservationRepository {
    */
   updateDelivery(
     id: string,
-    patch: Partial<
-      Pick<Reservation, 'deliveryCode' | 'deliveryAttempts' | 'deliveryLockedUntil'>
-    >,
+    patch: Partial<Pick<Reservation, 'deliveryCode' | 'deliveryAttempts' | 'deliveryLockedUntil'>>,
   ): Promise<Reservation | null>;
   /**
    * Pushes the deadline of a still-pending reservation (G-04). `expectedExpiresAt` makes it a
@@ -438,7 +436,10 @@ export interface PaymentRepository {
     input: { attempts: number; nextAt: Date | null; error: string | null; clear?: boolean },
   ): Promise<Payment | null>;
   /** G-12 revenue report: settled money per provider and per day inside the window. */
-  revenue(from: Date, to: Date): Promise<{
+  revenue(
+    from: Date,
+    to: Date,
+  ): Promise<{
     totalPaidToman: number;
     totalPaidCount: number;
     byProvider: { provider: PaymentMethod; paidToman: number; paidCount: number }[];
@@ -499,7 +500,11 @@ export interface CardDepositRepository {
   findById(id: string): Promise<CardDeposit | null>;
   /** Attaches the invoice a deposit paid for and flips it to MATCHED. */
   markMatched(id: string, paymentId: string): Promise<CardDeposit | null>;
-  list(status: CardDeposit['status'] | null, limit: number, offset: number): Promise<{
+  list(
+    status: CardDeposit['status'] | null,
+    limit: number,
+    offset: number,
+  ): Promise<{
     items: CardDeposit[];
     total: number;
   }>;
@@ -647,7 +652,9 @@ export interface InfraResourceRepository {
   ): Promise<InfraResource>;
   update(
     id: string,
-    patch: Partial<Pick<InfraResource, 'name' | 'kind' | 'address' | 'secret' | 'isActive' | 'updatedBy'>>,
+    patch: Partial<
+      Pick<InfraResource, 'name' | 'kind' | 'address' | 'secret' | 'isActive' | 'updatedBy'>
+    >,
     at: Date,
   ): Promise<InfraResource | null>;
   remove(id: string): Promise<boolean>;

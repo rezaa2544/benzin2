@@ -107,7 +107,13 @@ export interface RevenueReport {
   paidCount: number;
   pendingCount: number;
   failedCount: number;
-  byProvider: { provider: Payment['provider']; labelFa: string; paidCount: number; paidToman: number; paidTomanLabelFa: string }[];
+  byProvider: {
+    provider: Payment['provider'];
+    labelFa: string;
+    paidCount: number;
+    paidToman: number;
+    paidTomanLabelFa: string;
+  }[];
   byDay: { day: string; paidCount: number; paidToman: number; paidTomanLabelFa: string }[];
 }
 
@@ -557,10 +563,7 @@ export class PaymentService {
   }
 
   /** Queues the next attempt, or escalates to a human once the budget is spent. */
-  private async scheduleRetry(
-    payment: Payment,
-    error: string,
-  ): Promise<{ outcome: 'PENDING' }> {
+  private async scheduleRetry(payment: Payment, error: string): Promise<{ outcome: 'PENDING' }> {
     const config = await this.settings.get();
     const maxAttempts = config['payment.verify_max_attempts'];
     const attempts = payment.verifyAttempts + 1;
@@ -605,7 +608,11 @@ export class PaymentService {
     return { outcome: 'PENDING' };
   }
 
-  private async failPayment(payment: Payment, reason: string, actorId: string | null): Promise<void> {
+  private async failPayment(
+    payment: Payment,
+    reason: string,
+    actorId: string | null,
+  ): Promise<void> {
     const failed = await this.repos.payments.transition(payment.id, 'PENDING', 'FAILED', {
       reference: reason,
     });

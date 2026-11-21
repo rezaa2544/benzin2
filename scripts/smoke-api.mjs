@@ -84,7 +84,7 @@ const owner = await step(`OTP login (owner ${OWNER_PHONE})`, () => login(OWNER_P
 const buyer = await step(`OTP login (buyer ${BUYER_PHONE})`, () => login(BUYER_PHONE, 'smoke-buyer-device'));
 expect(owner && buyer, 'both logins are required for the rest of the flow');
 
-const zones = await step('GET /v1/zones', async () => {
+const _zones = await step('GET /v1/zones', async () => {
   const { status, payload } = await call('GET', '/v1/zones', { token: buyer.token });
   expect(status === 200, `status ${status}`);
   const items = payload?.items ?? payload;
@@ -102,7 +102,7 @@ const zoneId =
   })) ?? null;
 expect(zoneId, 'zone id is required');
 
-const statsBefore = await step('GET /v1/stats/market', async () => {
+const _statsBefore = await step('GET /v1/stats/market', async () => {
   const { status, payload } = await call(
     'GET',
     `/v1/stats/market?side=SELL&province=${encodeURIComponent(PLACE.province)}&county=${encodeURIComponent(PLACE.county)}`,
@@ -165,7 +165,7 @@ const order = await step('POST /v1/orders (SELL 60L)', async () => {
   expect(payload.id, 'order id missing');
   return payload;
 });
-const search = await step('GET /v1/orders (side=SELL, sort=distance)', async () => {
+const _search = await step('GET /v1/orders (side=SELL, sort=distance)', async () => {
   const { status, payload } = await call(
     'GET',
     `/v1/orders?side=SELL&province=${encodeURIComponent(PLACE.province)}&lat=35.99&lng=45.9&sort=distance&limit=20`,
@@ -189,7 +189,7 @@ const reservation = await step('POST /v1/orders/:id/reservations', async () => {
   return payload;
 });
 
-const duplicate = await step('second reservation is refused (atomic lot lock)', async () => {
+const _duplicate = await step('second reservation is refused (atomic lot lock)', async () => {
   const { status } = await call('POST', `/v1/orders/${order.id}/reservations`, { token: buyer.token });
   expect(status >= 400 && status < 500, `expected 4xx, got ${status}`);
   return `HTTP ${status}`;
@@ -238,7 +238,7 @@ await step('chat: post + read message', async () => {
 
 // G-09 — the four-digit hand-over code: buyer reads it, seller types it to close the trade.
 let deliveryCodeValue = '';
-const deliveryCode = await step('GET /v1/reservations/:id/delivery-code (G-09, buyer only)', async () => {
+const _deliveryCode = await step('GET /v1/reservations/:id/delivery-code (G-09, buyer only)', async () => {
   const mine = await call('GET', `/v1/reservations/${reservation.id}/delivery-code`, {
     token: buyer.token,
   });

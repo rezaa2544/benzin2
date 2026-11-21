@@ -40,7 +40,10 @@ export class PgInfraResourceRepository implements InfraResourceRepository {
   constructor(private readonly db: Db) {}
 
   async list(): Promise<InfraResource[]> {
-    const rows = await query<InfraRow>(this.db, `SELECT ${COLUMNS} FROM infra_resources ORDER BY name`);
+    const rows = await query<InfraRow>(
+      this.db,
+      `SELECT ${COLUMNS} FROM infra_resources ORDER BY name`,
+    );
     return rows.map(toEntity);
   }
 
@@ -79,7 +82,9 @@ export class PgInfraResourceRepository implements InfraResourceRepository {
 
   async update(
     id: string,
-    patch: Partial<Pick<InfraResource, 'name' | 'kind' | 'address' | 'secret' | 'isActive' | 'updatedBy'>>,
+    patch: Partial<
+      Pick<InfraResource, 'name' | 'kind' | 'address' | 'secret' | 'isActive' | 'updatedBy'>
+    >,
     at: Date,
   ): Promise<InfraResource | null> {
     const sets: string[] = [];

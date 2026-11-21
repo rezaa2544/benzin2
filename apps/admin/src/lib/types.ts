@@ -93,7 +93,13 @@ export interface RevenueReport {
   paidCount: number;
   pendingCount: number;
   failedCount: number;
-  byProvider: { provider: string; labelFa: string; paidCount: number; paidToman: number; paidTomanLabelFa: string }[];
+  byProvider: {
+    provider: string;
+    labelFa: string;
+    paidCount: number;
+    paidToman: number;
+    paidTomanLabelFa: string;
+  }[];
   byDay: { day: string; paidCount: number; paidToman: number; paidTomanLabelFa: string }[];
 }
 

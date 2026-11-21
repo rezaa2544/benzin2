@@ -6,7 +6,7 @@ import type { NotificationList, NotificationView } from '../lib/types.js';
 import { useResource } from '../lib/useResource.js';
 import { t, tf } from '../lib/i18n.js';
 import { EmptyState } from '../components/EmptyState.js';
-import { ListError, Notice, PageTitle, Skeleton } from './parts.js';
+import { ListError, PageTitle, Skeleton } from './parts.js';
 
 export interface NotificationsPageProps {
   api: ApiClient;

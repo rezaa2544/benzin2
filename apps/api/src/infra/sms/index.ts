@@ -145,10 +145,14 @@ export class FailoverSmsSender implements SmsSender {
     message: string,
   ): Promise<{ delivered: boolean; attempts: SmsAttempt[] }> {
     const attempts: SmsAttempt[] = [];
-    const outcome = await this.walk(phone, () => ({
-      mode: 'text' as SmsAttemptMode,
-      run: (transport) => transport.send(phone, message),
-    }), attempts);
+    const outcome = await this.walk(
+      phone,
+      () => ({
+        mode: 'text' as SmsAttemptMode,
+        run: (transport) => transport.send(phone, message),
+      }),
+      attempts,
+    );
     return { delivered: outcome.delivered, attempts };
   }
 

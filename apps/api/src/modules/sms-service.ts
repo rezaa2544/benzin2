@@ -102,9 +102,10 @@ export class SmsService implements SmsSender {
   private async otpMessage(): Promise<string> {
     const config = await this.settings.get();
     const configured = config['notification.sms_otp_message'];
-    const candidate = typeof configured === 'string' && configured.trim().length > 0
-      ? configured
-      : DEFAULT_OTP_MESSAGE;
+    const candidate =
+      typeof configured === 'string' && configured.trim().length > 0
+        ? configured
+        : DEFAULT_OTP_MESSAGE;
     this.lastOtpMessage = candidate.includes('{code}') ? candidate : DEFAULT_OTP_MESSAGE;
     return this.lastOtpMessage;
   }
@@ -113,7 +114,9 @@ export class SmsService implements SmsSender {
     const all = await this.repos.providerSettings.list();
     return all
       .filter((row) => row.kind === 'SMS')
-      .sort((a, b) => this.priorityOf(b) - this.priorityOf(a) || a.provider.localeCompare(b.provider));
+      .sort(
+        (a, b) => this.priorityOf(b) - this.priorityOf(a) || a.provider.localeCompare(b.provider),
+      );
   }
 
   private priorityOf(setting: ProviderSetting): number {
@@ -149,9 +152,7 @@ export class SmsService implements SmsSender {
         return new KavenegarTransport({
           apiKey,
           sender: senderLine,
-          ...(typeof template === 'string' && template.trim() !== ''
-            ? { template }
-            : {}),
+          ...(typeof template === 'string' && template.trim() !== '' ? { template } : {}),
           ...(typeof baseUrl === 'string' && baseUrl ? { baseUrl } : {}),
           ...(this.options.fetchImpl ? { fetchImpl: this.options.fetchImpl } : {}),
           ...(this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}),
@@ -227,14 +228,22 @@ export class SmsService implements SmsSender {
           priority: this.priorityOf(row),
           isActive: row.isActive,
           keySet: Boolean(String(row.config['apiKey'] ?? '')),
-          sender: typeof row.config['sender'] === 'string' ? (row.config['sender'] as string) : null,
+          sender:
+            typeof row.config['sender'] === 'string' ? (row.config['sender'] as string) : null,
           template:
             typeof row.config['template'] === 'string' && (row.config['template'] as string) !== ''
               ? (row.config['template'] as string)
               : null,
         })),
         // The default chain is part of the chain whether or not it has a row: it is the last resort.
-        { provider: 'default', priority: 0, isActive: true, keySet: true, sender: null, template: null },
+        {
+          provider: 'default',
+          priority: 0,
+          isActive: true,
+          keySet: true,
+          sender: null,
+          template: null,
+        },
       ],
       lastAttempts: this.attempts,
     };

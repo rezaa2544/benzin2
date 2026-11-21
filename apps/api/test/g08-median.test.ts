@@ -88,7 +88,11 @@ const placeQuery = (province?: string, county?: string): string => {
   return query ? `?${query}` : '';
 };
 
-const median = async (ctx: TestContext, token: string, query = ''): Promise<Record<string, unknown>> => {
+const median = async (
+  ctx: TestContext,
+  token: string,
+  query = '',
+): Promise<Record<string, unknown>> => {
   const response = await ctx.app.inject({
     method: 'GET',
     url: `/v1/stats/market/median${query}`,
